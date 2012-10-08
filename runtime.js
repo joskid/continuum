@@ -73,3 +73,5 @@ void function(){
   }
   ArrayIterator.prototype = new Iterator;
 }();
+
+  //['filter', 'every', 'some', 'sort', 'reduceRight']
