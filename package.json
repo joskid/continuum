@@ -1,0 +1,16 @@
+{
+  "name": "continuum",
+  "author": "Brandon Benvie <http://bbenvie.com>",
+  "version": "0.0.1",
+  "description": "continuum",
+  "main": "continuum.js",
+  "dependencies": {
+    "escodegen": "~0.0.8",
+    "esprima": "~1.0.0-dev-harmony"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Benvie/continuum"
+  },
+  "license": "MIT"
+}
