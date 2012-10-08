@@ -1533,15 +1533,32 @@ var Interpretor = (function(global){
 
     BuiltinGlobals = [
       api('eval', function(context, args, Ω, ƒ){
-        evaluaters.Program(parse(args[0]), context, Ω, ƒ, Ω, ƒ);
+        evaluaters.Program(parse(args[0]), context, Ω, ƒ);
       }),
       api('sleep', function(context, args, Ω, ƒ){
         ToNumber(context, args, function(time){
           setTimeout(Ω, time >> 0);
         }, ƒ);
+      }),
+      api('callcc', function(savedContext, args, savedΩ, savedƒ){
+        var func = args[0];
+        if (isObject(func))
+          var thunk = thunks.get(func);
+
+        if (thunk) {
+          var continuation = new BuiltinFunctionThunk({
+            name: 'continuation',
+            length: 1,
+            apply: function replacer(context, args, Ω, ƒ){
+              savedΩ(args[0]);
+            }
+          });
+          var newArgs = [continuation];
+          newArgs.callee = func;
+          thunk.apply(savedContext, newArgs, savedΩ, savedƒ);
+        }
       })
     ];
-
     return builtins;
   }({}));
 
