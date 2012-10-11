@@ -798,43 +798,372 @@
   ]);
 
 
-  $Object.defineProperty = function defineProperty(object, key, desc, Ω, ƒ){
-    if (object instanceof $Object) {
-      throwException('called_on_non_object', [], ƒ);
-    } else if (!isObject(desc)) {
-      throwException('property_desc_object', [typeof descs[k]], ƒ);
-    } else {
-      object.DefineOwnProperty(key, desc, false, Ω, ƒ);
-    }
-  };
 
-  $Object.defineProperties = function defineProperties(object, descs, Ω, ƒ){
-    if (object instanceof $Object) {
-      throwException('called_on_non_object', [], ƒ);
-    } else if (!isObject(desc)) {
-      throwException('property_desc_object', [typeof descs], ƒ);
+  function EnvironmentRecord(bindings){
+    this.bindings = bindings;
+  }
+
+  define(EnvironmentRecord.prototype, {
+    bindings: null,
+    receiver: null,
+    holder: null,
+    withBase: undefined
+  });
+
+  define(EnvironmentRecord.prototype, [
+    function HasBinding(name, Ω, ƒ){
+      throwAbstractInvocationError('EnvironmentRecord.prototype.HasBinding');
+    },
+    function GetBinding(name, strict, Ω, ƒ){
+      throwAbstractInvocationError('EnvironmentRecord.prototype.GetBinding');
+    },
+    function SetBinding(name, value, strict, Ω, ƒ){
+      throwAbstractInvocationError('EnvironmentRecord.prototype.SetBinding');
+    },
+    function DeleteBinding(name, Ω, ƒ){
+      throwAbstractInvocationError('EnvironmentRecord.prototype.DeleteBinding');
+    },
+    function CreateVarBinding(name, deletable, Ω, ƒ){
+      this.CreateBinding(name, deletable, Ω, ƒ);
+    },
+    function HasWithBase(Ω, ƒ){
+      Ω(false);
+    },
+    function GetWithBase(Ω, ƒ){
+      Ω(this.withBase);
+    },
+    function HasThis(Ω, ƒ){
+      Ω(false);
+    },
+    function GetThis(Ω, ƒ){
+      Ω();
+    },
+    function HasSuper(Ω, ƒ){
+      Ω(false);
+    },
+    function GetSuper(Ω, ƒ){
+      Ω();
+    }
+  ]);
+
+
+  function DeclarativeEnvironmentRecord(){
+    EnvironmentRecord.call(this, create(null));
+    this.consts = create(null);
+  }
+
+  inherit(DeclarativeEnvironmentRecord, EnvironmentRecord, [
+    function HasBinding(name, Ω, ƒ){
+      Ω(name in this.bindings);
+    },
+    function CreateBinding(name, deletable, Ω, ƒ){
+      if (deletable) {
+        this.bindings[name] = undefined;
+      } else {
+        defineProperty(this.bindings, name, {
+          value: undefined,
+          configurable: false,
+          enumerable: true,
+          writable: true
+        });
+      }
+      Ω();
+    },
+    function GetBindingValue(name, strict, Ω, ƒ){
+      if (name in this.bindings) {
+        var value = this.bindings[name];
+        if (value === UNINITIALIZED)
+          throwException('uninitialized_const', name, Ω, ƒ);
+        else
+          Ω(value);
+      } else if (strict) {
+        throwException('not_defined', name, Ω, ƒ);
+      } else {
+        Ω(false);
+      }
+    },
+    function SetBindingValue(name, value, strict, Ω, ƒ){
+      if (name in this.consts) {
+        if (this.bindings[name] === UNINITIALIZED)
+          throwException('uninitialized_const', name, Ω, ƒ);
+        else if (strict)
+          throwException('const_assign', name, Ω, ƒ);
+        else
+          Ω();
+      } else {
+        this.bindings[name] = value;
+        Ω();
+      }
+    },
+    function CreateImmutableBinding(name, Ω, ƒ){
+      this.bindings[name] = UNINITIALIZED;
+      Ω();
+    },
+    function InititalizeBinding(name, value, Ω, ƒ){
+      this.bindings[name] = value;
+      Ω();
+    },
+    function DeleteBinding(name, Ω, ƒ){
+      if (this.HasBinding(name))
+        Ω(delete this.bindings[name]);
+      else
+        Ω(true);
+    },
+  ])
+
+
+  function ObjectEnvironmentRecord(object){
+    EnvironmentRecord.call(this, object);
+  }
+
+  inherit(ObjectEnvironmentRecord, EnvironmentRecord, [
+    function HasBinding(name, Ω, ƒ){
+      this.bindings.HasProperty(name, Ω, ƒ);
+    },
+    function CreateBinding(name, deletable, Ω, ƒ){
+      this.bindings.DefineOwnProperty(name, new $DataDescriptor(undefined, 7), true, Ω, ƒ);
+    },
+    function GetBindingValue(name, strict, Ω, ƒ){
+      this.bindings.HasProperty(name, function(result){
+        if (result)
+          this.bindings.Get(name, Ω, ƒ);
+        else if (strict)
+          throwException('not_defined', name, Ω, ƒ);
+        else
+          Ω();
+      }, ƒ);
+    },
+    function SetBindingValue(name, value, strict, Ω, ƒ){
+      this.bindings.Put(name, value, strict, Ω, ƒ);
+    },
+    function DeleteBinding(name, Ω, ƒ){
+      this.bindings.Delete(name, false, Ω, ƒ);
+    }
+  ]);
+
+
+  function MethodEnvironmentRecord(receiver, holder, name){
+    DeclarativeEnvironmentRecord.call(this);
+    this.receiver = receiver;
+    this.holder = holder;
+    this.name = name;
+  }
+
+  inherit(MethodEnvironmentRecord, DeclarativeEnvironmentRecord, {
+    name: undefined
+  }, [
+    function HasThis(Ω, ƒ){
+      Ω(true);
+    },
+    function GetThis(Ω, ƒ){
+      Ω(this.receiver);
+    },
+    function HasSuper(Ω, ƒ){
+      Ω(this.holder !== undefined);
+    },
+    function GetSuper(Ω, ƒ){
+      Ω(this.holder.proto);
+    }
+  ]);
+
+
+  function GlobalEnvironmentRecord(global){
+    ObjectEnvironmentRecord.call(this, global);
+  }
+
+  inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
+  }, [
+    function HasThis(Ω, ƒ){
+      Ω(true);
+    },
+    function GetThis(Ω, ƒ){
+      Ω(this.bindings);
+    }
+  ]);
+
+
+
+  function LexicalEnvironment(outer, record){
+    this.outer = outer || null;
+    this.record = record;
+  }
+
+  define(LexicalEnvironment.prototype, {
+    outer: null,
+    record: null
+  }, []);
+
+
+  function GetReference(lex, name, strict, Ω, ƒ){
+    if (lex === null) {
+      Ω(new Reference(undefined, name, strict));
     } else {
-      descs = descs.properties;
-      for (var k in descs) {
-        if (!isObject(descs[k]))
+      lex.record.HasBinding(name, function(result){
+        if (result)
+          Ω(new Reference(lex.record, name, strict));
+        else
+          GetReference(lex.outer, name, strict, Ω, ƒ);
+      }, ƒ);
+    }
+  }
+
+  function NewObjectEnvironment(outer, object){
+    return new LexicalEnvironment(outer, new ObjectEnvironmentRecord(object));
+  }
+
+  function NewDeclarativeEnvironment(outer){
+    return new LexicalEnvironment(outer, new DeclarativeEnvironmentRecord);
+  }
+
+  function NewMethodEnvironment(method, receiver){
+    var env = new MethodEnvironmentRecord(receiver, method.holder, method.name);
+    return new LexicalEnvironment(method.scope, env);
+  }
+
+
+
+  function Realm(){
+    Emitter.call(this);
+
+    this.intrinsics = create(null);
+    this.intrinsics.ObjectPrototype = new $Object(null);
+    this.global = new $Object(this.intrinsics.ObjectPrototype);
+    this.globalEnv = new LexicalEnvironment(null, new GlobalEnvironmentRecord(this.global));
+
+    // for (var name in builtins)
+    //   if (name !== 'Object')
+    //     this.intrinsics[name+'Prototype'] = create(this.intrinsics.ObjectPrototype);
+
+    // for (var name in builtins) {
+    //   this.intrinsics[name] = builtins[name].instantiate(this);
+    //   define(this.global, name, this.intrinsics[name]);
+    // }
+
+    // defineProperties(this.global, constants);
+    // BuiltinGlobals.forEach(function(builtin){
+    //   define(this.global, builtin.name, builtin.instantiate(this));
+    // }, this);
+  }
+
+
+  function ExecutionContext(realm){
+    this.realm = realm;
+  }
+
+  var realm = ExecutionContext.realm = null,
+      context = ExecutionContext.context = null,
+      globalEnv = ExecutionContext.globalEnv = null,
+      intrinsics = ExecutionContext.intrinsics = null;
+
+
+  function GetReference(name, Ω, ƒ){
+    LexicalEnvironment.getReference(context.lexical, name, context.isStrict, Ω, ƒ);
+  }
+
+  function GetThisEnvironment(Ω, ƒ){
+    void function recurse(env){
+      env.record.HasThis(function(result){
+        result ? Ω(env) : recurse(env.outer);
+      }, ƒ)
+    }(context.lexical);
+  }
+
+  function GetThis(Ω, ƒ){
+    GetThisEnvironment(function(env){
+      env.GetThis(Ω, ƒ);
+    }, ƒ);
+  }
+
+
+  define(ExecutionContext, [
+    function beginExecution(realm, isGlobal, isStrict, isEval){
+      var context = new ExecutionContext(realm);
+      if (isGlobal) {
+        context.isGlobal = true;
+        context.variable = realm.globalEnv;
+      } else {
+        context.variable = LexicalEnvironment.declarative(context.globalEnv);
+      }
+      context.lexical = context.variable;
+      if (isStrict)
+        context.isStrict = true;
+      if (isEval)
+        context.isEval = true;
+
+      ExecutionContext.setCurrent(context);
+      ExecutionContext.stack = [context];
+      return context;
+    },
+    function setCurrent(newContext){
+      realm = ExecutionContext.realm = newContext.realm;
+      context = ExecutionContext.context = newContext;
+      globalEnv = ExecutionContext.globalEnv = realm.globalEnv;
+      intrinsics = ExecutionContext.intrinsics = realm.intrinsics;
+    },
+  ]);
+
+  define(ExecutionContext.prototype, {
+    isGlobal: false,
+    isStrict: false,
+    isEval: false,
+  });
+
+
+
+  var builtins = {
+    Object: {
+      Call: function(args, Ω, ƒ){
+        ToObject(args[0], Ω, ƒ);
+      },
+      Construct: function(args, Ω, ƒ){
+        Ω(new $Object(intrinsics.ObjectPrototype));
+      },
+      defineProperty: function(args, Ω, ƒ){
+        var object = args[0],
+            key    = args[1],
+            desc   = args[2];
+
+        if (object instanceof $Object) {
+          throwException('called_on_non_object', [], ƒ);
+        } else if (!isObject(desc)) {
           throwException('property_desc_object', [typeof descs[k]], ƒ);
-        object.DefineOwnProperty(k, descs[k], false, RETURNS(object), ƒ)
+        } else {
+          object.DefineOwnProperty(key, desc, false, Ω, ƒ);
+        }
+      },
+      defineProperties: function(args, Ω, ƒ){
+        var object = args[0],
+            descs  = args[1];
+
+        if (object instanceof $Object) {
+          throwException('called_on_non_object', [], ƒ);
+        } else if (!isObject(desc)) {
+          throwException('property_desc_object', [typeof descs], ƒ);
+        } else {
+          descs = descs.properties;
+          for (var k in descs) {
+            if (!isObject(descs[k]))
+              throwException('property_desc_object', [typeof descs[k]], ƒ);
+            object.DefineOwnProperty(k, descs[k], false, RETURNS(object), ƒ)
+          }
+        }
+      },
+      create: function(args, Ω, ƒ) {
+        var proto = args[0],
+            descs = args[1];
+
+        if (proto !== null && !(proto instanceof $Object)) {
+          return throwException('proto_object_or_null', [], ƒ);
+        }
+        var object = new $Object(proto);
+        if (descs) {
+          $Object.defineProperties(object, descs, Ω, ƒ);
+        } else {
+          Ω(object);
+        }
       }
     }
   };
-
-  $Object.create = function create(proto, descs, Ω, ƒ) {
-    if (proto !== null && !(proto instanceof $Object)) {
-      return throwException('proto_object_or_null', [], ƒ);
-    }
-    var object = new $Object(proto);
-    if (descs) {
-      $Object.defineProperties(object, descs, Ω, ƒ);
-    } else {
-      Ω(object);
-    }
-  };
-
 
 
   function thrower(completion){
@@ -856,10 +1185,10 @@
   var o = new $Object(intrinsics.ObjectPrototype);
 
   o.Put('test', 5, false, function(){
-    $Object.create(o, null, function(obj){
+    builtins.Object.create([o, null], function(obj){
       obj.Put('x', 'grg', false, function(){
         obj.GetOwnPropertyNames(log, thrower);
-        obj.DefaultValue('String', log, thrower);
+        obj.DefaultValue('String', log, thrower); // throw TypeError
       }, thrower);
     }, thrower);
   }, thrower);
