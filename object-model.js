@@ -321,13 +321,29 @@
     return new Completion(NORMAL, value);
   }
 
+  // ## FromPropertyDescriptor
+
+  function FromPropertyDescriptor(desc){
+    var obj = new $Object;
+    if (IsDataDescriptor(desc)) {
+      obj.setDirect('value', desc.value);
+      obj.setDirect('writable', desc.writable);
+    } else if (IsAccessorDescriptor(desc))  {
+      obj.setDirect('get', desc.get);
+      obj.setDirect('set', desc.set);
+    }
+    obj.setDirect('enumerable', desc.enumerable);
+    obj.setDirect('configurable', desc.configurable);
+    return obj;
+  }
+
   // ## ToPropertyDescriptor
 
   function ToPropertyDescriptor(obj, Ω, ƒ) {
     if (!(obj instanceof $Object))
       return throwException('property_desc_object', [typeof obj], ƒ);
 
-    var desc = new $Object(intrinsics.ObjectPrototype);
+    var desc = new $Object;
 
     SEQUENCE([
       DISCARD(copyIfHas, [desc, obj, 'value']),
@@ -490,7 +506,9 @@
 
         if (base instanceof $Object) {
           if (IsSuperReference(v)) {
-            base.Get(v.name, GetThisValue(v), Ω, ƒ);
+            GetThisValue(v, function(receiver){
+              base.Get(v.name, receiver, Ω, ƒ);
+            }, ƒ);
           } else {
             base.Get(v.name, Ω, ƒ);
           }
@@ -524,7 +542,9 @@
             if (IsSuperReference(v)) {
               base.Put(v.name, w, v.strict, Ω, ƒ);
             } else {
-              base.Put(v.name, w, v.strict, GetThisValue(v), Ω, ƒ);
+              GetThisValue(v, function(receiver){
+                base.Put(v.name, w, v.strict, receiver, Ω, ƒ);
+              }, ƒ);
             }
           } else {
             base.SetMutableBinding(v.name, w, v.strict, Ω, ƒ);
@@ -651,6 +671,45 @@
     }
   ]);
 
+  // ##########################
+  // ### PropertyDescriptor ###
+  // ##########################
+
+  function PropertyDescriptor(attributes){
+    this.enumerable = (attributes & ENUMERABLE) > 0;
+    this.configurable = (attributes & CONFIGURABLE) > 0;
+  }
+
+  define(PropertyDescriptor.prototype, {
+    enumerable: undefined,
+    configurable: undefined
+  });
+
+  function DataDescriptor(value, attributes){
+    this.value = value;
+    this.writable = (attributes & WRITABLE) > 0;
+    this.enumerable = (attributes & ENUMERABLE) > 0;
+    this.configurable = (attributes & CONFIGURABLE) > 0;
+  }
+
+  inherit(DataDescriptor, PropertyDescriptor, {
+    writable: undefined,
+    value: undefined
+  });
+  var emptyValue = new DataDescriptor(undefined, ECW);
+
+  function AccessorDescriptor(accessors, attributes){
+    this.get = accessors.get;
+    this.set = accessors.set;
+    this.enumerable = (attributes & ENUMERABLE) > 0;
+    this.configurable = (attributes & CONFIGURABLE) > 0;
+  }
+
+  inherit(AccessorDescriptor, PropertyDescriptor, {
+    get: undefined,
+    set: undefined
+  });
+
 
   // #########################
   // ### EnvironmentRecord ###
@@ -707,6 +766,7 @@
   function DeclarativeEnvironmentRecord(){
     EnvironmentRecord.call(this, new Hash);
     this.consts = new Hash;
+    this.deletables = new Hash;
   }
 
   inherit(DeclarativeEnvironmentRecord, EnvironmentRecord, [
@@ -714,16 +774,9 @@
       Ω(name in this.bindings);
     },
     function CreateBinding(name, deletable, Ω, ƒ){
-      if (deletable) {
-        this.bindings[name] = undefined;
-      } else {
-        Object.defineProperty(this.bindings, name, {
-          value: undefined,
-          configurable: false,
-          enumerable: true,
-          writable: true
-        });
-      }
+      this.bindings[name] = undefined;
+      if (deletable)
+        this.deletables[name] = true;
       Ω();
     },
     function GetBindingValue(name, strict, Ω, ƒ){
@@ -762,10 +815,18 @@
       Ω();
     },
     function DeleteBinding(name, Ω, ƒ){
-      this.HasBinding(name, function(has){
-        Ω(has ? delete this.bindings[name] : true);
-      });
-    },
+      if (name in this.bindings) {
+        if (name in this.deletables) {
+          delete this.bindings[name];
+          delete this.deletables[names];
+          Ω(true);
+        } else {
+          Ω(false);
+        }
+      } else {
+        Ω(true);
+      }
+    }
   ]);
 
 
@@ -778,7 +839,7 @@
       this.bindings.HasProperty(name, Ω, ƒ);
     },
     function CreateBinding(name, deletable, Ω, ƒ){
-      this.bindings.DefineOwnProperty(name, new $DataDescriptor(undefined, ECW), true, Ω, ƒ);
+      this.bindings.DefineOwnProperty(name, emptyValue, true, Ω, ƒ);
     },
     function GetBindingValue(name, strict, Ω, ƒ){
       var self = this;
@@ -855,66 +916,135 @@
   });
 
 
-
-
-  // #######################
-  // ### $DataDescriptor ###
-  // #######################
-
-  function $DataDescriptor(value, attributes){
-    this.inherit(intrinsics.ObjectPrototype);
-    var attrs = this.attributes,
-        props = this.properties;
-
-    attrs.value = ECW;
-    attrs.writable = ECW;
-    attrs.enumerable = ECW;
-    attrs.configurable = ECW;
-    props.value = value;
-    props.writable = (attributes & WRITABLE) > 0;
-    props.enumerable = (attributes & ENUMERABLE) > 0;
-    props.configurable = (attributes & CONFIGURABLE) > 0;
-  }
-
-  inherit($DataDescriptor, $Object);
-
-
   // ###########################
-  // ### $AccessorDescriptor ###
+  // ###########################
+  // ### Abstract Operations ###
+  // ###########################
   // ###########################
 
-  function $AccessorDescriptor(accessors, attributes){
-    this.inherit(intrinsics.ObjectPrototype);
-    var attributes = this.attributes,
-        properties = this.properties;
+  function DefaultValue(args, Ω, ƒ){
+    var subject = args[0];
 
-    attrs.get = ECW;
-    attrs.set = ECW;
-    attrs.enumerable = ECW;
-    attrs.configurable = ECW;
-    props.get = accessors.get;
-    props.set = accessors.set;
-    props.enumerable = (attributes & ENUMERABLE) > 0;
-    props.configurable = (attributes & CONFIGURABLE) > 0;
+    if (isObject(subject)) {
+      var func = subject.toString || subject.valueOf;
+      var thunk = func && thunks.get(func);
+      if (thunk) {
+        var args = [];
+        args.callee = func;
+        context.receiver = subject;
+        thunk.apply(args, Ω, ƒ);
+      } else {
+        ƒ(Ω, context.error('TypeError', "Couldn't convert value to primitive type"));
+      }
+    } else {
+      Ω(subject);
+    }
   }
 
-  inherit($AccessorDescriptor, $Object);
-
-
-
-  // ##############
-  // ### $Value ###
-  // ##############
-
-  function $Value(value){
-    this.inherit(intrinsics.ObjectPrototype);
-    this.properties.value = value;
-    this.attributes.value = ECW;
+  function ToPrimitive(subject, hint, Ω, ƒ){
+    if (typeof subject === OBJECT) {
+      if (subject === null) {
+        Ω(subject);
+      } else if (subject instanceof Completion) {
+        if (subject.type === NORMAL) {
+          ToPrimitive(subject.value, undefined, Ω, ƒ)
+        } else {
+          Ω(subject);
+        }
+      } else {
+        subject.DefaultValue(hint, function(primitive){
+          ToPrimitive(primitive, hint, Ω, ƒ);
+        }, ƒ);
+      }
+    } else {
+      Ω(subject);
+    }
   }
 
-  inherit($Value, $Object);
+  function ToBoolean(subject, Ω, ƒ){
+    if (!subject) {
+      Ω(false);
+    } else if (typeof subject === OBJECT && subject instanceof Completion) {
+      if (subject.type === NORMAL) {
+        ToBoolean(subject.value, Ω, ƒ)
+      } else {
+        Ω(subject);
+      }
+    } else {
+      Ω(true);
+    }
+  }
+
+  function ToNumber(subject, Ω, ƒ){
+    if (subject !== null && typeof subject === OBJECT) {
+      if (subject instanceof Completion) {
+        if (subject.type === NORMAL) {
+          ToNumber(subject.value, Ω, ƒ)
+        } else {
+          Ω(subject);
+        }
+      } else {
+        ToPrimitive(subject, 'Number', function(result){
+          ToNumber(result, Ω, ƒ);
+        }, ƒ);
+      }
+    } else {
+      Ω(+subject);
+    }
+  }
+
+  function ToInteger(subject, Ω, ƒ){
+    ToNumber(subject, function(number){
+      ReturnIfAbrupt(number, function(number){
+        Ω(number | 0);
+      }, ƒ);
+    }, ƒ);
+  }
+
+  function ToUint32(subject, Ω, ƒ) {
+    ToNumber(subject, function(number){
+      ReturnIfAbrupt(number, function(number){
+        Ω(number >> 0);
+      }, ƒ);
+    }, ƒ);
+  }
+
+  function ToInt32(subject, Ω, ƒ) {
+    ToNumber(subject, function(number){
+      ReturnIfAbrupt(number, function(number){
+        Ω(number >>> 0);
+      }, ƒ);
+    }, ƒ);
+  }
+
+/*
+  function ToObject(args, Ω, ƒ) {
+    switch (typeof args[0]) {
+      case BOOLEAN_TYPE:    return BuiltinBoolean.construct(args, Ω, ƒ);
+      case NUMBER_TYPE:     return BuiltinNumber.construct(args, Ω, ƒ);
+      case STRING_TYPE:     return BuiltinString.construct(args, Ω, ƒ);
+      case FUNCTION_TYPE:   return Ω(args[0]);
+      case OBJECT_TYPE:
+      if (args[0] !== null) return Ω(args[0]);
+      default:              return BuiltinObject.construct(args, Ω, ƒ);
+    }
+  }
 
 
+  function ToString(args, Ω, ƒ) {
+    switch (args[0]) {
+      case undefined: return Ω(UNDEFINED);
+      case null: return Ω('null');
+      case true: return Ω('true');
+      case false: return Ω('false');
+    }
+
+    if (typeof args[0] === STRING)
+      Ω(args[0]);
+    else
+      DefaultValue(args, Ω, ƒ);
+  }
+*/
 
   // ###############
   // ### $Object ###
@@ -927,6 +1057,8 @@
       this.attributes = new Hash;
       this.propertyNames = new PropertyList;
     } else {
+      if (proto === undefined)
+        proto = intrinsics.ObjectPrototype;
       this.Prototype = proto;
       this.properties = create(proto.properties);
       this.attributes = create(proto.attributes);
@@ -945,8 +1077,8 @@
         Ω();
       } else {
         var attrs = this.attributes[key];
-        var $Descriptor = attrs & ISACCESSOR ? $AccessorDescriptor : $DataDescriptor;
-        Ω(new $Descriptor(this.properties[key], attrs));
+        var Descriptor = attrs & ISACCESSOR ? AccessorDescriptor : DataDescriptor;
+        Ω(new Descriptor(this.properties[key], attrs));
       }
     },
     function GetProperty(key, Ω, ƒ){
@@ -977,7 +1109,10 @@
         var attrs = this.attributes[key];
         if (attrs & ISACCESSOR) {
           var getter = this.properties[key].get;
-          getter ? getter.Call(receiver, Ω, ƒ) : Ω();
+          if (IsCallable(getter))
+            getter.Call(receiver, [], Ω, ƒ);
+          else
+            Ω();
         } else {
           Ω(this.properties[key]);
         }
@@ -988,14 +1123,17 @@
         var attrs = this.attributes[key];
         if (attrs & ISACCESSOR) {
           var setter = this.properties[key].set;
-          setter ? setter.Call(receiver, value, TRUE(Ω), ƒ) : Ω(false);
+          if (IsCallable(setter))
+            setter.Call(receiver, [value], TRUE(Ω), ƒ);
+          else
+            Ω(false);
         } else if (attrs & WRITABLE) {
           if (this === receiver) {
-            this.DefineOwnProperty(key, new $Value(value), false, Ω, ƒ);
+            this.DefineOwnProperty(key, { value: value }, false, Ω, ƒ);
           } else if (!receiver.Extensible) {
             Ω(false);
           } else {
-            receiver.DefineOwnProperty(key, new $DataDescriptor(value, ECW), false, Ω, ƒ);
+            receiver.DefineOwnProperty(key, new DataDescriptor(value, ECW), false, Ω, ƒ);
           }
         } else {
           Ω(false);
@@ -1006,17 +1144,16 @@
           if (!receiver.Extensible) {
             Ω(false);
           } else {
-            receiver.DefineOwnProperty(key, new $DataDescriptor(value, ECW), false, Ω, ƒ);
+            receiver.DefineOwnProperty(key, new DataDescriptor(value, ECW), false, Ω, ƒ);
           }
         } else {
           proto.SetP(receiver, key, value, Ω, ƒ);
         }
       }
     },
-    function DefineOwnProperty(key, descriptor, strict, Ω, ƒ){
+    function DefineOwnProperty(key, desc, strict, Ω, ƒ){
       var self = this;
       var reject = strict ? function(e, a){ throwError(e, a, ƒ) } : FALSE(Ω);
-      var desc = descriptor.properties;
 
       this.GetOwnProperty(key, function(current){
         if (current === undefined) {
@@ -1035,8 +1172,6 @@
           }
         } else {
           var rejected = false;
-
-          current = current.properties;
 
           if (IsEmptyDescriptor(desc) || IsEquivalentDescriptor(desc, current)) {
             Ω(true);
@@ -1568,7 +1703,7 @@
 
     if (leftType === rightType) {
       STRICT_EQUALS(left, right, Ω, ƒ);
-    } else if (left === null || left === undefined && left == right) {
+    } else if (left == null && left == right) {
       Ω(true);
     } else if (leftType === 'Number' && rightType === 'String') {
       ToNumber(right, function(right){
@@ -1597,10 +1732,12 @@
 
 
   function ƒ(completion){
-    if (completion.type === THROW)
-      throw completion.value;
-    else
+    if (completion.type === THROW) {
+      console.log(completion.value);
+      console.log(completion.value.name + ': ' + completion.value.message);
+    } else {
       Ω(completion.value);
+    }
   }
 
   function Ω(r){
