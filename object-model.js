@@ -16,13 +16,18 @@
       WRITABLE     = 0x4,
       ISACCESSOR   = 0x8;
 
-  var E__ = 1,
+  var ___ = 0,
+      E__ = 1,
       _C_ = 2,
       EC_ = 3,
       __W = 4,
       E_W = 5,
       _CW = 6,
-      ECW = 7;
+      ECW = 7,
+      __A = 8,
+      E_A = 9,
+      _CA = 10,
+      ECA = 11;
 
   var NOARGS = [];
 
@@ -31,12 +36,7 @@
   // ##################################################
 
   var create = Object.create && !Object.create(null).toString
-    ? (function(ObjectCreate){
-        function create(object){
-          return ObjectCreate(object);
-        }
-        return create;
-      })(Object.create)
+    ? Object.create
     : (function(F, empty){
         var iframe = document.createElement('iframe');
         iframe.style.display = 'none';
@@ -127,6 +127,21 @@
       Ω(new Completion(THROW, err));
     }].concat(args));
   }
+
+
+
+  function Symbol(name){
+    this.name = name;
+  }
+
+  define(Symbol.prototype, [
+    function toString(){
+      return '[object Symbol]';
+    },
+    function inspect(){
+      return '['+this.name+']';
+    }
+  ]);
 
 
   function Accessor(get, set){
@@ -315,12 +330,6 @@
   // ###############################
   // ###############################
 
-  // ## NormalCompletion
-
-  function NormalCompletion(value){
-    return new Completion(NORMAL, value);
-  }
-
   // ## FromPropertyDescriptor
 
   function FromPropertyDescriptor(desc){
@@ -436,31 +445,19 @@
            SameValue(a.configurable, b.configurable);
   }
 
-  // ## IsCallable
+  // ## GetIdentifierReference
 
-  function IsCallable(o){
-    return typeof o === 'object' && o !== null && 'Call' in o;
-  }
-
-  // ## GetReference
-
-  function GetReference(lex, name, strict, Ω, ƒ){
+  function GetIdentifierReference(lex, name, strict, Ω, ƒ){
     if (lex === null) {
       Ω(new Reference(undefined, name, strict));
     } else {
-      lex.record.HasBinding(name, function(result){
+      lex.HasBinding(name, function(result){
         if (result)
-          Ω(new Reference(lex.record, name, strict));
+          Ω(new Reference(lex.bindings, name, strict));
         else
-          GetReference(lex.outer, name, strict, Ω, ƒ);
+          GetIdentifierReference(lex.outer, name, strict, Ω, ƒ);
       }, ƒ);
     }
-  }
-
-  // ## GetLexicalReference
-
-  function GetLexicalReference(name, Ω, ƒ){
-    GetReference(context.lexical, name, context.isStrict, Ω, ƒ);
   }
 
   // ## HasPrimitiveBase
@@ -492,81 +489,73 @@
   // ## GetValue
 
   function GetValue(v, Ω, ƒ){
-    ReturnIfAbrupt(v, function(v){
-      if (!(v instanceof Reference)) {
-        Ω(v);
-      } else if (IsUnresolvableReference(v)) {
-        throwError('non_object_property_load', [v.name, v.base], ƒ);
-      } else {
-        var base = v.base;
+    if (!(v instanceof Reference)) {
+      Ω(v);
+    } else if (IsUnresolvableReference(v)) {
+      throwError('non_object_property_load', [v.name, v.base], ƒ);
+    } else {
+      var base = v.base;
 
-        if (HasPrimitiveBase(v)) {
-          base = new $PrimitiveBase(base);
-        }
-
-        if (base instanceof $Object) {
-          if (IsSuperReference(v)) {
-            GetThisValue(v, function(receiver){
-              base.Get(v.name, receiver, Ω, ƒ);
-            }, ƒ);
-          } else {
-            base.Get(v.name, Ω, ƒ);
-          }
-        } else {
-          base.GetBindingValue(v.name, v.strict, Ω, ƒ);
-        }
+      if (HasPrimitiveBase(v)) {
+        base = new $PrimitiveBase(base);
       }
-    }, ƒ);
+
+      if (base instanceof $Object) {
+        if (IsSuperReference(v)) {
+          GetThisValue(v, function(receiver){
+            base.GetP(receiver, v.name, Ω, ƒ);
+          }, ƒ);
+        } else {
+          base.Get(v.name, Ω, ƒ);
+        }
+      } else {
+        base.GetBindingValue(v.name, v.strict, Ω, ƒ);
+      }
+    }
   }
 
   // ## PutValue
 
   function PutValue(v, w, Ω, ƒ){
-    ReturnIfAbrupt(v, function(v){
-      ReturnIfAbrupt(w, function(w){
-        if (!(v instanceof Reference)) {
-          throwError('non_object_property_store', [v.name, v.base], ƒ);
-        } else if (IsUnresolvableReference(v)) {
-          if (v.strict)
-            throwError('not_defined', [v.name, v.base], ƒ);
-          else
-            global.Put(v.name, w, false, Ω, ƒ);
+    if (!(v instanceof Reference)) {
+      throwError('non_object_property_store', [v.name, v.base], ƒ);
+    } else if (IsUnresolvableReference(v)) {
+      if (v.strict)
+        throwError('not_defined', [v.name, v.base], ƒ);
+      else
+        global.Put(v.name, w, false, Ω, ƒ);
+    } else {
+      var base = v.base;
+
+      if (HasPrimitiveBase(v)) {
+        base = new $PrimitiveBase(base);
+      }
+
+      if (base instanceof $Object) {
+        if (IsSuperReference(v)) {
+          base.Put(v.name, w, v.strict, Ω, ƒ);
         } else {
-          var base = v.base;
-
-          if (HasPrimitiveBase(v)) {
-            base = new $PrimitiveBase(base);
-          }
-
-          if (base instanceof $Object) {
-            if (IsSuperReference(v)) {
-              base.Put(v.name, w, v.strict, Ω, ƒ);
-            } else {
-              GetThisValue(v, function(receiver){
-                base.Put(v.name, w, v.strict, receiver, Ω, ƒ);
-              }, ƒ);
-            }
-          } else {
-            base.SetMutableBinding(v.name, w, v.strict, Ω, ƒ);
-          }
+          GetThisValue(v, function(receiver){
+            base.SetP(receiver, v.name, w, v.strict, Ω, ƒ);
+          }, ƒ);
         }
-      }, ƒ);
-    }, ƒ);
+      } else {
+        base.SetMutableBinding(v.name, w, v.strict, Ω, ƒ);
+      }
+    }
   }
 
   // ## GetThisValue
 
   function GetThisValue(v, Ω, ƒ){
-    ReturnIfAbrupt(v, function(v){
-      if (!(v instanceof Reference))
-        Ω(v);
-      else if (IsUnresolvableReference(v))
-        throwError('non_object_property_load', [v.name, v.base], ƒ);
-      else if ('thisValue' in v)
-        Ω(v.thisValue);
-      else
-        Ω(v.base);
-    }, ƒ);
+    if (!(v instanceof Reference))
+      Ω(v);
+    else if (IsUnresolvableReference(v))
+      throwError('non_object_property_load', [v.name, v.base], ƒ);
+    else if ('thisValue' in v)
+      Ω(v.thisValue);
+    else
+      Ω(v.base);
   }
 
 
@@ -574,7 +563,7 @@
 
   function GetThisEnvironment(Ω, ƒ){
     void function recurse(env){
-      env.record.HasThis(function(result){
+      env.HasThisBinding(function(result){
         result ? Ω(env) : recurse(env.outer);
       }, ƒ)
     }(context.lexical);
@@ -583,36 +572,215 @@
   // ## NewObjectEnvironment
 
   function NewObjectEnvironment(outer, object){
-    return new LexicalEnvironment(outer, new ObjectEnvironmentRecord(object));
+    var lex = new ObjectEnvironmentRecord(object);
+    lex.outer = outer;
+    return lex;
   }
 
   // ## NewDeclarativeEnvironment
 
   function NewDeclarativeEnvironment(outer){
-    return new LexicalEnvironment(outer, new DeclarativeEnvironmentRecord);
+    var lex = new DeclarativeEnvironmentRecord;
+    lex.outer = outer;
+    return lex;
   }
 
   // ## NewMethodEnvironment
 
   function NewMethodEnvironment(method, receiver){
-    var env = new MethodEnvironmentRecord(receiver, method.holder, method.name);
-    return new LexicalEnvironment(method.scope, env);
+    var lex = new MethodEnvironmentRecord(receiver, method.Home, method.MethodName);
+    lex.outer = method.scope;
+    return lex;
   }
 
   // ## ReturnIfAbrupt
 
-  function ReturnIfAbrupt(value, Ω, ƒ){
-    if (value instanceof CompletionRecord) {
-      if (value.type === NORMAL) {
-        Ω(value.value);
+  // this function is unneccessary due to separate continuation channel for abrupt completions
+  // function ReturnIfAbrupt(value, Ω, ƒ){
+  //   if (value instanceof Completion) {
+  //     if (value.type === NORMAL) {
+  //       Ω(value.value);
+  //     } else {
+  //       ƒ(value);
+  //     }
+  //   } else {
+  //     Ω(value);
+  //   }
+  // }
+
+  function ToPrimitive(argument, hint, Ω, ƒ){
+    if (typeof argument === OBJECT) {
+      if (argument === null) {
+        Ω(argument);
       } else {
-        ƒ(value);
+        argument.DefaultValue(hint, function(primitive){
+          ToPrimitive(primitive, hint, Ω, ƒ);
+        }, ƒ);
       }
     } else {
-      Ω(value);
+      Ω(argument);
     }
   }
 
+  function ToBoolean(argument, Ω, ƒ){
+    Ω(!!argument);
+  }
+
+  function ToNumber(argument, Ω, ƒ){
+    if (argument !== null && typeof argument === OBJECT) {
+      ToPrimitive(argument, 'Number', function(result){
+        ToNumber(result, Ω, ƒ);
+      }, ƒ);
+    } else {
+      Ω(+argument);
+    }
+  }
+
+  function ToInteger(argument, Ω, ƒ){
+  ToNumber(argument, function(number){
+      Ω(number | 0);
+    }, ƒ);
+  }
+
+  function ToUint32(argument, Ω, ƒ) {
+    ToNumber(argument, function(number){
+      Ω(number >> 0);
+    }, ƒ);
+  }
+
+  function ToInt32(argument, Ω, ƒ) {
+    ToNumber(argument, function(number){
+      Ω(number >>> 0);
+    }, ƒ);
+  }
+
+
+  function ToObject(argument, Ω, ƒ) {
+    switch (typeof argument) {
+      case BOOLEAN:
+        Ω(new $Boolean(argument));
+        break;
+      case NUMBER:
+        Ω(new $Number(argument));
+        break;
+      case STRING:
+        Ω(new $String(argument));
+        break;
+      case UNDEFINED:
+        throwException('undefined_to_object', [], ƒ);
+        break;
+      case OBJECT:
+        if (argument === null) {
+          throwException('null_to_object', [], ƒ);
+        } else {
+          Ω(argument);
+        }
+    }
+  }
+
+  function ToPropertyKey(argument, Ω, ƒ){
+    if (argument !== null && typeof argument === OBJECT && argument.NativeBrand === NativePrivateName) {
+      Ω(argument);
+    } else {
+      ToString(argument, Ω, ƒ);
+    }
+  }
+
+  function ToString(argument, Ω, ƒ){
+    if (argument === undefined) Ω('undefined');
+    else if (argument === null) Ω('null');
+    else if (argument === true) Ω('true');
+    else if (argument === false) Ω('false');
+    else if (typeof argument === STRING) Ω(argument);
+    else if (typeof argument === NUMBER) Ω(''+argument);
+    else if (typeof argument === OBJECT) {
+      ToPrimitive(argument, 'String', function(prim){
+        ToString(prim, Ω, ƒ);
+      }, ƒ);
+    }
+  }
+
+  // ## IsCallable
+
+  function IsCallable(argument, Ω, ƒ){
+    if (typeof argument === OBJECT && argument !== null) {
+      Ω('Call' in argument);
+    } else {
+      Ω(false);
+    }
+  }
+
+  // ## CheckObjectCoercible
+
+  function CheckObjectCoercible(argument, Ω, ƒ){
+    if (argument === null) {
+      throwException('null_to_object', [], ƒ);
+    } else if (argument === undefined) {
+      throwException('undefined_to_object', [], ƒ);
+    } else {
+      Ω(argument);
+    }
+  }
+
+  // ## Invoke
+
+  function Invoke(key, receiver, args, Ω, ƒ){
+    ToObject(receiver, function(obj){
+      obj.Get(key, function(func){
+        IsCallable(func, function(callable){
+          if (callable)
+            func.Call(receiver, args, Ω, ƒ);
+          else
+            throwException('called_non_callable', key, ƒ);
+        }, ƒ);
+      }, ƒ);
+    }, ƒ);
+  }
+
+  function ArgAccessor(name, env){
+    this.get = function(Ω, ƒ){
+      env.GetBindingValue(name, Ω, ƒ);
+    };
+    this.set = function(args, Ω, ƒ){
+      env.SetMutableBinding(name, args[0], Ω, ƒ);
+    };
+  }
+
+
+  function CreateStrictArgumentsObject(args){
+    var obj = new $Arguments(args.length);
+
+    for (var i=0; i < args.length; i++)
+      obj.defineDirect(i, args[i], ECW);
+
+    //obj.defineDirect('caller', intrinsics.ThrowTypeError, __A);
+    //obj.defineDirect('arguments', intrinsics.ThrowTypeError, __A);
+    return obj;
+  }
+
+
+  function CreateMappedArgumentsObject(func, names, env, args){
+    var obj = new $Arguments(args.length),
+        map = new $Object,
+        mapped = create(null),
+        count = 0;
+
+    for (var i=0; i < args.length; i++) {
+      obj.defineDirect(i, args[i], ECW);
+      var name = names[i];
+      if (i < names.length && !(name in mapped)) {
+        count++;
+        mapped[name] = true;
+        map.defineDirect(names[i], new ArgAccessor(name, env), _CA);
+      }
+    }
+
+    if (count) {
+      obj.ParameterMap = map;
+    }
+    obj.defineDirect('callee', func, _CW);
+    return obj;
+  }
 
   // ###########################
   // ###########################
@@ -636,24 +804,11 @@
   // ### Completion ###
   // ##################
 
-  function CompletionType(name){
-    this.name = name;
-  }
 
-  define(CompletionType.prototype, [
-    function toString(){
-      return '[object Completion]';
-    },
-    function inspect(){
-      return '['+this.name+']';
-    }
-  ]);
-
-  var CONTINUE = new CompletionType('continue'),
-      BREAK    = new CompletionType('break'),
-      NORMAL   = new CompletionType('normal'),
-      RETURN   = new CompletionType('return'),
-      THROW    = new CompletionType('throw');
+  var CONTINUE = new Symbol('continue'),
+      BREAK    = new Symbol('break'),
+      RETURN   = new Symbol('return'),
+      THROW    = new Symbol('throw');
 
 
   function Completion(type, value, target){
@@ -721,8 +876,7 @@
 
   define(EnvironmentRecord.prototype, {
     bindings: null,
-    receiver: null,
-    holder: null,
+    thisValue: null,
     withBase: undefined
   });
 
@@ -740,24 +894,21 @@
       throwAbstractInvocationError('EnvironmentRecord.prototype.DeleteBinding');
     },
     function CreateVarBinding(name, deletable, Ω, ƒ){
-      this.CreateBinding(name, deletable, Ω, ƒ);
+      this.CreateMutableBinding(name, deletable, Ω, ƒ);
     },
-    function HasWithBase(Ω, ƒ){
-      Ω(false);
-    },
-    function GetWithBase(Ω, ƒ){
+    function WithBaseObject(Ω, ƒ){
       Ω(this.withBase);
     },
-    function HasThis(Ω, ƒ){
+    function HasThisBinding(Ω, ƒ){
       Ω(false);
     },
-    function GetThis(Ω, ƒ){
+    function HasSuperBinding(Ω, ƒ){
+      Ω(false);
+    },
+    function GetThisBinding(Ω, ƒ){
       Ω();
     },
-    function HasSuper(Ω, ƒ){
-      Ω(false);
-    },
-    function GetSuper(Ω, ƒ){
+    function GetSuperBase(Ω, ƒ){
       Ω();
     }
   ]);
@@ -773,7 +924,7 @@
     function HasBinding(name, Ω, ƒ){
       Ω(name in this.bindings);
     },
-    function CreateBinding(name, deletable, Ω, ƒ){
+    function CreateMutableBinding(name, deletable, Ω, ƒ){
       this.bindings[name] = undefined;
       if (deletable)
         this.deletables[name] = true;
@@ -838,7 +989,7 @@
     function HasBinding(name, Ω, ƒ){
       this.bindings.HasProperty(name, Ω, ƒ);
     },
-    function CreateBinding(name, deletable, Ω, ƒ){
+    function CreateMutableBinding(name, deletable, Ω, ƒ){
       this.bindings.DefineOwnProperty(name, emptyValue, true, Ω, ƒ);
     },
     function GetBindingValue(name, strict, Ω, ƒ){
@@ -863,25 +1014,30 @@
 
   function MethodEnvironmentRecord(receiver, holder, name){
     DeclarativeEnvironmentRecord.call(this);
-    this.receiver = receiver;
-    this.holder = holder;
-    this.name = name;
+    this.thisValue = receiver;
+    this.HomeObject = holder;
+    this.MethodName = name;
   }
 
   inherit(MethodEnvironmentRecord, DeclarativeEnvironmentRecord, {
-    name: undefined
+    HomeObject: undefined,
+    MethodName: undefined,
+    ThisValue: undefined,
   }, [
-    function HasThis(Ω, ƒ){
+    function HasThisBinding(Ω, ƒ){
       Ω(true);
     },
-    function GetThis(Ω, ƒ){
-      Ω(this.receiver);
+    function HasSuperBinding(Ω, ƒ){
+      Ω(this.HomeObject !== undefined);
     },
-    function HasSuper(Ω, ƒ){
-      Ω(this.holder !== undefined);
+    function GetThisBinding(Ω, ƒ){
+      Ω(this.thisValue);
     },
-    function GetSuper(Ω, ƒ){
-      Ω(this.holder.Prototype);
+    function GetSuperBase(Ω, ƒ){
+      Ω(this.HomeObject ? this.HomeObject.Prototype : undefined);
+    },
+    function GetMethodName(Ω, ƒ) {
+      Ω(this.MethodName);
     }
   ]);
 
@@ -891,11 +1047,12 @@
   }
 
   inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
+    outer: null
   }, [
-    function HasThis(Ω, ƒ){
+    function HasThisBinding(Ω, ƒ){
       Ω(true);
     },
-    function GetThis(Ω, ƒ){
+    function GetSuperBase(Ω, ƒ){
       Ω(this.bindings);
     }
   ]);
@@ -905,146 +1062,33 @@
   // ### LexicalEnvironment ###
   // ##########################
 
-  function LexicalEnvironment(outer, record){
-    this.outer = outer || null;
-    this.record = record;
+
+  function NativeBrand(name){
+    this.name = name;
   }
 
-  define(LexicalEnvironment.prototype, {
-    outer: null,
-    record: null
-  });
-
-
-  // ###########################
-  // ###########################
-  // ### Abstract Operations ###
-  // ###########################
-  // ###########################
-
-  function DefaultValue(args, Ω, ƒ){
-    var subject = args[0];
-
-    if (isObject(subject)) {
-      var func = subject.toString || subject.valueOf;
-      var thunk = func && thunks.get(func);
-      if (thunk) {
-        var args = [];
-        args.callee = func;
-        context.receiver = subject;
-        thunk.apply(args, Ω, ƒ);
-      } else {
-        ƒ(Ω, context.error('TypeError', "Couldn't convert value to primitive type"));
-      }
-    } else {
-      Ω(subject);
+  define(NativeBrand.prototype, [
+    function toString(){
+      return this.name;
+    },
+    function inspect(){
+      return this.name;
     }
-  }
+  ]);
 
-  function ToPrimitive(subject, hint, Ω, ƒ){
-    if (typeof subject === OBJECT) {
-      if (subject === null) {
-        Ω(subject);
-      } else if (subject instanceof Completion) {
-        if (subject.type === NORMAL) {
-          ToPrimitive(subject.value, undefined, Ω, ƒ)
-        } else {
-          Ω(subject);
-        }
-      } else {
-        subject.DefaultValue(hint, function(primitive){
-          ToPrimitive(primitive, hint, Ω, ƒ);
-        }, ƒ);
-      }
-    } else {
-      Ω(subject);
-    }
-  }
-
-  function ToBoolean(subject, Ω, ƒ){
-    if (!subject) {
-      Ω(false);
-    } else if (typeof subject === OBJECT && subject instanceof Completion) {
-      if (subject.type === NORMAL) {
-        ToBoolean(subject.value, Ω, ƒ)
-      } else {
-        Ω(subject);
-      }
-    } else {
-      Ω(true);
-    }
-  }
-
-  function ToNumber(subject, Ω, ƒ){
-    if (subject !== null && typeof subject === OBJECT) {
-      if (subject instanceof Completion) {
-        if (subject.type === NORMAL) {
-          ToNumber(subject.value, Ω, ƒ)
-        } else {
-          Ω(subject);
-        }
-      } else {
-        ToPrimitive(subject, 'Number', function(result){
-          ToNumber(result, Ω, ƒ);
-        }, ƒ);
-      }
-    } else {
-      Ω(+subject);
-    }
-  }
-
-  function ToInteger(subject, Ω, ƒ){
-    ToNumber(subject, function(number){
-      ReturnIfAbrupt(number, function(number){
-        Ω(number | 0);
-      }, ƒ);
-    }, ƒ);
-  }
-
-  function ToUint32(subject, Ω, ƒ) {
-    ToNumber(subject, function(number){
-      ReturnIfAbrupt(number, function(number){
-        Ω(number >> 0);
-      }, ƒ);
-    }, ƒ);
-  }
-
-  function ToInt32(subject, Ω, ƒ) {
-    ToNumber(subject, function(number){
-      ReturnIfAbrupt(number, function(number){
-        Ω(number >>> 0);
-      }, ƒ);
-    }, ƒ);
-  }
-
-/*
-  function ToObject(args, Ω, ƒ) {
-    switch (typeof args[0]) {
-      case BOOLEAN_TYPE:    return BuiltinBoolean.construct(args, Ω, ƒ);
-      case NUMBER_TYPE:     return BuiltinNumber.construct(args, Ω, ƒ);
-      case STRING_TYPE:     return BuiltinString.construct(args, Ω, ƒ);
-      case FUNCTION_TYPE:   return Ω(args[0]);
-      case OBJECT_TYPE:
-      if (args[0] !== null) return Ω(args[0]);
-      default:              return BuiltinObject.construct(args, Ω, ƒ);
-    }
-  }
-
-
-  function ToString(args, Ω, ƒ) {
-    switch (args[0]) {
-      case undefined: return Ω(UNDEFINED);
-      case null: return Ω('null');
-      case true: return Ω('true');
-      case false: return Ω('false');
-    }
-
-    if (typeof args[0] === STRING)
-      Ω(args[0]);
-    else
-      DefaultValue(args, Ω, ƒ);
-  }
-*/
+  var NativeArguments   = new NativeBrand('Arguments'),
+      NativeArray       = new NativeBrand('Array'),
+      NativeDate        = new NativeBrand('Date'),
+      NativeFunction    = new NativeBrand('Function'),
+      NativeMap         = new NativeBrand('Map'),
+      NativeObject      = new NativeBrand('Object'),
+      NativePrivateName = new NativeBrand('PrivateName'),
+      NativeRegExp      = new NativeBrand('RegExp'),
+      NativeSet         = new NativeBrand('Set'),
+      NativeWeakMap     = new NativeBrand('WeakMap'),
+      BooleanWrapper    = new NativeBrand('Boolean'),
+      NumberWrapper     = new NativeBrand('Number'),
+      StringWrapper     = new NativeBrand('String');
 
   // ###############
   // ### $Object ###
@@ -1055,25 +1099,25 @@
       this.Prototype = null;
       this.properties = create(null);
       this.attributes = new Hash;
-      this.propertyNames = new PropertyList;
+      this.keys = new PropertyList;
     } else {
       if (proto === undefined)
         proto = intrinsics.ObjectPrototype;
       this.Prototype = proto;
       this.properties = create(proto.properties);
       this.attributes = create(proto.attributes);
-      this.propertyNames = new PropertyList;
+      this.keys = new PropertyList;
     }
   }
 
   define($Object.prototype, {
     Extensible: true,
-    NativeBrand: 'Object'
+    NativeBrand: NativeObject
   });
 
   define($Object.prototype, [
     function GetOwnProperty(key, Ω, ƒ){
-      if (!this.propertyNames.has(key)) {
+      if (!this.keys.has(key)) {
         Ω();
       } else {
         var attrs = this.attributes[key];
@@ -1099,7 +1143,7 @@
       }, ƒ);
     },
     function GetP(receiver, key, Ω, ƒ){
-      if (!this.propertyNames.has(key)) {
+      if (!this.keys.has(key)) {
         if (this.Prototype === null) {
           Ω();
         } else {
@@ -1109,24 +1153,22 @@
         var attrs = this.attributes[key];
         if (attrs & ISACCESSOR) {
           var getter = this.properties[key].get;
-          if (IsCallable(getter))
-            getter.Call(receiver, [], Ω, ƒ);
-          else
-            Ω();
+          IsCallable(getter, function(callable){
+            callable ? getter.Call(receiver, [], Ω, ƒ) : Ω();
+          }, ƒ);
         } else {
           Ω(this.properties[key]);
         }
       }
     },
     function SetP(receiver, key, value, Ω, ƒ) {
-      if (this.propertyNames.has(key)) {
+      if (this.keys.has(key)) {
         var attrs = this.attributes[key];
         if (attrs & ISACCESSOR) {
           var setter = this.properties[key].set;
-          if (IsCallable(setter))
-            setter.Call(receiver, [value], TRUE(Ω), ƒ);
-          else
-            Ω(false);
+          IsCallable(setter, function(callable){
+            callable ? setter.Call(receiver, [value], TRUE(Ω), ƒ) : Ω(false);
+          }, ƒ);
         } else if (attrs & WRITABLE) {
           if (this === receiver) {
             this.DefineOwnProperty(key, { value: value }, false, Ω, ƒ);
@@ -1153,7 +1195,7 @@
     },
     function DefineOwnProperty(key, desc, strict, Ω, ƒ){
       var self = this;
-      var reject = strict ? function(e, a){ throwError(e, a, ƒ) } : FALSE(Ω);
+      var reject = strict ? function(e, a){ throwException(e, a, ƒ) } : FALSE(Ω);
 
       this.GetOwnProperty(key, function(current){
         if (current === undefined) {
@@ -1167,7 +1209,7 @@
               self.attributes[key] = ISACCESSOR | (desc.enumerable << 1) | (desc.configurable << 2);
               self.properties[key] = new Accessor(desc.get, desc.set);
             }
-            self.propertyNames.add(key);
+            self.keys.add(key);
             Ω(true);
           }
         } else {
@@ -1227,7 +1269,7 @@
       }, ƒ);
     },
     function HasOwnProperty(key, Ω, ƒ){
-      Ω(this.propertyNames.has(key));
+      Ω(this.keys.has(key));
     },
     function HasProperty(key, Ω, ƒ){
       var proto = this.Prototype;
@@ -1241,7 +1283,7 @@
       }, ƒ);
     },
     function Delete(key, strict, Ω, ƒ){
-      if (!this.propertyNames.has(key)) {
+      if (!this.keys.has(key)) {
         Ω(true);
       } else if (this.attributes[key] & CONFIGURABLE) {
         delete this.properties[key];
@@ -1254,7 +1296,7 @@
       }
     },
     function Enumerate(Ω, ƒ){
-      var props = this.propertyNames.filter(function(key){
+      var props = this.keys.filter(function(key){
         return this.attributes[key] & ENUMERABLE;
       }, this);
 
@@ -1268,10 +1310,10 @@
       }
     },
     function GetOwnPropertyNames(Ω, ƒ){
-      Ω(this.propertyNames.toArray());
+      Ω(this.keys.toArray());
     },
     function GetPropertyNames(Ω, ƒ){
-      var props = this.propertyNames.clone();
+      var props = this.keys.clone();
 
       if (this.Prototype) {
         this.Prototype.GetPropertyNames(function(inherited){
@@ -1287,16 +1329,15 @@
 
       function attempt(name, next){
         self.Get(name, function(method){
-          if (IsCallable(method)) {
-            method.Call(self, [], function(val){
-              if (!isObject(val))
-                Ω(val);
-              else
-                next(name);
-            }, ƒ);
-          } else {
-            next(name);
-          }
+          IsCallable(method, function(callable){
+            if (callable) {
+              method.Call(self, [], function(val){
+                isObject(val) ? next(name) : Ω(val);
+              }, ƒ);
+            } else {
+              next(name);
+            }
+          }, ƒ);
         }, ƒ);
       }
 
@@ -1305,31 +1346,21 @@
         attempt(name, THROWS('cannot_convert_to_primitive', [], ƒ));
       });
     },
-    function Invoke(key, receiver, args, Ω, ƒ){
-      ToObject(receiver, function(obj){
-        ReturnIfAbrupt(obj, function(obj){
-          obj.Get(key, function(func){
-            ReturnIfAbrupt(func, function(func){
-              if (!IsCallable(func))
-                throwException('called_non_callable', key, ƒ);
-              else
-                func.Call(receiver, args, Ω, ƒ);
-            }, ƒ);
-          }, ƒ);
-        }, ƒ);
-      }, ƒ);
-    },
     function inherit(proto){
       this.Prototype = proto;
       this.properties = create(proto.properties);
       this.attributes = create(proto.attributes);
-      this.propertyNames = new PropertyList;
+      this.keys = new PropertyList;
+    },
+    function defineDirect(key, value, attrs){
+      this.properties[key] = value;
+      this.attributes[key] = attrs;
     },
     function hasDirect(key){
       return key in this.properties;
     },
     function hasOwnDirect(key){
-      return this.propertyNames.has(key);
+      return this.keys.has(key);
     },
     function setDirect(key, value){
       this.properties[key] = value;
@@ -1346,18 +1377,18 @@
   // ### $PrimitiveBase ###
   // ######################
 
-  function $PrimitiveBase(base){
+  function $PrimitiveBase(value, proto){
     this.base = base;
     var type = typeof base;
     if (type === STRING) {
       $Object.call(this, intrinsics.StringPrototype);
-      this.NativeBrand = 'String';
+      this.NativeBrand = StringWrapper;
     } else if (type === NUMBER) {
       $Object.call(this, intrinsics.NumberPrototype);
-      this.NativeBrand = 'Number';
+      this.NativeBrand = NumberWrapper;
     } else if (type === BOOLEAN) {
       $Object.call(this, intrinsics.BooleanPrototype);
-      this.NativeBrand = 'Boolean';
+      this.NativeBrand = BooleanWrapper;
     }
   }
 
@@ -1390,44 +1421,125 @@
   // ### $Function ###
   // #################
 
-  function $Function(strict, proto, call, construct){
+  var LexicalScope = new Symbol('LexicalScope'),
+      StrictScope = new Symbol('StrictScope'),
+      GlobalScope = new Symbol('GlobalScope');
+
+  var Arrow = new Symbol('Arrow'),
+      Normal = new Symbol('Normal');
+
+
+  function $Function(kind, params, body, scope, strict, proto, holder, name){
+    if (proto === undefined)
+      proto = intrinsics.FunctionPrototype;
+
     $Object.call(this, proto);
+    this.FormalParameters = params;
+    this.ThisMode = kind === Arrow ? LexicalScope : strict ? StrictScope : GlobalScope;
+    this.Strict = strict;
+    this.Realm = realm;
+    this.Scope = scope;
+    this.Code = code;
+    if (home !== undefined)
+      this.Home = holder;
+    if (name !== undefined)
+      this.MethodName = name;
+
+    this.defineDirect('length', params.ExpectedArgumentCount, 0);
+    if (kind === Normal && strict) {
+      this.defineDirect('caller', intrinsics.ThrowTypeError, __A);
+      this.defineDirect('arguments', intrinsics.ThrowTypeError, __A);
+    }
   }
 
   inherit($Function, $Object, {
-    NativeBrand: 'Function',
+    NativeBrand: NativeFunction,
     FormalParameters: null,
-    Code: null,
+    Code: [],
     Scope: null,
     TargetFunction: null,
     BoundThis: null,
     BoundArguments: null,
     Strict: false,
-    isConst: false,
-
+    ThisMode: GlobalScope,
+    Realm: null,
   }, [
     function Call(receiver, args, Ω, ƒ){
-
+      var self = this;
+      SEQUENCE([
+        function(_, Ω){
+          if (self.ThisMode === 'lexical') {
+            Ω(NewDeclarativeEnvironment(self.Scope));
+          } else {
+            if (self.ThisMode === 'strict') {
+              Ω(NewMethodEnvironment(self, receiver));
+            } else if (receiver === null || receiver === undefined) {
+              Ω(NewMethodEnvironment(self, self.Realm.global));
+            } else if (typeof receiver !== 'object') {
+              ToObject(receiver, function(thisValue){
+                Ω(NewMethodEnvironment(self, thisValue));
+              }, ƒ);
+            }
+          }
+        },
+        function(local, Ω){
+          ExecutionContext.push(new ExecutionContext(context, local, self.Realm, self.Code));
+          FunctionDeclarationInstantiation(self, args, local, function(){
+            context.evaluate(Ω, function(result){
+              if (result.type === RETURN) {
+                Ω(result.value);
+              } else {
+                result.context = ExecutionContext.pop();
+                result.continuation = Ω;
+                ƒ(result);
+              }
+            });
+          }, function(result){
+            ExecutionContext.pop();
+            ƒ(result);
+          });
+        },
+        function(result, Ω){
+          ExecutionContext.pop();
+          Ω(result);
+        }
+      ], Ω, ƒ)
     },
     function Construct(args, Ω, ƒ){
-
+      var self = this;
+      this.Get('prototype', function(prototype){
+        var instance = typeof prototype === 'object' ? new $Object(prototype) : new $Object;
+        self.Call(instance, args, function(result){
+          Ω(typeof result === 'object' ? result : instance);
+        }, ƒ);
+      }, ƒ);
     },
     function HasInstance(arg){
 
+    },
+    function MakeConstructor(writablePrototype, prototype){
+      var install = prototype === undefined;
+      if (install)
+        prototype = new $Object;
+      if (writablePrototype === undefined)
+        writablePrototype = true;
+      if (install)
+        prototype.defineDirect('constructor', this, writablePrototype ? C_W : ___);
+      this.defineDirect('prototype', prototype, writablePrototype ? __W : ___);
     }
   ]);
-
 
   // #############
   // ### $Date ###
   // #############
 
-  function $Date(proto){
-    $Object.call(this, proto);
+  function $Date(value){
+    $Object.call(this, intrinsics.DatePrototype);
+    this.PrimitiveValue = value;
   }
 
   inherit($Date, $Object, {
-    NativeBrand: 'Date',
+    NativeBrand: NativeDate,
     PrimitiveValue: undefined,
   });
 
@@ -1435,12 +1547,13 @@
   // ### $String ###
   // ###############
 
-  function $String(proto){
-    $Object.call(this, proto);
+  function $String(value){
+    $Object.call(this, intrinsics.StringPrototype);
+    this.PrimitiveValue = value;
   }
 
   inherit($String, $Object, {
-    NativeBrand: 'String',
+    NativeBrand: StringWrapper,
     PrimitiveValue: undefined,
   });
 
@@ -1449,12 +1562,13 @@
   // ### $Number ###
   // ###############
 
-  function $Number(proto){
-    $Object.call(this, proto);
+  function $Number(value){
+    $Object.call(this, intrinsics.NumberPrototype);
+    this.PrimitiveValue = value;
   }
 
   inherit($Number, $Object, {
-    NativeBrand: 'Number',
+    NativeBrand: NumberWrapper,
     PrimitiveValue: undefined,
   });
 
@@ -1463,26 +1577,65 @@
   // ### $Boolean ###
   // ################
 
-  function $Boolean(proto){
-    $Object.call(this, proto);
+  function $Boolean(value){
+    $Object.call(this, intrinsics.BooleanPrototype);
+    this.PrimitiveValue = value;
   }
 
   inherit($Boolean, $Object, {
-    NativeBrand: 'Boolean',
+    NativeBrand: BooleanWrapper,
     PrimitiveValue: undefined,
   });
 
+
+
+  // ############
+  // ### $Map ###
+  // ############
+
+  function $Map(){
+    $Object.call(this, intrinsics.MapPrototype);
+  }
+
+  inherit($Map, $Object, {
+    NativeBrand: NativeMap,
+  });
+
+  // ############
+  // ### $Set ###
+  // ############
+
+  function $Set(){
+    $Object.call(this, intrinsics.SetPrototype);
+  }
+
+  inherit($Set, $Object, {
+    NativeBrand: NativeSet,
+  });
+
+
+  // ################
+  // ### $WeakMap ###
+  // ################
+
+  function $WeakMap(){
+    $Object.call(this, intrinsics.WeakMapPrototype);
+  }
+
+  inherit($WeakMap, $Object, {
+    NativeBrand: NativeWeakMap,
+  });
 
   // ##############
   // ### $Array ###
   // ##############
 
-  function $Array(proto){
-    $Object.call(this, proto);
+  function $Array(){
+    $Object.call(this, intrinsics.ArrayPrototype);
   }
 
   inherit($Array, $Object, {
-    NativeBrand: 'Array',
+    NativeBrand: NativeArray,
   });
 
 
@@ -1490,12 +1643,12 @@
   // ### $RegExp ###
   // ###############
 
-  function $RegExp(proto){
-    $Object.call(this, proto);
+  function $RegExp(){
+    $Object.call(this, intrinsics.RegExpPrototype);
   }
 
   inherit($RegExp, $Object, {
-    NativeBrand: 'RegExp',
+    NativeBrand: NativeRegExp,
     Match: null,
   });
 
@@ -1505,11 +1658,11 @@
   // ####################
 
   function $PrivateName(proto){
-    $Object.call(this, proto);
+    $Object.call(this, intrinsics.PrivateNamePrototype);
   }
 
   inherit($PrivateName, $Object, {
-    NativeBrand: 'PrivateName',
+    NativeBrand: NativePrivateName,
     Match: null,
   });
 
@@ -1519,76 +1672,94 @@
   // ### $Arguments ###
   // ##################
 
-  function $Arguments(proto){
-    $Object.call(this, proto);
+  function $Arguments(length){
+    $Object.call(this);
+    this.defineDirect('length', length, _CW);
   }
 
   inherit($Arguments, $Object, {
-    NativeBrand: 'Arguments',
+    NativeBrand: NativeArguments,
     ParameterMap: null,
-  });
+  }, [
+    function Get(key, Ω, ƒ){
+      var map = this.ParameterMap;
+      if (map.keys.has(key)) {
+        map.properties[key].get(Ω, ƒ);
+      } else {
+        $Object.prototype.Get.call(this, key, Ω, ƒ);
+      }
+    },
+    // function GetOwnProperty(key, Ω, ƒ){
+    //   var map = this.ParameterMap;
+    //   $Object.prototype.GetOwnProperty.call(this, key, function(desc){
+    //     if (desc) {
+    //       if (map.keys.has(key)) {
+    //         map.properties[key].get(Ω, ƒ);
+    //       }
+    //     }
+    //   }, ƒ);
+    // }
+  ]);
+
+  var builtinInit = [$Array, $Boolean, $Date, $Function, $Map,
+                     $Number, $RegExp, $Set, $String, $WeakMap];
 
 
   function Realm(){
-    this.intrinsics = new Hash;
-    this.intrinsics.ObjectPrototype = new $Object(null);
-    this.global = new $Object(this.intrinsics.ObjectPrototype);
-    this.globalEnv = new LexicalEnvironment(null, new GlobalEnvironmentRecord(this.global));
+    var intrin = this.intrinsics = new Hash;
+    var ObjectPrototype = intrin.ObjectPrototype = new $Object(null);
 
-    // for (var name in builtins)
-    //   if (name !== 'Object')
-    //     this.intrinsics[name+'Prototype'] = create(this.intrinsics.ObjectPrototype);
+    this.global = new $Object(ObjectPrototype);
+    this.globalEnv = new GlobalEnvironmentRecord(this.global);
 
-    // for (var name in builtins) {
-    //   this.intrinsics[name] = builtins[name].instantiate(this);
-    //   define(this.global, name, this.intrinsics[name]);
-    // }
-
-    // defineProperties(this.global, constants);
-    // BuiltinGlobals.forEach(function(builtin){
-    //   define(this.global, builtin.name, builtin.instantiate(this));
-    // }, this);
+    for (var i = 0; i < builtinInit.length; i++) {
+      var Prototype = intrin[builtinInit[i].name.slice(1) + 'Prototype'] = create(builtinInit[i].prototype);
+      $Object.call(Prototype, ObjectPrototype);
+    }
+    var FunctionPrototype = intrin.FunctionPrototype;
+    FunctionPrototype.Realm = this;
+    FunctionPrototype.Scope = this.globalEnv;
+    FunctionPrototype.FormalParameters = [];
+    intrin.DatePrototype.PrimitiveValue = Date.prototype;
+    intrin.StringPrototype.PrimitiveValue = '';
+    intrin.NumberPrototype.PrimitiveValue = 0;
+    intrin.BooleanPrototype.PrimitiveValue = false;
+    intrin.ArrayPrototype.defineDirect('length', 0, ___);
   }
 
 
-  function ExecutionContext(realm){
+  function ExecutionContext(caller, local, realm){
+    this.caller = caller;
     this.realm = realm;
+    this.LexicalEnvironment = local;
+    this.VariableEnvironment = local;
   }
 
   var realm = ExecutionContext.realm = null,
       global = ExecutionContext.global = null,
       context = ExecutionContext.context = null,
-      globalEnv = ExecutionContext.globalEnv = null,
       intrinsics = ExecutionContext.intrinsics = null;
 
-
-
   define(ExecutionContext, [
-    function beginExecution(realm, isGlobal, isStrict, isEval){
-      var context = new ExecutionContext(realm);
-      if (isGlobal) {
-        context.isGlobal = true;
-        context.variable = realm.globalEnv;
-      } else {
-        context.variable = NewDeclarativeEnvironment(context.globalEnv);
+    function update(){
+      if (context.realm !== realm) {
+        realm = ExecutionContext.realm = newContext.realm;
+        global = ExecutionContext.globalEnv = realm.global;
+        intrinsics = ExecutionContext.intrinsics = realm.intrinsics;
       }
-      context.lexical = context.variable;
-      if (isStrict)
-        context.isStrict = true;
-      if (isEval)
-        context.isEval = true;
-
-      ExecutionContext.setCurrent(context);
-      ExecutionContext.stack = [context];
-      return context;
     },
-    function setCurrent(newContext){
-      realm = ExecutionContext.realm = newContext.realm;
-      global = ExecutionContext.globalEnv = realm.global;
+    function push(newContext){
       context = ExecutionContext.context = newContext;
-      globalEnv = ExecutionContext.globalEnv = realm.globalEnv;
-      intrinsics = ExecutionContext.intrinsics = realm.intrinsics;
+      ExecutionContext.update();
     },
+    function pop(){
+      if (context) {
+        var oldContext = context;
+        context = context.caller;
+        ExecutionContext.update();
+        return oldContext;
+      }
+    }
   ]);
 
   define(ExecutionContext.prototype, {
@@ -1698,26 +1869,26 @@
   };
 
   function EQUALS(left, right, Ω, ƒ){
-    var leftType = Type(left),
-        rightType = Type(right);
+    var leftType = typeof left,
+        rightType = typeof right;
 
     if (leftType === rightType) {
       STRICT_EQUALS(left, right, Ω, ƒ);
     } else if (left == null && left == right) {
       Ω(true);
-    } else if (leftType === 'Number' && rightType === 'String') {
+    } else if (leftType === NUMBER && rightType === STRING) {
       ToNumber(right, function(right){
         EQUALS(left, right, Ω, ƒ);
       }, ƒ);
-    } else if (leftType === 'String' && rightType === 'Number') {
+    } else if (leftType === STRING && rightType === NUMBER) {
       ToNumber(left, function(left){
         EQUALS(left, right, Ω, ƒ);
       }, ƒ);
-    } else if (rightType === 'Object' && leftType === 'String' || leftType === 'Number') {
+    } else if (rightType === OBJECT && leftType === STRING || leftType === OBJECT) {
       ToPrimitive(right, function(right){
         EQUALS(left, right, Ω, ƒ);
       }, ƒ);
-    } else if (leftType === 'Object' && rightType === 'String' || rightType === 'Number') {
+    } else if (leftType === OBJECT && rightType === STRING || rightType === OBJECT) {
       ToPrimitive(left, function(left){
         EQUALS(left, right, Ω, ƒ);
       }, ƒ);
@@ -1744,18 +1915,21 @@
     console.log(r);
   }
 
+  console.log(new Realm)
 
   var intrinsics = {
     ObjectPrototype: new $Object(null),
   };
 
-  var o = new $Object(intrinsics.ObjectPrototype);
+  // var o = new $Object(intrinsics.ObjectPrototype);
 
-  o.Put('test', 5, false, function(){
-    builtins.Object.create(null, [o], function(obj){
-      obj.Put('x', 'grg', false, function(){
-        obj.GetPropertyNames(Ω, ƒ);
-        obj.DefaultValue('String', Ω, ƒ); // throw TypeError
-      }, ƒ);
-    }, ƒ);
-  }, ƒ);
+  // o.Put('test', 5, false, function(){
+  //   builtins.Object.create(null, [o], function(obj){
+  //     obj.Put('x', 'grg', false, function(){
+  //       console.log(obj);
+  //       obj.GetPropertyNames(Ω, ƒ);
+  //       obj.DefaultValue('String', Ω, ƒ); // throw TypeError
+  //       console.log(CreateMappedArgumentsObject(null, ['x', 'y', 'z'], new NewDeclarativeEnvironment(null), ['a', 'b', 'c']))
+  //     }, ƒ);
+  //   }, ƒ);
+  // }, ƒ);
