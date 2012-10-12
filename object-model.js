@@ -1,6 +1,4 @@
-  var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor,
-      defineProperties = Object.defineProperties,
-      defineProperty = Object.defineProperty;
+  var errors = require('./errors');
 
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',
@@ -26,6 +24,7 @@
       _CW = 6,
       ECW = 7;
 
+  var NOARGS = [];
 
   // ##################################################
   // ### Internal Utilities not from specification ####
@@ -38,30 +37,27 @@
         }
         return create;
       })(Object.create)
-    : (function(F){
+    : (function(F, empty){
+        var iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        iframe.src = 'javascript:';
+        empty = iframe.contentWindow.Object.prototype;
+        document.body.removeChild(iframe);
+        iframe = null;
+        delete empty.constructor;
+        delete empty.hasOwnProperty;
+        delete empty.propertyIsEnumerable;
+        delete empty.isProtoypeOf;
+        delete empty.toLocaleString;
+        delete empty.toString;
+        delete empty.valueOf;
+
         function create(object){
-          if (object === null) {
-            var iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            document.body.appendChild(iframe);
-            iframe.src = 'javascript:'
-            var object = iframe.contentWindow.Object.prototype;
-            document.body.removeChild(iframe);
-            iframe = null;
-            delete object.constructor;
-            delete object.hasOwnProperty;
-            delete object.propertyIsEnumerable;
-            delete object.isProtoypeOf;
-            delete object.toLocaleString;
-            delete object.toString;
-            delete object.valueOf;
-            return object;
-          } else {
-            F.prototype = object;
-            object = new F;
-            F.prototype = null;
-            return object;
-          }
+          F.prototype = object === null ? empty : object;
+          object = new F;
+          F.prototype = null;
+          return object;
         }
         return create;
       })(function(){});
@@ -80,9 +76,9 @@
   function define(o, p, v){
     switch (typeof p) {
       case STRING:
-        return defineProperty(o, p, { configurable: true, writable: true, value: v });
+        return Object.defineProperty(o, p, { configurable: true, writable: true, value: v });
       case FUNCTION:
-        return defineProperty(o, p.name, { configurable: true, writable: true, value: p });
+        return Object.defineProperty(o, p.name, { configurable: true, writable: true, value: p });
       case OBJECT:
         if (p instanceof Array) {
           for (var i=0; i < p.length; i++) {
@@ -94,7 +90,7 @@
               f = p[i+1];
             }
             if (name) {
-              defineProperty(o, name, { configurable: true, writable: true, value: f });
+              Object.defineProperty(o, name, { configurable: true, writable: true, value: f });
             }
           }
         } else if (p) {
@@ -102,10 +98,10 @@
 
           for (var i=0; i < keys.length; i++) {
             var k = keys[i];
-            var desc = getOwnPropertyDescriptor(p, k);
+            var desc = Object.getOwnPropertyDescriptor(p, k);
             if (desc) {
               desc.enumerable = 'get' in desc;
-              defineProperty(o, k, desc);
+              Object.defineProperty(o, k, desc);
             }
           }
         }
@@ -116,7 +112,7 @@
 
   function inherit(Ctor, Super, properties, methods){
     define(Ctor, { inherits: Super });
-    Ctor.prototype = create(Super.prototype, {
+    Ctor.prototype = Object.create(Super.prototype, {
       constructor: { configurable: true, writable: true, value: Ctor }
     });
     properties && define(Ctor.prototype, properties);
@@ -124,15 +120,13 @@
     return Ctor;
   }
 
-  var errors = require('./errors');
 
   function throwException(error, args, Ω){
     error = errors[error];
     error.apply(null, [null, function(err){
-      Ω(new CompletionRecord(THROW, err));
+      Ω(new Completion(THROW, err));
     }].concat(args));
   }
-
 
 
   function Accessor(get, set){
@@ -222,15 +216,42 @@
     return function(){ throwException(msg, args, Ω); };
   }
 
+  function EVERY(funcs, Ω1, Ω2, ƒ){
+    var i = 0;
+    function next(v){
+      if (v) {
+        if (++i === funcs.length - 1)
+          next = Ω1;
+        funcs[i](NOARGS, next, ƒ);
+      } else {
+        Q2();
+      }
+    }
+    funcs[i](NOARGS, next);
+  }
+
+  function SOME(funcs, Ω1, Ω2, ƒ){
+    var i = 0, found;
+    function next(v){
+      if (v) {
+        found = true;
+      }
+      if (++i === funcs.length - 1)
+        next = found ? Ω1 : Q2;
+      funcs[i](NOARGS, next, ƒ);
+    }
+    funcs[i](NOARGS, next);
+  }
+
   function SEQUENCE(funcs, Ω, ƒ){
     var i = 0;
-    funcs[i]([], function next(v){
+    function next(v){
       if (++i === funcs.length - 1)
         next = Ω;
       funcs[i](v, next, ƒ);
-    });
+    }
+    funcs[i](NOARGS, next);
   }
-
 
   function DISCARD(func, args){
     return function(_, Ω, ƒ){
@@ -250,8 +271,8 @@
     };
   }
 
-  function IF(condition, consequent, alternate, Ω, ƒ){
-    return function(input){
+  function IF(condition, consequent, alternate){
+    return function(input, Ω, ƒ){
       condition(input, function(result){
         if (result)
           consequent(input, Ω, ƒ);
@@ -261,11 +282,11 @@
     };
   }
 
-  function COMPARE(left, right, comparison){
+  function COMPARE(left, right, compare){
     return function(Ω, ƒ){
       left(function(left){
         right(function(right){
-          comparison(left, right, Ω, ƒ);
+          compare(left, right, Ω, ƒ);
         }, ƒ);
       }, ƒ);
     };
@@ -287,9 +308,18 @@
     }, ƒ);
   }
 
+
+  // ###############################
   // ###############################
   // ### Specification Functions ###
   // ###############################
+  // ###############################
+
+  // ## NormalCompletion
+
+  function NormalCompletion(value){
+    return new Completion(NORMAL, value);
+  }
 
   // ## ToPropertyDescriptor
 
@@ -365,8 +395,12 @@
   // ## IsEmptyDescriptor
 
   function IsEmptyDescriptor(desc) {
-    return !('get' in desc || 'set' in desc || 'value' in desc ||
-             'writable' in desc || 'enumerable' in desc || 'configurable' in desc);
+    return !('get' in desc
+          || 'set' in desc
+          || 'value' in desc
+          || 'writable' in desc
+          || 'enumerable' in desc
+          || 'configurable' in desc);
   }
 
   // ## SameValue
@@ -389,7 +423,7 @@
   // ## IsCallable
 
   function IsCallable(o){
-    return isObject(o) && o instanceof $Function || 'Call' in Object(o);
+    return typeof o === 'object' && o !== null && 'Call' in o;
   }
 
   // ## GetReference
@@ -545,50 +579,6 @@
     return new LexicalEnvironment(method.scope, env);
   }
 
-
-
-
-  // ########################
-  // ### CompletionRecord ###
-  // ########################
-
-
-  function CompletionRecord(type, value, target){
-    this.type = type;
-    this.value = value;
-    this.target = target;
-  }
-
-  define(CompletionRecord.prototype, [
-    function toString(){
-      return this.value;
-    },
-    function valueOf(){
-      return this.value;
-    }
-  ]);
-
-  function Completion(name){
-    this.name = name;
-  }
-
-  define(Completion.prototype, [
-    function toString(){
-      return '[object Completion]';
-    },
-    function inspect(){
-      return '['+this.name+']';
-    }
-  ]);
-
-  var CONTINUE = new Completion('continue'),
-      BREAK    = new Completion('break'),
-      NORMAL   = new Completion('normal'),
-      RETURN   = new Completion('return'),
-      THROW    = new Completion('throw');
-
-
-
   // ## ReturnIfAbrupt
 
   function ReturnIfAbrupt(value, Ω, ƒ){
@@ -604,6 +594,14 @@
   }
 
 
+  // ###########################
+  // ###########################
+  // ### Specification Types ###
+  // ###########################
+  // ###########################
+
+
+
   // #################
   // ### Reference ###
   // #################
@@ -614,7 +612,49 @@
     this.strict = strict;
   }
 
+  // ##################
+  // ### Completion ###
+  // ##################
 
+  function CompletionType(name){
+    this.name = name;
+  }
+
+  define(CompletionType.prototype, [
+    function toString(){
+      return '[object Completion]';
+    },
+    function inspect(){
+      return '['+this.name+']';
+    }
+  ]);
+
+  var CONTINUE = new CompletionType('continue'),
+      BREAK    = new CompletionType('break'),
+      NORMAL   = new CompletionType('normal'),
+      RETURN   = new CompletionType('return'),
+      THROW    = new CompletionType('throw');
+
+
+  function Completion(type, value, target){
+    this.type = type;
+    this.value = value;
+    this.target = target;
+  }
+
+  define(Completion.prototype, [
+    function toString(){
+      return this.value;
+    },
+    function valueOf(){
+      return this.value;
+    }
+  ]);
+
+
+  // #########################
+  // ### EnvironmentRecord ###
+  // #########################
 
   function EnvironmentRecord(bindings){
     this.bindings = bindings;
@@ -677,7 +717,7 @@
       if (deletable) {
         this.bindings[name] = undefined;
       } else {
-        defineProperty(this.bindings, name, {
+        Object.defineProperty(this.bindings, name, {
           value: undefined,
           configurable: false,
           enumerable: true,
@@ -780,7 +820,7 @@
       Ω(this.holder !== undefined);
     },
     function GetSuper(Ω, ƒ){
-      Ω(this.holder.proto);
+      Ω(this.holder.Prototype);
     }
   ]);
 
@@ -800,6 +840,9 @@
   ]);
 
 
+  // ##########################
+  // ### LexicalEnvironment ###
+  // ##########################
 
   function LexicalEnvironment(outer, record){
     this.outer = outer || null;
@@ -812,6 +855,543 @@
   });
 
 
+
+
+  // #######################
+  // ### $DataDescriptor ###
+  // #######################
+
+  function $DataDescriptor(value, attributes){
+    this.inherit(intrinsics.ObjectPrototype);
+    var attrs = this.attributes,
+        props = this.properties;
+
+    attrs.value = ECW;
+    attrs.writable = ECW;
+    attrs.enumerable = ECW;
+    attrs.configurable = ECW;
+    props.value = value;
+    props.writable = (attributes & WRITABLE) > 0;
+    props.enumerable = (attributes & ENUMERABLE) > 0;
+    props.configurable = (attributes & CONFIGURABLE) > 0;
+  }
+
+  inherit($DataDescriptor, $Object);
+
+
+  // ###########################
+  // ### $AccessorDescriptor ###
+  // ###########################
+
+  function $AccessorDescriptor(accessors, attributes){
+    this.inherit(intrinsics.ObjectPrototype);
+    var attributes = this.attributes,
+        properties = this.properties;
+
+    attrs.get = ECW;
+    attrs.set = ECW;
+    attrs.enumerable = ECW;
+    attrs.configurable = ECW;
+    props.get = accessors.get;
+    props.set = accessors.set;
+    props.enumerable = (attributes & ENUMERABLE) > 0;
+    props.configurable = (attributes & CONFIGURABLE) > 0;
+  }
+
+  inherit($AccessorDescriptor, $Object);
+
+
+
+  // ##############
+  // ### $Value ###
+  // ##############
+
+  function $Value(value){
+    this.inherit(intrinsics.ObjectPrototype);
+    this.properties.value = value;
+    this.attributes.value = ECW;
+  }
+
+  inherit($Value, $Object);
+
+
+
+  // ###############
+  // ### $Object ###
+  // ###############
+
+  function $Object(proto){
+    if (proto === null) {
+      this.Prototype = null;
+      this.properties = create(null);
+      this.attributes = new Hash;
+      this.propertyNames = new PropertyList;
+    } else {
+      this.Prototype = proto;
+      this.properties = create(proto.properties);
+      this.attributes = create(proto.attributes);
+      this.propertyNames = new PropertyList;
+    }
+  }
+
+  define($Object.prototype, {
+    Extensible: true,
+    NativeBrand: 'Object'
+  });
+
+  define($Object.prototype, [
+    function GetOwnProperty(key, Ω, ƒ){
+      if (!this.propertyNames.has(key)) {
+        Ω();
+      } else {
+        var attrs = this.attributes[key];
+        var $Descriptor = attrs & ISACCESSOR ? $AccessorDescriptor : $DataDescriptor;
+        Ω(new $Descriptor(this.properties[key], attrs));
+      }
+    },
+    function GetProperty(key, Ω, ƒ){
+      var proto = this.Prototype;
+      this.GetOwnProperty(key, function(desc){
+        desc ? Ω(desc) : proto ? proto.GetProperty(key, Ω, ƒ) : Ω();
+      }, ƒ);
+    },
+    function Get(key, Ω, ƒ){
+      this.GetP(this, key, Ω, ƒ);
+    },
+    function Put(key, value, strict, Ω, ƒ){
+      this.SetP(this, key, value, function(success){
+        if (strict && !success)
+          throwException('strict_cannot_assign', [key], ƒ);
+        else
+          Ω();
+      }, ƒ);
+    },
+    function GetP(receiver, key, Ω, ƒ){
+      if (!this.propertyNames.has(key)) {
+        if (this.Prototype === null) {
+          Ω();
+        } else {
+          this.Prototype.GetP(receiver, key, Ω, ƒ);
+        }
+      } else {
+        var attrs = this.attributes[key];
+        if (attrs & ISACCESSOR) {
+          var getter = this.properties[key].get;
+          getter ? getter.Call(receiver, Ω, ƒ) : Ω();
+        } else {
+          Ω(this.properties[key]);
+        }
+      }
+    },
+    function SetP(receiver, key, value, Ω, ƒ) {
+      if (this.propertyNames.has(key)) {
+        var attrs = this.attributes[key];
+        if (attrs & ISACCESSOR) {
+          var setter = this.properties[key].set;
+          setter ? setter.Call(receiver, value, TRUE(Ω), ƒ) : Ω(false);
+        } else if (attrs & WRITABLE) {
+          if (this === receiver) {
+            this.DefineOwnProperty(key, new $Value(value), false, Ω, ƒ);
+          } else if (!receiver.Extensible) {
+            Ω(false);
+          } else {
+            receiver.DefineOwnProperty(key, new $DataDescriptor(value, ECW), false, Ω, ƒ);
+          }
+        } else {
+          Ω(false);
+        }
+      } else {
+        var proto = this.Prototype;
+        if (proto === null) {
+          if (!receiver.Extensible) {
+            Ω(false);
+          } else {
+            receiver.DefineOwnProperty(key, new $DataDescriptor(value, ECW), false, Ω, ƒ);
+          }
+        } else {
+          proto.SetP(receiver, key, value, Ω, ƒ);
+        }
+      }
+    },
+    function DefineOwnProperty(key, descriptor, strict, Ω, ƒ){
+      var self = this;
+      var reject = strict ? function(e, a){ throwError(e, a, ƒ) } : FALSE(Ω);
+      var desc = descriptor.properties;
+
+      this.GetOwnProperty(key, function(current){
+        if (current === undefined) {
+          if (!self.Extensible) {
+            reject('define_disallowed', []);
+          } else {
+            if (IsGenericDescriptor(desc) || IsDataDescriptor(desc)) {
+              self.attributes[key] = desc.writable | (desc.enumerable << 1) | (desc.configurable << 2);
+              self.properties[key] = desc.value;
+            } else {
+              self.attributes[key] = ISACCESSOR | (desc.enumerable << 1) | (desc.configurable << 2);
+              self.properties[key] = new Accessor(desc.get, desc.set);
+            }
+            self.propertyNames.add(key);
+            Ω(true);
+          }
+        } else {
+          var rejected = false;
+
+          current = current.properties;
+
+          if (IsEmptyDescriptor(desc) || IsEquivalentDescriptor(desc, current)) {
+            Ω(true);
+          } else if (!current.configurable) {
+            var nonConfigurableReject = function(){
+              reject('redefine_disallowed', []);
+              rejected = true;
+            };
+
+            if (desc.configurable || desc.enumerable === !current.configurable) {
+              nonConfigurableReject();
+            } else {
+              var currentIsData = IsDataDescriptor(current),
+                  descIsData = IsDataDescriptor(desc);
+
+              if (currentIsData !== descIsData)
+                nonConfigurableReject();
+              else if (currentIsData && descIsData)
+                if (!current.writable && 'value' in desc && desc.value !== current.value)
+                  nonConfigurableReject();
+              else if ('set' in desc && desc.set !== current.set)
+                nonConfigurableReject();
+              else if ('get' in desc && desc.get !== current.get)
+                nonConfigurableReject();
+            }
+          }
+
+          if (!rejected) {
+            'configurable' in desc || (desc.configurable = current.configurable);
+            'enumerable' in desc || (desc.enumerable = current.enumerable);
+
+            if (IsAccessorDescriptor(desc)) {
+              self.attributes[key] = ISACCESSOR | (desc.enumerable << 1) | (desc.configurable << 2);
+              if (IsDataDescriptor(current)) {
+                self.properties[key] = new Accessor(desc.get, desc.set);
+              } else {
+                if ('set' in desc)
+                  self.properties[key].set = desc.set;
+                if ('get' in desc)
+                  self.properties[key].get = desc.get;
+              }
+            } else {
+              if (IsAccessorDescriptor(current)) {
+                current.writable = true;
+              }
+              'writable' in desc || (desc.writable = current.writable)
+              self.properties[key] = desc.value;
+              self.attributes[key] = desc.writable | (desc.enumerable << 1) | (desc.configurable << 2);
+            }
+            Ω(true);
+          }
+        }
+      }, ƒ);
+    },
+    function HasOwnProperty(key, Ω, ƒ){
+      Ω(this.propertyNames.has(key));
+    },
+    function HasProperty(key, Ω, ƒ){
+      var proto = this.Prototype;
+      this.HasOwnProperty(key, function(hasOwn){
+        if (hasOwn)
+          Ω(true);
+        else if (!proto)
+          Ω(false)
+        else
+          proto.HasProperty(key, Ω, ƒ);
+      }, ƒ);
+    },
+    function Delete(key, strict, Ω, ƒ){
+      if (!this.propertyNames.has(key)) {
+        Ω(true);
+      } else if (this.attributes[key] & CONFIGURABLE) {
+        delete this.properties[key];
+        delete this.attributes[key];
+        Ω(true);
+      } else if (strict) {
+        throwException('strict_delete', [], ƒ);
+      } else {
+        Ω(false);
+      }
+    },
+    function Enumerate(Ω, ƒ){
+      var props = this.propertyNames.filter(function(key){
+        return this.attributes[key] & ENUMERABLE;
+      }, this);
+
+      if (this.Prototype) {
+        this.Prototype.Enumerate(function(inherited){
+          props.add(inherited);
+          Ω(props.toArray());
+        }, ƒ);
+      } else {
+        Ω(props.toArray());
+      }
+    },
+    function GetOwnPropertyNames(Ω, ƒ){
+      Ω(this.propertyNames.toArray());
+    },
+    function GetPropertyNames(Ω, ƒ){
+      var props = this.propertyNames.clone();
+
+      if (this.Prototype) {
+        this.Prototype.GetPropertyNames(function(inherited){
+          props.add(inherited);
+          Ω(props.toArray());
+        }, ƒ);
+      } else {
+        Ω(props.toArray());
+      }
+    },
+    function DefaultValue(hint, Ω, ƒ){
+      var self = this;
+
+      function attempt(name, next){
+        self.Get(name, function(method){
+          if (IsCallable(method)) {
+            method.Call(self, [], function(val){
+              if (!isObject(val))
+                Ω(val);
+              else
+                next(name);
+            }, ƒ);
+          } else {
+            next(name);
+          }
+        }, ƒ);
+      }
+
+      attempt(hint === 'String' ? 'toString' : 'valueOf', function(name){
+        name = name === 'toString' ? 'valueOf' : 'toString';
+        attempt(name, THROWS('cannot_convert_to_primitive', [], ƒ));
+      });
+    },
+    function Invoke(key, receiver, args, Ω, ƒ){
+      ToObject(receiver, function(obj){
+        ReturnIfAbrupt(obj, function(obj){
+          obj.Get(key, function(func){
+            ReturnIfAbrupt(func, function(func){
+              if (!IsCallable(func))
+                throwException('called_non_callable', key, ƒ);
+              else
+                func.Call(receiver, args, Ω, ƒ);
+            }, ƒ);
+          }, ƒ);
+        }, ƒ);
+      }, ƒ);
+    },
+    function inherit(proto){
+      this.Prototype = proto;
+      this.properties = create(proto.properties);
+      this.attributes = create(proto.attributes);
+      this.propertyNames = new PropertyList;
+    },
+    function hasDirect(key){
+      return key in this.properties;
+    },
+    function hasOwnDirect(key){
+      return this.propertyNames.has(key);
+    },
+    function setDirect(key, value){
+      this.properties[key] = value;
+      if (!(key in this.attributes))
+        this.attributes[key] = ECW;
+    },
+    function getDirect(key){
+      return this.properties[key];
+    },
+  ]);
+
+
+  // ######################
+  // ### $PrimitiveBase ###
+  // ######################
+
+  function $PrimitiveBase(base){
+    this.base = base;
+    var type = typeof base;
+    if (type === STRING) {
+      $Object.call(this, intrinsics.StringPrototype);
+      this.NativeBrand = 'String';
+    } else if (type === NUMBER) {
+      $Object.call(this, intrinsics.NumberPrototype);
+      this.NativeBrand = 'Number';
+    } else if (type === BOOLEAN) {
+      $Object.call(this, intrinsics.BooleanPrototype);
+      this.NativeBrand = 'Boolean';
+    }
+  }
+
+  inherit($PrimitiveBase, $Object, [
+    function GetProperty(key, receiver, Ω, ƒ){
+      var base = this.base;
+      $Object.prototype.GetProperty.call(this, key, function(desc){
+        if (desc === undefined) {
+          Ω(desc);
+        } else if (desc instanceof $DataDescriptor) {
+          Ω(desc.properties.value);
+        } else {
+          var getter = desc.properties.get;
+          if (getter === undefined) {
+            Ω(getter);
+          } else {
+            getter.Call(receiver || base, [], Ω, ƒ);
+          }
+        }
+      }, ƒ);
+    },
+    function Put(key, value, strict, Ω, ƒ){
+      var base = this.base;
+      $Object.prototype.Put.call(this, key, value, strict, function(desc){
+      }, ƒ);
+    },
+  ]);
+
+  // #################
+  // ### $Function ###
+  // #################
+
+  function $Function(strict, proto, call, construct){
+    $Object.call(this, proto);
+  }
+
+  inherit($Function, $Object, {
+    NativeBrand: 'Function',
+    FormalParameters: null,
+    Code: null,
+    Scope: null,
+    TargetFunction: null,
+    BoundThis: null,
+    BoundArguments: null,
+    Strict: false,
+    isConst: false,
+
+  }, [
+    function Call(receiver, args, Ω, ƒ){
+
+    },
+    function Construct(args, Ω, ƒ){
+
+    },
+    function HasInstance(arg){
+
+    }
+  ]);
+
+
+  // #############
+  // ### $Date ###
+  // #############
+
+  function $Date(proto){
+    $Object.call(this, proto);
+  }
+
+  inherit($Date, $Object, {
+    NativeBrand: 'Date',
+    PrimitiveValue: undefined,
+  });
+
+  // ###############
+  // ### $String ###
+  // ###############
+
+  function $String(proto){
+    $Object.call(this, proto);
+  }
+
+  inherit($String, $Object, {
+    NativeBrand: 'String',
+    PrimitiveValue: undefined,
+  });
+
+
+  // ###############
+  // ### $Number ###
+  // ###############
+
+  function $Number(proto){
+    $Object.call(this, proto);
+  }
+
+  inherit($Number, $Object, {
+    NativeBrand: 'Number',
+    PrimitiveValue: undefined,
+  });
+
+
+  // ################
+  // ### $Boolean ###
+  // ################
+
+  function $Boolean(proto){
+    $Object.call(this, proto);
+  }
+
+  inherit($Boolean, $Object, {
+    NativeBrand: 'Boolean',
+    PrimitiveValue: undefined,
+  });
+
+
+  // ##############
+  // ### $Array ###
+  // ##############
+
+  function $Array(proto){
+    $Object.call(this, proto);
+  }
+
+  inherit($Array, $Object, {
+    NativeBrand: 'Array',
+  });
+
+
+  // ###############
+  // ### $RegExp ###
+  // ###############
+
+  function $RegExp(proto){
+    $Object.call(this, proto);
+  }
+
+  inherit($RegExp, $Object, {
+    NativeBrand: 'RegExp',
+    Match: null,
+  });
+
+
+  // ####################
+  // ### $PrivateName ###
+  // ####################
+
+  function $PrivateName(proto){
+    $Object.call(this, proto);
+  }
+
+  inherit($PrivateName, $Object, {
+    NativeBrand: 'PrivateName',
+    Match: null,
+  });
+
+
+
+  // ##################
+  // ### $Arguments ###
+  // ##################
+
+  function $Arguments(proto){
+    $Object.call(this, proto);
+  }
+
+  inherit($Arguments, $Object, {
+    NativeBrand: 'Arguments',
+    ParameterMap: null,
+  });
 
 
   function Realm(){
@@ -884,424 +1464,15 @@
 
 
 
-
-  // ###############
-  // ### $Object ###
-  // ###############
-
-  function $Object(proto){
-    if (proto === null) {
-      this.proto = null;
-      this.properties = create(null);
-      this.attributes = new Hash;
-      this.propertyNames = new PropertyList;
-    } else {
-      this.proto = proto;
-      this.properties = create(proto.properties);
-      this.attributes = create(proto.attributes);
-      this.propertyNames = new PropertyList;
-    }
-  }
-
-  define($Object.prototype, {
-    extensible: true
-  });
-
-  define($Object.prototype, [
-    function GetOwnProperty(key, Ω, ƒ){
-      if (!this.propertyNames.has(key)) {
-        Ω();
-      } else {
-        var attrs = this.attributes[key];
-        var $Descriptor = attrs & ISACCESSOR ? $AccessorDescriptor : $DataDescriptor;
-        Ω(new $Descriptor(this.properties[key], attrs));
-      }
-    },
-    function GetProperty(key, Ω, ƒ){
-      var proto = this.proto;
-      this.GetOwnProperty(key, function(desc){
-        desc ? Ω(desc) : proto ? proto.GetProperty(key, Ω, ƒ) : Ω();
-      }, ƒ);
-    },
-    function Get(key, Ω, ƒ){
-      this.GetP(this, key, Ω, ƒ);
-    },
-    function Put(key, value, strict, Ω, ƒ){
-      this.SetP(this, key, value, function(success){
-        if (strict && !success)
-          throwException('strict_cannot_assign', [key], ƒ);
-        else
-          Ω();
-      }, ƒ);
-    },
-    function GetP(receiver, key, Ω, ƒ){
-      if (!this.propertyNames.has(key)) {
-        if (this.proto === null) {
-          Ω();
-        } else {
-          this.proto.GetP(receiver, key, Ω, ƒ);
-        }
-      } else {
-        var attrs = this.attributes[key];
-        if (attrs & ISACCESSOR) {
-          var getter = this.properties[key].get;
-          getter ? getter.Call(receiver, Ω, ƒ) : Ω();
-        } else {
-          Ω(this.properties[key]);
-        }
-      }
-    },
-    function SetP(receiver, key, value, Ω, ƒ) {
-      if (this.propertyNames.has(key)) {
-        var attrs = this.attributes[key];
-        if (attrs & ISACCESSOR) {
-          var setter = this.properties[key].set;
-          setter ? setter.Call(receiver, value, TRUE(Ω), ƒ) : Ω(false);
-        } else if (attrs & WRITABLE) {
-          if (this === receiver) {
-            this.DefineOwnProperty(key, new $Value(value), false, Ω, ƒ);
-          } else if (!receiver.extensible) {
-            Ω(false);
-          } else {
-            receiver.DefineOwnProperty(key, new $DataDescriptor(value, ECW), false, Ω, ƒ);
-          }
-        } else {
-          Ω(false);
-        }
-      } else {
-        var proto = this.proto;
-        if (proto === null) {
-          if (!receiver.extensible) {
-            Ω(false);
-          } else {
-            receiver.DefineOwnProperty(key, new $DataDescriptor(value, ECW), false, Ω, ƒ);
-          }
-        } else {
-          proto.SetP(receiver, key, value, Ω, ƒ);
-        }
-      }
-    },
-    function DefineOwnProperty(key, descriptor, strict, Ω, ƒ){
-      var self = this;
-      var reject = strict ? function(e, a){ throwError(e, a, ƒ) } : FALSE(Ω);
-      var desc = descriptor.properties;
-
-      this.GetOwnProperty(key, function(current){
-        if (current === undefined) {
-          if (!self.extensible) {
-            reject('define_disallowed', []);
-          } else {
-            if (IsGenericDescriptor(desc) || IsDataDescriptor(desc)) {
-              self.attributes[key] = desc.writable | (desc.enumerable << 1) | (desc.configurable << 2);
-              self.properties[key] = desc.value;
-            } else {
-              self.attributes[key] = ISACCESSOR | (desc.enumerable << 1) | (desc.configurable << 2);
-              self.properties[key] = new Accessor(desc.get, desc.set);
-            }
-            self.propertyNames.add(key);
-            Ω(true);
-          }
-        } else {
-          var rejected = false;
-          current = current.properties;
-
-          if (IsEmptyDescriptor(desc) || IsEquivalentDescriptor(desc, current)) {
-            Ω(true);
-          } else if (!current.configurable) {
-            var nonConfigurableReject = function(){
-              reject('redefine_disallowed', []);
-              rejected = true;
-            };
-
-            if (desc.configurable || desc.enumerable === !current.configurable) {
-              nonConfigurableReject();
-            } else {
-              var currentIsData = IsDataDescriptor(current),
-                  descIsData = IsDataDescriptor(desc);
-
-              if (currentIsData !== descIsData)
-                nonConfigurableReject();
-              else if (currentIsData && descIsData)
-                if (!current.writable && 'value' in desc && desc.value !== current.value)
-                  nonConfigurableReject();
-              else if ('set' in desc && desc.set !== current.set)
-                nonConfigurableReject();
-              else if ('get' in desc && desc.get !== current.get)
-                nonConfigurableReject();
-            }
-          }
-
-          if (!rejected) {
-            'configurable' in desc || (desc.configurable = current.configurable);
-            'enumerable' in desc || (desc.enumerable = current.enumerable);
-
-            if (IsAccessorDescriptor(desc)) {
-              self.attributes[key] = ISACCESSOR | (desc.enumerable << 1) | (desc.configurable << 2);
-              if (IsDataDescriptor(current)) {
-                self.properties[key] = new Accessor(desc.get, desc.set);
-              } else {
-                if ('set' in desc)
-                  self.properties[key].set = desc.set;
-                if ('get' in desc)
-                  self.properties[key].get = desc.get;
-              }
-            } else {
-              if (IsAccessorDescriptor(current)) {
-                current.writable = true;
-              }
-              'writable' in desc || (desc.writable = current.writable)
-              self.properties[key] = desc.value;
-              self.attributes[key] = desc.writable | (desc.enumerable << 1) | (desc.configurable << 2);
-            }
-            Ω(true);
-          }
-        }
-      }, ƒ);
-    },
-    function HasOwnProperty(key, Ω, ƒ){
-      Ω(this.propertyNames.has(key));
-    },
-    function HasProperty(key, Ω, ƒ){
-      var proto = this.proto;
-      this.HasOwnProperty(key, function(hasOwn){
-        if (hasOwn)
-          Ω(true);
-        else if (!proto)
-          Ω(false)
-        else
-          proto.HasProperty(key, Ω, ƒ);
-      }, ƒ);
-    },
-    function Delete(key, strict, Ω, ƒ){
-      if (!this.propertyNames.has(key)) {
-        Ω(true);
-      } else if (this.attributes[key] & CONFIGURABLE) {
-        delete this.properties[key];
-        delete this.attributes[key];
-        Ω(true);
-      } else if (strict) {
-        throwException('strict_delete', [], ƒ);
-      } else {
-        Ω(false);
-      }
-    },
-    function Enumerate(Ω, ƒ){
-      var props = this.propertyNames.filter(function(key){
-        return this.attributes[key] & ENUMERABLE;
-      }, this);
-
-      if (this.proto) {
-        this.proto.Enumerate(function(inherited){
-          props.add(inherited);
-          Ω(props.toArray());
-        }, ƒ);
-      } else {
-        Ω(props.toArray());
-      }
-    },
-    function GetOwnPropertyNames(Ω, ƒ){
-      Ω(this.propertyNames.toArray());
-    },
-    function GetPropertyNames(Ω, ƒ){
-      var props = this.propertyNames.clone();
-
-      if (this.proto) {
-        this.proto.GetPropertyNames(function(inherited){
-          props.add(inherited);
-          Ω(props.toArray());
-        }, ƒ);
-      } else {
-        Ω(props.toArray());
-      }
-    },
-    function DefaultValue(hint, Ω, ƒ){
-      var self = this;
-      var first = hint === 'String' ? 'toString' : 'valueOf',
-          second = hint === 'Number' ? 'valueOf' : 'toString';
-      SEQUENCE([
-        function(_, next){
-          self.Get(first, function(first){
-            if (IsCallable(first)) {
-              first.Call(self, [], function(val){
-                if (!isObject(val))
-                  Ω(val);
-                else
-                  next();
-              }, ƒ);
-            } else {
-              next();
-            }
-          }, ƒ);
-        },
-        function(_, next){
-          self.Get(second, function(second){
-            if (IsCallable(second)) {
-              second.Call(self, [], function(val){
-                if (!isObject(val))
-                  Ω(val);
-                else
-                  next();
-              }, ƒ);
-            } else {
-              next();
-            }
-          }, ƒ);
-        },
-        THROWS('cannot_convert_to_primitive', [], ƒ)
-      ]);
-    },
-    function inherit(proto){
-      this.proto = proto;
-      this.properties = create(proto.properties);
-      this.attributes = create(proto.attributes);
-      this.propertyNames = new PropertyList;
-    },
-    function hasDirect(key){
-      return key in this.properties;
-    },
-    function hasOwnDirect(key){
-      return this.propertyNames.has(key);
-    },
-    function setDirect(key, value){
-      this.properties[key] = value;
-      if (!(key in this.attributes))
-        this.attributes[key] = ECW;
-    },
-    function getDirect(key){
-      return this.properties[key];
-    },
-  ]);
-
-
-  // ######################
-  // ### $PrimitiveBase ###
-  // ######################
-
-  function $PrimitiveBase(base){
-    this.base = base;
-    var type = typeof base;
-    if (type === STRING)
-      $Object.call(this, intrinsics.StringPrototype);
-    else if (type === NUMBER)
-      $Object.call(this, intrinsics.NumberPrototype);
-    else if (type === BOOLEAN)
-      $Object.call(this, intrinsics.BooleanPrototype);
-
-  }
-
-  inherit($PrimitiveBase, $Object, [
-    function GetProperty(key, receiver, Ω, ƒ){
-      var base = this.base;
-      $Object.prototype.GetProperty.call(this, key, function(desc){
-        if (desc === undefined) {
-          Ω(desc);
-        } else if (desc instanceof $DataDescriptor) {
-          Ω(desc.properties.value);
-        } else {
-          var getter = desc.properties.get;
-          if (getter === undefined) {
-            Ω(getter);
-          } else {
-            getter.Call(receiver || base, [], Ω, ƒ);
-          }
-        }
-      }, ƒ);
-    },
-    function Put(key, value, strict, Ω, ƒ){
-      var base = this.base;
-      $Object.prototype.Put.call(this, key, value, strict, function(desc){
-      }, ƒ);
-    },
-  ]);
-
-  // #######################
-  // ### $DataDescriptor ###
-  // #######################
-
-  function $DataDescriptor(value, attributes){
-    this.inherit(intrinsics.ObjectPrototype);
-    var attrs = this.attributes,
-        props = this.properties;
-
-    attrs.value = ECW;
-    attrs.writable = ECW;
-    attrs.enumerable = ECW;
-    attrs.configurable = ECW;
-    props.value = value;
-    props.writable = (attributes & WRITABLE) > 0;
-    props.enumerable = (attributes & ENUMERABLE) > 0;
-    props.configurable = (attributes & CONFIGURABLE) > 0;
-  }
-
-  inherit($DataDescriptor, $Object);
-
-
-  // ###########################
-  // ### $AccessorDescriptor ###
-  // ###########################
-
-  function $AccessorDescriptor(accessors, attributes){
-    this.inherit(intrinsics.ObjectPrototype);
-    var attributes = this.attributes,
-        properties = this.properties;
-
-    attrs.get = ECW;
-    attrs.set = ECW;
-    attrs.enumerable = ECW;
-    attrs.configurable = ECW;
-    props.get = accessors.get;
-    props.set = accessors.set;
-    props.enumerable = (attributes & ENUMERABLE) > 0;
-    props.configurable = (attributes & CONFIGURABLE) > 0;
-  }
-
-  inherit($AccessorDescriptor, $Object);
-
-
-
-  // ##############
-  // ### $Value ###
-  // ##############
-
-  function $Value(value){
-    this.inherit(intrinsics.ObjectPrototype);
-    this.properties.value = value;
-    this.attributes.value = ECW;
-  }
-
-  inherit($Value, $Object);
-
-
-
-  // #################
-  // ### $Function ###
-  // #################
-
-  function $Function(proto, call, construct){
-    $Object.call(this, proto);
-  }
-
-  inherit($Function, $Object, [
-    function Call(reciever, args, Ω, ƒ){
-
-    },
-    function Construct(args, Ω, ƒ){
-
-    },
-  ]);
-
-
-
-
   var builtins = {
     Object: {
-      Call: function(args, Ω, ƒ){
+      Call: function(receiver, args, Ω, ƒ){
         ToObject(args[0], Ω, ƒ);
       },
-      Construct: function(args, Ω, ƒ){
+      Construct: function(receiver, args, Ω, ƒ){
         Ω(new $Object(intrinsics.ObjectPrototype));
       },
-      defineProperty: function(args, Ω, ƒ){
+      defineProperty: function(receiver, args, Ω, ƒ){
         var object = args[0],
             key    = args[1],
             desc   = args[2];
@@ -1314,7 +1485,7 @@
           object.DefineOwnProperty(key, desc, false, Ω, ƒ);
         }
       },
-      defineProperties: function(args, Ω, ƒ){
+      defineProperties: function(receiver, args, Ω, ƒ){
         var object = args[0],
             descs  = args[1];
 
@@ -1331,32 +1502,108 @@
           }
         }
       },
-      create: function(args, Ω, ƒ) {
+      create: function(receiver, args, Ω, ƒ){
         var proto = args[0],
             descs = args[1];
 
         if (proto !== null && !(proto instanceof $Object)) {
-          return throwException('proto_object_or_null', [], ƒ);
-        }
-        var object = new $Object(proto);
-        if (descs) {
-          $Object.defineProperties(object, descs, Ω, ƒ);
+          throwException('proto_object_or_null', [], ƒ);
         } else {
-          Ω(object);
+          var object = new $Object(proto);
+          if (descs) {
+            builtins.Object.defineProperties([object], descs, Ω, ƒ);
+          } else {
+            Ω(object);
+          }
         }
+      },
+      prototype: {
+        toString: function(receiver, args, Ω, ƒ){
+
+        },
+        valueOf: function(receiver, args, Ω, ƒ){
+
+        },
+        hasOwnProperty: function(receiver, args, Ω, ƒ){
+          var key = args[0];
+        },
+        isPrototypeOf: function(receiver, args, Ω, ƒ){
+          var object = args[0];
+        },
+        propertyIsEnumerable: function(receiver, args, Ω, ƒ){
+          var key = args[0];
+        },
+        toLocaleString: function(receiver, args, Ω, ƒ){
+
+        },
+        __defineGetter__: function(receiver, args, Ω, ƒ){
+          var key  = args[0],
+              func = args[1];
+        },
+        __defineSetter__: function(receiver, args, Ω, ƒ){
+          var key  = args[0],
+              func = args[1];
+        },
+        __lookupGetter__: function(receiver, args, Ω, ƒ){
+          var key  = args[0],
+              func = args[1];
+        },
+        __lookupSetter__: function(receiver, args, Ω, ƒ){
+          var key  = args[0],
+              func = args[1];
+        },
       }
     }
   };
 
 
-  function thrower(completion){
+  var operators = {
+    '==': EQUALS,
+    '===': STRICT_EQUALS
+  };
+
+  function EQUALS(left, right, Ω, ƒ){
+    var leftType = Type(left),
+        rightType = Type(right);
+
+    if (leftType === rightType) {
+      STRICT_EQUALS(left, right, Ω, ƒ);
+    } else if (left === null || left === undefined && left == right) {
+      Ω(true);
+    } else if (leftType === 'Number' && rightType === 'String') {
+      ToNumber(right, function(right){
+        EQUALS(left, right, Ω, ƒ);
+      }, ƒ);
+    } else if (leftType === 'String' && rightType === 'Number') {
+      ToNumber(left, function(left){
+        EQUALS(left, right, Ω, ƒ);
+      }, ƒ);
+    } else if (rightType === 'Object' && leftType === 'String' || leftType === 'Number') {
+      ToPrimitive(right, function(right){
+        EQUALS(left, right, Ω, ƒ);
+      }, ƒ);
+    } else if (leftType === 'Object' && rightType === 'String' || rightType === 'Number') {
+      ToPrimitive(left, function(left){
+        EQUALS(left, right, Ω, ƒ);
+      }, ƒ);
+    } else {
+      Ω(false);
+    }
+  }
+
+  function STRICT_EQUALS(left, right, Ω, ƒ){
+    Ω(left === right);
+  }
+
+
+  function ƒ(completion){
     if (completion.type === THROW)
       throw completion.value;
     else
-      log(completion.value);
+      Ω(completion.value);
   }
 
-  function log(r){
+  function Ω(r){
     console.log(r);
   }
 
@@ -1368,10 +1615,10 @@
   var o = new $Object(intrinsics.ObjectPrototype);
 
   o.Put('test', 5, false, function(){
-    builtins.Object.create([o], function(obj){
+    builtins.Object.create(null, [o], function(obj){
       obj.Put('x', 'grg', false, function(){
-        obj.GetOwnPropertyNames(log, thrower);
-        obj.DefaultValue('String', log, thrower); // throw TypeError
-      }, thrower);
-    }, thrower);
-  }, thrower);
+        obj.GetPropertyNames(Ω, ƒ);
+        obj.DefaultValue('String', Ω, ƒ); // throw TypeError
+      }, ƒ);
+    }, ƒ);
+  }, ƒ);
