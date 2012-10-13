@@ -16,25 +16,21 @@
       STRING    = 'string',
       UNDEFINED = 'undefined';
 
-  var MISSING  = 0,
-      DATA     = 1,
-      ACCESSOR = 2;
-
   var ENUMERABLE   = 0x1,
       CONFIGURABLE = 0x2,
       WRITABLE     = 0x4,
       ISACCESSOR   = 0x8;
 
-  var ___ = 0,
-      E__ = 1,
-      _C_ = 2,
-      EC_ = 3,
-      __W = 4,
-      E_W = 5,
-      _CW = 6,
-      ECW = 7,
-      __A = 8,
-      E_A = 9,
+  var ___ =  0,
+      E__ =  1,
+      _C_ =  2,
+      EC_ =  3,
+      __W =  4,
+      E_W =  5,
+      _CW =  6,
+      ECW =  7,
+      __A =  8,
+      E_A =  9,
       _CA = 10,
       ECA = 11;
 
@@ -611,7 +607,7 @@
     from.HasProperty(key, function(has){
       if (has) {
         from.Get(key, function(value){
-          to.Put(key, value, Ω, ƒ);
+          to.Put(key, value, false, Ω, ƒ);
         }, ƒ);
       } else {
         Ω();
@@ -832,7 +828,7 @@
           base.Put(v.name, w, v.strict, Ω, ƒ);
         } else {
           GetThisValue(v, function(receiver){
-            base.SetP(receiver, v.name, w, v.strict, Ω, ƒ);
+            base.SetP(receiver, v.name, w, Ω, ƒ);
           }, ƒ);
         }
       } else {
@@ -850,6 +846,8 @@
       throwException('non_object_property_load', [v.name, v.base], ƒ);
     else if ('thisValue' in v)
       Ω(v.thisValue);
+    else if (v && v.bindings === global)
+      Ω(v.bindings);
     else
       Ω(v.base);
   }
@@ -862,7 +860,7 @@
       env.HasThisBinding(function(result){
         result ? Ω(env) : recurse(env.outer);
       }, ƒ)
-    }(context.lexical);
+    }(context.LexicalEnvironment);
   }
 
   // ## NewObjectEnvironment
@@ -1043,6 +1041,8 @@
   }
 
 
+  // ## CreateStrictArgumentsObject
+
   function CreateStrictArgumentsObject(args){
     var obj = new $Arguments(args.length);
 
@@ -1054,6 +1054,8 @@
     return obj;
   }
 
+
+  // ## CreateMappedArgumentsObject
 
   function CreateMappedArgumentsObject(func, names, env, args){
     var obj = new $Arguments(args.length),
@@ -1078,6 +1080,8 @@
     return obj;
   }
 
+
+  // ## EvaluateCall
 
   function EvaluateCall(ref, args, tail, Ω, ƒ){
     GetValue(ref, function(func){
@@ -1108,6 +1112,8 @@
     }, ƒ);
   }
 
+  // ## ArgumentListEvaluation
+
   function ArgumentListEvaluation(args, Ω, ƒ){
     if (args instanceof Array) {
       var argList = [];
@@ -1128,6 +1134,8 @@
     }
   }
 
+
+  // ## FunctionDeclarationInstantiation
 
   function FunctionDeclarationInstantiation(func, argsList, env, Ω, ƒ){
     var params = func.FormalParameters,
@@ -1413,11 +1421,11 @@
       if (name in this.bindings) {
         var value = this.bindings[name];
         if (value === UNINITIALIZED)
-          throwException('uninitialized_const', name, Ω, ƒ);
+          throwException('uninitialized_const', name, ƒ);
         else
           Ω(value);
       } else if (strict) {
-        throwException('not_defined', name, Ω, ƒ);
+        throwException('not_defined', name, ƒ);
       } else {
         Ω(false);
       }
@@ -1425,9 +1433,9 @@
     function SetMutableBinding(name, value, strict, Ω, ƒ){
       if (name in this.consts) {
         if (this.bindings[name] === UNINITIALIZED)
-          throwException('uninitialized_const', name, Ω, ƒ);
+          throwException('uninitialized_const', name, ƒ);
         else if (strict)
-          throwException('const_assign', name, Ω, ƒ);
+          throwException('const_assign', name, ƒ);
         else
           Ω();
       } else {
@@ -1500,7 +1508,7 @@
   inherit(MethodEnvironmentRecord, DeclarativeEnvironmentRecord, {
     HomeObject: undefined,
     MethodName: undefined,
-    ThisValue: undefined,
+    thisValue: undefined,
   }, [
     function HasThisBinding(Ω, ƒ){
       Ω(true);
@@ -1527,6 +1535,9 @@
   inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
     outer: null
   }, [
+    function GetThisBinding(Ω, ƒ){
+      Ω(this.bindings);
+    },
     function HasThisBinding(Ω, ƒ){
       Ω(true);
     },
@@ -1580,7 +1591,7 @@
       this.keys = new PropertyList;
     } else {
       if (proto === undefined)
-        proto = intrinsics.ObjectPrototype;
+        proto = intrinsics.ObjectProto;
       this.Prototype = proto;
       this.properties = create(proto.properties);
       this.attributes = create(proto.attributes);
@@ -1660,7 +1671,7 @@
         }
       } else {
         var proto = this.Prototype;
-        if (proto === null) {
+        if (!proto) {
           if (!receiver.Extensible) {
             Ω(false);
           } else {
@@ -1861,13 +1872,13 @@
     this.base = base;
     var type = typeof base;
     if (type === STRING) {
-      $Object.call(this, intrinsics.StringPrototype);
+      $Object.call(this, intrinsics.StringProto);
       this.NativeBrand = StringWrapper;
     } else if (type === NUMBER) {
-      $Object.call(this, intrinsics.NumberPrototype);
+      $Object.call(this, intrinsics.NumberProto);
       this.NativeBrand = NumberWrapper;
     } else if (type === BOOLEAN) {
-      $Object.call(this, intrinsics.BooleanPrototype);
+      $Object.call(this, intrinsics.BooleanProto);
       this.NativeBrand = BooleanWrapper;
     }
   }
@@ -1918,7 +1929,7 @@
 
   function $Function(kind, params, body, scope, strict, proto, holder, name){
     if (proto === undefined)
-      proto = intrinsics.FunctionPrototype;
+      proto = intrinsics.FunctionProto;
 
     $Object.call(this, proto);
     this.FormalParameters = params;
@@ -2024,7 +2035,7 @@
   // #############
 
   function $Date(value){
-    $Object.call(this, intrinsics.DatePrototype);
+    $Object.call(this, intrinsics.DateProto);
     this.PrimitiveValue = value;
   }
 
@@ -2038,7 +2049,7 @@
   // ###############
 
   function $String(value){
-    $Object.call(this, intrinsics.StringPrototype);
+    $Object.call(this, intrinsics.StringProto);
     this.PrimitiveValue = value;
   }
 
@@ -2053,7 +2064,7 @@
   // ###############
 
   function $Number(value){
-    $Object.call(this, intrinsics.NumberPrototype);
+    $Object.call(this, intrinsics.NumberProto);
     this.PrimitiveValue = value;
   }
 
@@ -2068,7 +2079,7 @@
   // ################
 
   function $Boolean(value){
-    $Object.call(this, intrinsics.BooleanPrototype);
+    $Object.call(this, intrinsics.BooleanProto);
     this.PrimitiveValue = value;
   }
 
@@ -2084,7 +2095,7 @@
   // ############
 
   function $Map(){
-    $Object.call(this, intrinsics.MapPrototype);
+    $Object.call(this, intrinsics.MapProto);
   }
 
   inherit($Map, $Object, {
@@ -2096,7 +2107,7 @@
   // ############
 
   function $Set(){
-    $Object.call(this, intrinsics.SetPrototype);
+    $Object.call(this, intrinsics.SetProto);
   }
 
   inherit($Set, $Object, {
@@ -2109,7 +2120,7 @@
   // ################
 
   function $WeakMap(){
-    $Object.call(this, intrinsics.WeakMapPrototype);
+    $Object.call(this, intrinsics.WeakMapProto);
   }
 
   inherit($WeakMap, $Object, {
@@ -2121,7 +2132,7 @@
   // ##############
 
   function $Array(items){
-    $Object.call(this, intrinsics.ArrayPrototype);
+    $Object.call(this, intrinsics.ArrayProto);
     if (items instanceof Array) {
       var len = items.length;
       for (var i=0; i < len; i++)
@@ -2142,7 +2153,7 @@
   // ###############
 
   function $RegExp(){
-    $Object.call(this, intrinsics.RegExpPrototype);
+    $Object.call(this, intrinsics.RegExpProto);
   }
 
   inherit($RegExp, $Object, {
@@ -2156,7 +2167,7 @@
   // ####################
 
   function $PrivateName(proto){
-    $Object.call(this, intrinsics.PrivateNamePrototype);
+    $Object.call(this, intrinsics.PrivateNameProto);
   }
 
   inherit($PrivateName, $Object, {
@@ -2184,7 +2195,7 @@
       if (map.keys.has(key)) {
         map.properties[key].get(Ω, ƒ);
       } else {
-        $Object.prototype.Get.call(this, key, Ω, ƒ);
+        this.GetP(this, key, Ω, ƒ);
       }
     },
     // function GetOwnProperty(key, Ω, ƒ){
@@ -2293,33 +2304,53 @@
   ]);
 
 
-  var builtinInit = [$Array, $Boolean, $Date, $Function, $Map,
-                     $Number, $RegExp, $Set, $String, $WeakMap];
+  var $builtins = {
+    Array   : $Array,
+    Boolean : $Boolean,
+    Date    : $Date,
+    Function: $Function,
+    Map     : $Map,
+    Number  : $Number,
+    RegExp  : $RegExp,
+    Set     : $Set,
+    String  : $String,
+    WeakMap : $WeakMap
+  };
 
+  var primitives = {
+    Date: Date.prototype,
+    String: '',
+    Number: 0,
+    Boolean: false
+  };
+
+  var atoms = {
+    NaN: NaN,
+    Infinity: Infinity,
+    undefined: undefined
+  };
 
   function Realm(){
-    var intrin = this.intrinsics = new Hash;
-    var ObjectPrototype = intrin.ObjectPrototype = new $Object(null);
+    var intrinsics = this.intrinsics = create(null),
+        OP = intrinsics.ObjectProto = new $Object(null),
+        global = this.global = new $Object(OP);
 
-    this.global = new $Object(ObjectPrototype);
-    this.globalEnv = new GlobalEnvironmentRecord(this.global);
+    this.globalEnv = new GlobalEnvironmentRecord(global);
 
-    for (var i = 0; i < builtinInit.length; i++) {
-      var Prototype = intrin[builtinInit[i].name.slice(1) + 'Prototype'] = create(builtinInit[i].prototype);
-      $Object.call(Prototype, ObjectPrototype);
+    for (var k in $builtins) {
+      var prototype = intrinsics[k + 'Proto'] = create($builtins[k].prototype);
+      $Object.call(prototype, OP);
+      if (k in primitives)
+        prototype.PrimitiveValue = primitives[k];
     }
-    var FunctionPrototype = intrin.FunctionPrototype;
-    FunctionPrototype.Realm = this;
-    FunctionPrototype.Scope = this.globalEnv;
-    FunctionPrototype.FormalParameters = [];
-    intrin.DatePrototype.PrimitiveValue = Date.prototype;
-    intrin.StringPrototype.PrimitiveValue = '';
-    intrin.NumberPrototype.PrimitiveValue = 0;
-    intrin.BooleanPrototype.PrimitiveValue = false;
-    intrin.ArrayPrototype.defineDirect('length', 0, ___);
-    this.global.defineDirect('NaN', NaN, ___);
-    this.global.defineDirect('Infinity', Infinity, ___);
-    this.global.defineDirect('undefined', undefined, ___);
+
+    var FP = intrinsics.FunctionProto;
+    FP.Realm = this;
+    FP.Scope = this.globalEnv;
+    FP.FormalParameters = [];
+    intrinsics.ArrayProto.defineDirect('length', 0, ___);
+    for (var k in atoms)
+      global.defineDirect(k, atoms[k], ___);
   }
 
   inherit(Realm, Emitter);
@@ -2458,7 +2489,7 @@
         console.log(e.stack)
       }
     } else {
-      Ω(node)
+      ƒ(node)
     }
   }
 
@@ -2588,9 +2619,9 @@
     },
     BlockStatement: function(node, Ω, ƒ){
       var completion;
-      ITERATE(node.body, evaluate, function(result){
+      ITERATE(node.body, evaluate, function(result, Ω){
         GetValue(result, Ω, ƒ);
-      }, ƒ);
+      }, Ω, ƒ);
     },
     BreakStatement: function(node, Ω, ƒ){
       if (node.label === null)
@@ -2816,7 +2847,7 @@
           }, ƒ)
         },
         function(_, Ω){
-          env.SetMutableBinding(name, instance, context.isStrict, Ω, ƒ);
+          env.SetMutableBinding(name, instance, context.strict, Ω, ƒ);
         }
       ], Ω, ƒ);
     },
@@ -3022,7 +3053,9 @@
       }
     },
     ThisExpression: function(node, Ω, ƒ){
-      Ω(context.receiver);
+      GetThisEnvironment(function(env){
+        env.GetThisBinding(Ω, ƒ);
+      }, ƒ);
     },
     ThrowStatement: function(node, Ω, ƒ){
       evaluate(node.argument, function(argument){
@@ -3075,11 +3108,14 @@
       }
     },
     UpdateExpression: function(node, Ω, ƒ){
-      reference(node.argument, function(ref){
-        ToPrimitive([ref.get()], function(val){
-          var newval = node.operator === '++' ? val + 1 : val - 1;
-          ref.set(newval);
-          Ω(node.prefix ? newval : val);
+      evaluate(node.argument, function(ref){
+        GetValue(ref, function(val){
+          ToPrimitive(val, 'Number', function(val){
+            var newval = node.operator === '++' ? val + 1 : val - 1;
+            PutValue(ref, newval, function(){
+              Ω(node.prefix ? newval : val);
+            }, ƒ)
+          }, ƒ);
         }, ƒ);
       }, ƒ);
     },
