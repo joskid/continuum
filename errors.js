@@ -1,5 +1,5 @@
 var errors = module.exports = (function(errors, messages){
-  function Exception(type, name, message){
+  function Exception(name, type, message){
     var args = {},
         argNames = ['context', 'Ω'];
     var src = message.map(function(str){
@@ -24,7 +24,7 @@ var errors = module.exports = (function(errors, messages){
   Exception.prototype.instantiate = function instantiate(context, message){
     //var e = context.realm.createIntrinsic(this.type);
     var e = new Intrinsic(this.type);
-    e.setDirect('name', this.type);
+    e.setDirect('name', this.name);
     e.setDirect('message', message);
     return e;
   };
@@ -83,6 +83,7 @@ var errors = module.exports = (function(errors, messages){
     instanceof_function_expected   : ["Expecting a function in instanceof check, but got ", "$0"],
     instanceof_nonobject_proto     : ["Function has non-object prototype '", "$0", "' in instanceof check"],
     null_to_object                 : ["Cannot convert null to object"],
+    undefined_to_object            : ["Cannot convert undefined to object"],
     reduce_no_initial              : ["Reduce of empty array with no initial value"],
     getter_must_be_callable        : ["Getter must be a function: ", "$0"],
     setter_must_be_callable        : ["Setter must be a function: ", "$0"],
@@ -109,6 +110,11 @@ var errors = module.exports = (function(errors, messages){
     called_on_non_object           : ["$0", " called on non-object"],
     called_on_null_or_undefined    : ["$0", " called on null or undefined"],
     array_indexof_not_defined      : ["Array.getIndexOf: Argument undefined"],
+    strict_delete_property         : ["Cannot delete property '", "$0", "' of ", "$1"],
+    strict_read_only_property      : ["Cannot assign to read only property '", "$0", "' of ", "$1"],
+    strict_cannot_assign           : ["Cannot assign to read only '", "$0", "' in strict mode"],
+    strict_poison_pill             : ["'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them"],
+    object_not_extensible          : ["Can't add property ", "$0", ", object is not extensible"],
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],
@@ -134,7 +140,6 @@ var errors = module.exports = (function(errors, messages){
     illegal_return                 : ["Illegal return statement"],
     illegal_let                    : ["Illegal let declaration outside extended mode"],
     error_loading_debugger         : ["Error loading debugger"],
-    object_not_extensible          : ["Can't add property ", "$0", ", object is not extensible"],
     illegal_access                 : ["Illegal access"],
     invalid_preparser_data         : ["Invalid preparser data for function ", "$0"],
     strict_mode_with               : ["Strict mode code may not include a with statement"],
@@ -155,11 +160,7 @@ var errors = module.exports = (function(errors, messages){
     strict_lhs_prefix              : ["Prefix increment/decrement may not have eval or arguments operand in strict mode"],
     strict_reserved_word           : ["Use of future reserved word in strict mode"],
     strict_delete                  : ["Delete of an unqualified identifier in strict mode."],
-    strict_delete_property         : ["Cannot delete property '", "$0", "' of ", "$1"],
     strict_function                : ["In strict mode code, functions can only be declared at top level or immediately within another function." ],
-    strict_read_only_property      : ["Cannot assign to read only property '", "$0", "' of ", "$1"],
-    strict_cannot_assign           : ["Cannot assign to read only '", "$0", "' in strict mode"],
-    strict_poison_pill             : ["'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them"],
     strict_caller                  : ["Illegal access to a strict mode caller function."],
     unprotected_let                : ["Illegal let declaration in unprotected statement context."],
     unprotected_const              : ["Illegal const declaration in unprotected statement context."],
