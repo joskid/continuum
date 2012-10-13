@@ -56,22 +56,124 @@ void function(){
     }
   });
 
+  function ArrayIterator(array){
+    var index = 0;
+    this.next = () => {
+      if (index < array.length) {
+        return array[index++];
+      } else {
+        throw StopIteration;
+      }
+    };
+  }
   define(Array.prototype, function iterator(){
     return new ArrayIterator(this);
   });
 
-  function ArrayIterator(array){
-    var index=0;
-    this.next = function(){
-      if (index < array.length)
-        return array[index++]
-      else
-        throw StopIteration;
-    };
-
-    return this
-  }
-  ArrayIterator.prototype = new Iterator;
 }();
-
+global = this;
+  // define(Array.prototype, function iterator(){
+  //   var index = 0;
+  //   return {
+  //     next: () => {
+  //       if (index < this.length) {
+  //         return this[index++];
+  //       } else {
+  //         throw StopIteration;
+  //       }
+  //     }
+  //   };
   //['filter', 'every', 'some', 'sort', 'reduceRight']
+
+
+var builtins = {
+  Object: {
+    Call: function(receiver, args, Ω, ƒ){
+      ToObject(args[0], Ω, ƒ);
+    },
+    Construct: function(receiver, args, Ω, ƒ){
+      Ω(new $Object(intrinsics.ObjectPrototype));
+    },
+    defineProperty: function(receiver, args, Ω, ƒ){
+      var object = args[0],
+          key    = args[1],
+          desc   = args[2];
+
+      if (object instanceof $Object) {
+        throwException('called_on_non_object', [], ƒ);
+      } else if (!isObject(desc)) {
+        throwException('property_desc_object', [typeof descs[k]], ƒ);
+      } else {
+        object.DefineOwnProperty(key, desc, false, Ω, ƒ);
+      }
+    },
+    defineProperties: function(receiver, args, Ω, ƒ){
+      var object = args[0],
+          descs  = args[1];
+
+      if (object instanceof $Object) {
+        throwException('called_on_non_object', [], ƒ);
+      } else if (!isObject(desc)) {
+        throwException('property_desc_object', [typeof descs], ƒ);
+      } else {
+        descs = descs.properties;
+        for (var k in descs) {
+          if (!isObject(descs[k]))
+            throwException('property_desc_object', [typeof descs[k]], ƒ);
+          object.DefineOwnProperty(k, descs[k], false, RETURNS(object), ƒ)
+        }
+      }
+    },
+    create: function(receiver, args, Ω, ƒ){
+      var proto = args[0],
+          descs = args[1];
+
+      if (proto !== null && !(proto instanceof $Object)) {
+        throwException('proto_object_or_null', [], ƒ);
+      } else {
+        var object = new $Object(proto);
+        if (descs) {
+          builtins.Object.defineProperties([object], descs, Ω, ƒ);
+        } else {
+          Ω(object);
+        }
+      }
+    },
+    prototype: {
+      toString: function(receiver, args, Ω, ƒ){
+
+      },
+      valueOf: function(receiver, args, Ω, ƒ){
+
+      },
+      hasOwnProperty: function(receiver, args, Ω, ƒ){
+        var key = args[0];
+      },
+      isPrototypeOf: function(receiver, args, Ω, ƒ){
+        var object = args[0];
+      },
+      propertyIsEnumerable: function(receiver, args, Ω, ƒ){
+        var key = args[0];
+      },
+      toLocaleString: function(receiver, args, Ω, ƒ){
+
+      },
+      __defineGetter__: function(receiver, args, Ω, ƒ){
+        var key  = args[0],
+            func = args[1];
+      },
+      __defineSetter__: function(receiver, args, Ω, ƒ){
+        var key  = args[0],
+            func = args[1];
+      },
+      __lookupGetter__: function(receiver, args, Ω, ƒ){
+        var key  = args[0],
+            func = args[1];
+      },
+      __lookupSetter__: function(receiver, args, Ω, ƒ){
+        var key  = args[0],
+            func = args[1];
+      },
+    }
+  }
+};
