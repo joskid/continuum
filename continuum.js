@@ -275,8 +275,9 @@
     function annotateAST(node){
       if (isExecutable(node)) {
         node.strict = hasUseStrict(node);
-        node.scope = create(null);
-        node.block = create(null);
+        node.body.scope = create(null);
+        node.body.block = create(null);
+        node.body.fdecls = create(null);
       }
       var visitor = new Visitor(node, function(node, parent){
         if (isObject(node)) {
@@ -287,6 +288,7 @@
             node.strict = hasUseStrict(node);
             node.body.scope = create(null);
             node.body.block = create(null);
+            node.body.fdecls = create(null);
           } else if (!hasOwnProperty.call(node, 'scope')) {
             Object.defineProperties(node, {
               scope: { configurable: true, writable: true, value: parent.scope },
@@ -305,14 +307,11 @@
               }
               break;
             case 'FunctionDeclaration':
-            case 'FunctionExpression':
-              if (node.id) {
-                node.body.scope[node.id.name] = 'var';
-              }
-              for (var i=0; i < node.params.length; i++) {
-                if (node.params[i].name)
-                  node.body.scope[node.params[i].name] = 'var';
-              }
+              node.parent.fdecls && (node.parent.fdecls[node.id.name] = node);
+              // for (var i=0; i < node.params.length; i++) {
+              //   if (node.params[i].name)
+              //     node.body.scope[node.params[i].name] = 'var';
+              // }
               break;
             case 'BlockStatement':
               node.body.block = create(null);
@@ -803,8 +802,10 @@
         } else {
           base.Get(v.name, Ω, ƒ);
         }
-      } else {
+      } else if (base && base.GetBindingValue) {
         base.GetBindingValue(v.name, v.strict, Ω, ƒ);
+      } else {
+        Ω(base);
       }
     }
   }
@@ -886,7 +887,7 @@
 
   function NewMethodEnvironment(method, receiver){
     var lex = new MethodEnvironmentRecord(receiver, method.Home, method.MethodName);
-    lex.outer = method.scope;
+    lex.outer = method.Scope;
     return lex;
   }
 
@@ -1088,54 +1089,31 @@
 
   function EvaluateCall(ref, args, tail, Ω, ƒ){
     GetValue(ref, function(func){
-      ArgumentListEvaluation(args, function(argList){
-        IsCallable(func, function(callable){
-          if (!callable) {
-            throwException('called_non_callable', key, ƒ);
-          } else {
-            SEQUENCE([
-              function(_, Ω){
-                if (ref !== func) {
-                  if (IsPropertyReference(ref)) {
-                    GetThisValue(ref, Ω, ƒ);
-                  } else {
-                    ref.base.WithBaseObject(Ω, ƒ)
-                  }
+      IsCallable(func, function(callable){
+        if (!callable) {
+          throwException('called_non_callable', key, ƒ);
+        } else {
+          SEQUENCE([
+            function(_, Ω){
+              if (ref !== func) {
+                if (IsPropertyReference(ref)) {
+                  GetThisValue(ref, Ω, ƒ);
                 } else {
-                  Ω()
+                  ref.base.WithBaseObject(Ω, ƒ)
                 }
-              },
-              function(thisValue, Ω){
-                func.Call(thisValue, argList, Ω, ƒ);
+              } else {
+                Ω()
               }
-            ], Ω, ƒ);
-          }
-        }, ƒ);
+            },
+            function(thisValue, Ω){
+              func.Call(thisValue, args, Ω, ƒ);
+            }
+          ], Ω, ƒ);
+        }
       }, ƒ);
     }, ƒ);
   }
 
-  // ## ArgumentListEvaluation
-
-  function ArgumentListEvaluation(args, Ω, ƒ){
-    if (args instanceof Array) {
-      var argList = [];
-      ITERATE(args, function(arg, Ω){
-        resolve(arg, function(arg){
-          argList.push(arg);
-          Ω();
-        }, ƒ);
-      }, function(){
-        Ω(argList);
-      }, ƒ);
-    } else if (args && typeof args === 'object' && 'type' in args) {
-      resolve(args, function(arg){
-        Ω([arg]);
-      }, ƒ);
-    } else {
-      Ω([]);
-    }
-  }
 
 
   // ## FunctionDeclarationInstantiation
@@ -1143,7 +1121,11 @@
   function FunctionDeclarationInstantiation(func, argsList, env, Ω, ƒ){
     var params = func.FormalParameters,
         code = func.Code,
-        strict = code.strict;
+        strict = code.strict,
+        vars = enumerate(code.scope),
+        funcs = enumerate(code.fndecls),
+        args;
+
 
     SEQUENCE([
       function(_, Ω){
@@ -1165,15 +1147,14 @@
       },
       function(_, Ω){
         if (strict) {
-          var args = CreateStrictArgumentsObject(argsList);
+          args = CreateStrictArgumentsObject(argsList);
+          BindingInitialisation(params, argsList, undefined, Ω, ƒ);
         } else {
-          var args = CreateMappedArgumentsObject(func, params, env, argsList);
+          args = CreateMappedArgumentsObject(func, params, env, argsList);
+          BindingInitialisation(params, argsList, env, Ω, ƒ);
         }
-        // Binding Initialization;
-        Ω(args);
       },
-      function(args, Ω){
-        var decls = enumerate(code.scope);
+      function(status, Ω){
         ITERATE(decls, function(decl, Ω){
           env.HasBinding(decl, function(alreadyDeclared){
             if (!alreadyDeclared) {
@@ -1207,13 +1188,53 @@
         }, ƒ);
       },
       function(_, Ω){
-        // initialize functions
-        // VarDeclaredNames
-        Ω();
+        ITERATE(funcs, function(name, Ω){
+          var decl = code.fndecls[name],
+              scope = context.LexicalEnvironment,
+              str = strict || decl.strict;
+
+          var params = decl.params.map(function(param){
+            return param.name;
+          });
+
+          var f = new $Function(NormalFunction, name, params, decl.body, scope, str);
+          f.MakeConstructor();
+          env.InitializeBinding(name, Ω, ƒ);
+        }, Ω, ƒ);
       }
     ], Ω, ƒ);
   }
 
+
+  function IdentifierResolution(name, Ω, ƒ) {
+    return GetIdentifierReference(context.LexicalEnvironment, name, context.strict, Ω, ƒ);
+  }
+
+  function BindingInitialisation(pattern, value, env, Ω, ƒ) {
+    if (pattern.type === 'Identifier') {
+      if (env !== undefined) {
+        env.InitializeBinding(pattern.name, value, Ω, ƒ);
+      } else {
+        IdentifierResolution(pattern.name, function(lhs){
+          PutValue(lhs, value, Ω, ƒ);
+        }, ƒ);
+      }
+    } else if (pattern.type === 'ArrayPattern') {
+      IndexedBindingInitialisation(pattern, value, 0, env, Ω, ƒ);
+    } else if (pattern.type === 'ObjectPattern') {
+    } else {
+      Ω();
+    }
+  }
+
+  function IndexedBindingInitialisation(pattern, array, i, env) {
+    ITERATE(pattern.elements, function(element, Ω){
+      array.Get(i, function(v){
+        i = ++i + '';
+        BindingInitialisation(element, v, env, Ω, ƒ);
+      }, ƒ);
+    }, Ω, ƒ);
+  }
 
   // function ArgumentListEvaluation(args, Ω, ƒ){
   //   if (!args || args instanceof Array && !args.length) {
@@ -2000,25 +2021,15 @@
           ExecutionContext.push(new ExecutionContext(context, local, self.Realm, self.Code));
           FunctionDeclarationInstantiation(self, args, local, function(){
             Interpreter.current.emit('enter-function', context);
-            evaluate(self.Code, Ω, function(result){
-              if (result.type === RETURN) {
+            evaluate(self.Code, function(result){
+              if (result && result.type === RETURN) {
                 Interpreter.current.emit('return', result);
                 Ω(result.value);
               } else {
-                Interpreter.current.emit('abnormal', result);
-                result.context = ExecutionContext.pop();
-                result.continuation = Ω;
-                ƒ(result);
+                Ω();
               }
-            });
-          }, function(result){
-            ExecutionContext.pop();
-            ƒ(result);
-          });
-        },
-        function(result, Ω){
-          ExecutionContext.pop();
-          Ω(result);
+            }, ƒ);
+          }, ƒ);
         }
       ], Ω, ƒ)
     },
@@ -2027,7 +2038,7 @@
       this.Get('prototype', function(prototype){
         var instance = typeof prototype === 'object' ? new $Object(prototype) : new $Object;
         self.Call(instance, args, function(result){
-          Ω(typeof result === 'object' ? result : instance);
+          Ω(typeof result === OBJECT ? result : instance);
         }, ƒ);
       }, ƒ);
     },
@@ -2041,7 +2052,7 @@
       if (writablePrototype === undefined)
         writablePrototype = true;
       if (install)
-        prototype.defineDirect('constructor', this, writablePrototype ? C_W : ___);
+        prototype.defineDirect('constructor', this, writablePrototype ? _CW : ___);
       this.defineDirect('prototype', prototype, writablePrototype ? __W : ___);
     }
   ]);
@@ -2302,21 +2313,23 @@
     function Get(key, Ω, ƒ){
       var map = this.ParameterMap;
       if (map.keys.has(key)) {
-        map.properties[key].get(Ω, ƒ);
+        Ω(map.properties[key]);
       } else {
         this.GetP(this, key, Ω, ƒ);
       }
     },
-    // function GetOwnProperty(key, Ω, ƒ){
-    //   var map = this.ParameterMap;
-    //   $Object.prototype.GetOwnProperty.call(this, key, function(desc){
-    //     if (desc) {
-    //       if (map.keys.has(key)) {
-    //         map.properties[key].get(Ω, ƒ);
-    //       }
-    //     }
-    //   }, ƒ);
-    // }
+    function GetOwnProperty(key, Ω, ƒ){
+      var map = this.ParameterMap;
+      $Object.prototype.GetOwnProperty.call(this, key, function(desc){
+        if (desc) {
+          if (map.keys.has(key)) {
+            Ω(map.properties[key]);
+          } else {
+            Ω(desc);
+          }
+        }
+      }, ƒ);
+    }
   ]);
 
 
@@ -2464,7 +2477,7 @@
     FP.Realm = this;
     FP.Scope = this.globalEnv;
     FP.FormalParameters = [];
-    intrinsics.ArrayProto.defineDirect('length', 0, ___);
+    intrinsics.ArrayProto.defineDirect('length', 0, __W);
     for (var k in atoms)
       global.defineDirect(k, atoms[k], ___);
   }
@@ -2657,8 +2670,6 @@
     },
     ArrayPattern: function(node, Ω, ƒ){},
     ArrowFunctionExpression: function(node, Ω, ƒ){
-      node.thunk || (node.thunk = new ArrowFunctionThunk(node));
-      Ω(node.thunk.instantiate(context));
     },
     AssignmentExpression: function(node, Ω, ƒ){
       evaluate(node.left, function(ref){
@@ -2742,9 +2753,18 @@
       }, ƒ);
     },
     BlockStatement: function(node, Ω, ƒ){
-      ITERATE(node.body, evaluate, function(result, Ω){
-        GetValue(result, Ω, ƒ);
-      }, Ω, ƒ);
+      if (node.body.length) {
+        ITERATE(node.body, evaluate, function(result, Ω){
+          GetValue(result, function(result){
+            if (result instanceof $Object || !isObject(result))
+              Ω(result);
+            else
+              Ω();
+          }, ƒ);
+        }, Ω, ƒ);
+      } else {
+        Ω();
+      }
     },
     BreakStatement: function(node, Ω, ƒ){
       if (node.label === null)
@@ -2760,7 +2780,12 @@
         }, ƒ)
       } else {
         evaluate(node.callee, function(ref){
-          EvaluateCall(ref, node.arguments, false, Ω, ƒ);
+          resolve(node.arguments, function(argList){
+            EvaluateCall(ref, argList, false, function(result){
+              ExecutionContext.pop();
+              Ω(result);
+            }, ƒ);
+          }, ƒ);
         }, ƒ);
       }
     },
@@ -2810,8 +2835,8 @@
     },
     ClassHeritage: function(node, context){},
     ConditionalExpression: function(node, Ω, ƒ){
-      evaluate(node.test, function(result){
-        evaluate(result ? node.consequent : node.alternate, Ω, ƒ);
+      resolve(node.test, function(result){
+        resolve(result ? node.consequent : node.alternate, Ω, ƒ);
       }, ƒ);
     },
     ContinueStatement: function(node, Ω, ƒ){
@@ -2948,6 +2973,7 @@
       });
 
       var instance = new $Function(NormalFunction, name, params, node.body, env, context.strict || node.strict);
+      instance.MakeConstructor();
 
       SEQUENCE([
         function(_, Ω){
@@ -2982,7 +3008,9 @@
         return param.name;
       });
 
-      Ω(new $Function(NormalFunction, name, params, node.body, env, strict));
+      var instance = new $Function(NormalFunction, name, params, node.body, env, strict);
+      instance.MakeConstructor();
+      Ω(instance);
     },
     Glob: function(node, Ω, ƒ){},
     Identifier: function(node, Ω, ƒ){
@@ -3041,11 +3069,11 @@
     ModuleDeclaration: function(node, Ω, ƒ){},
     NewExpression: function(node, Ω, ƒ){
       resolve(node.callee, function(callee){
-        if (typeof constructor !== 'object' || !constructor.Construct) {
-          throwException('not_constructor', [constructor], ƒ)
+        if (typeof callee !== 'object' || !callee.Construct) {
+          throwException('not_constructor', callee, ƒ)
         } else {
-          evaluate(node.arguments, function(argList){
-            constructor.Construct(argList, Ω, ƒ);
+          resolve(node.arguments, function(argList){
+            callee.Construct(argList, Ω, ƒ);
           }, ƒ);
         }
       }, ƒ);
@@ -3086,9 +3114,11 @@
         ITERATE(varDecls, evaluate, function(){
           context && (context.initializing = false);
           ITERATE(node.body, evaluate, function(result){
-            GetValue(result, function(result){
+            if (typeof result === OBJECT && result.Reference === ReferenceSigil) {
+              GetValue(result, Ω, ƒ);
+            } else {
               Ω(result);
-            }, ƒ)
+            }
           }, ƒ);
         }, ƒ);
       }, ƒ);
