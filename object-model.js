@@ -1,5 +1,14 @@
   var errors = require('./errors');
 
+  if (typeof require === 'function') {
+    var esprima = require('esprima'),
+        escodegen = require('escodegen'),
+        errors = require('./errors');
+  } else {
+    var esprima = global.esprima,
+        escodegen = global.escodegen;
+  }
+
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',
       NUMBER    = 'number',
@@ -73,6 +82,12 @@
     return typeof v === OBJECT ? v !== null : typeof v === FUNCTION;
   }
 
+  function enumerate(o){
+    var keys = [], i = 0;
+    for (keys[i++] in o);
+    return keys;
+  }
+
   function define(o, p, v){
     switch (typeof p) {
       case STRING:
@@ -128,9 +143,235 @@
     }].concat(args));
   }
 
-  function parse(src){
-    return esprima.parse(src, parse.options);
+
+  var Visitor = function(){
+    function Cursor(parent, items){
+      this.parent = parent || null;
+      this.items = items;
+    }
+
+    function Visitor(node, callback, filter){
+      this.callback = callback;
+      this.root = node;
+      if (filter)
+        this.filter = filter;
+      this.reset();
+
+    }
+
+    Visitor.visit = function visit(node, callback, filter){
+      var visitor = new Visitor(node, callback, filter);
+      visitor.next();
+    }
+
+    Visitor.filter = function filter(root, filter){
+      var out = [];
+      var visitor = new Visitor(root, function(node, parent){
+        if (filter(node)) {
+          out.push(node);
+          return RECURSE;
+        } else {
+          return CONTINUE;
+        }
+      });
+      return out;
+    }
+
+
+    var BREAK    = Visitor.BREAK    = new String('break'),
+        CONTINUE = Visitor.CONTINUE = new String('continue'),
+        RECURSE  = Visitor.RECURSE  = new String('recurse');
+
+    Visitor.prototype = {
+      constructor: Visitor,
+      filter: function filter(){
+        return true;
+      },
+      reset: function reset(){
+        this.stack = [];
+        this.items = [];
+        this.seen = new Set;
+        this.queue(this.root);
+        this.items.unshift(this.root);
+        return this;
+      },
+      next: function next(){
+        this.items.length || this.pop();
+        var item = this.items.pop();
+
+        if (item !== undefined)
+          var result = this.callback(item, this.cursor);
+
+        switch (result) {
+          case RECURSE: typeof item !== 'string' && this.queue(item);
+          case CONTINUE:
+            this.cursor && this.next();
+          case BREAK:
+          default:
+        }
+        return this;
+      },
+      queue: function queue(node){
+        if (this.seen.has(node))
+          return;
+        this.seen.add(node);
+
+        if (this.cursor && this.items.length)
+          this.stack.push(new Cursor(this.cursor, this.items));
+
+        this.cursor = node;
+        this.items = [];
+
+        var items = [],
+            index = 0;
+
+        if (!node)
+          return;
+
+        for (var k in node)
+          if (this.filter(node[k]))
+            items[index++] = node[k];
+
+        while (index--)
+          this.items.push(items[index]);
+
+        return this;
+      },
+      pop: function pop(){
+        var current = this.stack.pop();
+        if (current) {
+          this.cursor = current.parent;
+          this.items = current.items;
+          if (!this.items.length)
+            this.pop();
+        } else {
+          this.cursor = null;
+          this.items = [];
+          this.depleted = true;
+        }
+        return this;
+      }
+    };
+
+    return Visitor;
+  }();
+
+  var parse = (function(){
+    function hasUseStrict(node){
+      var body = node.body;
+      for (var i=0; i < body.length; i++) {
+        switch (body[i].type) {
+          case 'FunctionDeclaration':
+          case 'EmptyStatement':
+            continue;
+          case 'ExpressionStatement':
+            var expr = body[i].expression;
+            if (expr && expr.type === 'Literal' && expr.value === 'use strict')
+              return true;
+          default:
+            return false;
+        }
+      }
+      return false;
+    }
+
+
+    function annotateAST(node){
+      if (isExecutable(node)) {
+        node.strict = hasUseStrict(node);
+        node.scope = create(null);
+        node.block = create(null);
+      }
+      var visitor = new Visitor(node, function(node, parent){
+        if (isObject(node)) {
+          Object.defineProperty(node, 'parent', { configurable: true,
+                                                  writable: true,
+                                                  value: parent });
+          if (isExecutable(node)) {
+            node.strict = hasUseStrict(node);
+            node.body.scope = create(null);
+            node.body.block = create(null);
+          } else if (!hasOwnProperty.call(node, 'scope')) {
+            Object.defineProperties(node, {
+              scope: { configurable: true, writable: true, value: parent.scope },
+              block: { configurable: true, writable: true, value: parent.block },
+            });
+          }
+
+          switch (node.type) {
+            case 'VariableDeclarator':
+              if (node.id) {
+                var kind = node.parent.parent.kind;
+                if (kind === 'var')
+                  node.scope[node.id.name] = kind;
+                else
+                  node.block[node.id.name] = kind;
+              }
+              break;
+            case 'FunctionDeclaration':
+            case 'FunctionExpression':
+              if (node.id) {
+                node.body.scope[node.id.name] = 'var';
+              }
+              for (var i=0; i < node.params.length; i++) {
+                if (node.params[i].name)
+                  node.body.scope[node.params[i].name] = 'var';
+              }
+              break;
+            case 'BlockStatement':
+              node.body.block = create(null);
+              Object.defineProperty(node.body, 'scope', { configurable: true,
+                                                            writable: true,
+                                                            value: node.scope });
+              break;
+          }
+
+        }
+        return Visitor.RECURSE;
+      });
+      visitor.next();
+      return node;
+    }
+
+    function parse(src){
+      return annotateAST(esprima.parse(src, parse.options));
+    }
+
+    return parse;
+  })();
+
+  function locals(root, subfilter){
+    var out = [];
+    var visitor = new Visitor(root, function(node){
+      if (isExecutable(node)) {
+        if (subfilter(node))
+          out.push(node);
+        return Visitor.CONTINUE;
+      } else {
+        if (subfilter(node))
+          out.push(node);
+        return Visitor.RECURSE;
+      }
+    });
+    visitor.next();
+    return out;
   }
+
+  function typeFilter(type){
+    return function(node){
+      return node && node.type === type;
+    };
+  }
+  function isFunction(node){
+    return node.type === 'FunctionDeclaration'
+        || node.type === 'FunctionExpression'
+        || node.type === 'ArrowFunctionExpression';
+  }
+
+  function isExecutable(node){
+    return node && (node.type === 'Program' || isFunction(node));
+  }
+
 
   function decompile(ast){
     return escodegen.generate(ast, decompile.options);
@@ -164,6 +405,7 @@
       safeConcatenation: true
     }
   };
+
 
   function Symbol(name){
     this.name = name;
@@ -266,19 +508,20 @@
     return function(){ throwException(msg, args, Ω); };
   }
 
-  function ITERATE(array, Ω, ƒ){
+  function ITERATE(array, cb, Ω, ƒ){
     var index = 0,
         stack = 0;
 
-    var next = function(){
+    function next(){
       if (stack++ > 100) {
         stack = 0;
         nextTick(next);
+      } else if (index === array.length - 1) {
+        cb(array[index++], Ω, ƒ);
       } else if (index < array.length) {
-        Ω(array[index++], next, ƒ);
+        cb(array[index++], next, ƒ);
       } else {
-        next = function(){};
-        ƒ();
+        Ω();
       }
     }
     next();
@@ -318,7 +561,7 @@
         next = Ω;
       funcs[i](v, next, ƒ);
     }
-    funcs[i](NOARGS, next);
+    funcs[i](NOARGS, next, ƒ);
   }
 
   function DISCARD(func, args){
@@ -418,12 +661,12 @@
       var props = desc.properties;
 
       if ('get' in props) {
-        if (props.get !== undefined && !IsCallable(props.get))
+        if (props.get !== undefined && !props.get.Call)
           return throwException('getter_must_be_callable', [typeof props.get], ƒ);
       }
 
       if ('set' in props) {
-        if (props.set !== undefined && !IsCallable(props.set))
+        if (props.set !== undefined && !props.get.Call)
           return throwException('setter_must_be_callable', [typeof props.set], ƒ);
       }
 
@@ -501,7 +744,7 @@
   // ## GetIdentifierReference
 
   function GetIdentifierReference(lex, name, strict, Ω, ƒ){
-    if (lex === null) {
+    if (lex == null) {
       Ω(new Reference(undefined, name, strict));
     } else {
       lex.HasBinding(name, function(result){
@@ -545,7 +788,7 @@
     if (!(v instanceof Reference)) {
       Ω(v);
     } else if (IsUnresolvableReference(v)) {
-      throwError('non_object_property_load', [v.name, v.base], ƒ);
+      throwException('non_object_property_load', [v.name, v.base], ƒ);
     } else {
       var base = v.base;
 
@@ -571,10 +814,10 @@
 
   function PutValue(v, w, Ω, ƒ){
     if (!(v instanceof Reference)) {
-      throwError('non_object_property_store', [v.name, v.base], ƒ);
+      throwException('non_object_property_store', [v.name, v.base], ƒ);
     } else if (IsUnresolvableReference(v)) {
       if (v.strict)
-        throwError('not_defined', [v.name, v.base], ƒ);
+        throwException('not_defined', [v.name, v.base], ƒ);
       else
         global.Put(v.name, w, false, Ω, ƒ);
     } else {
@@ -604,7 +847,7 @@
     if (!(v instanceof Reference))
       Ω(v);
     else if (IsUnresolvableReference(v))
-      throwError('non_object_property_load', [v.name, v.base], ƒ);
+      throwException('non_object_property_load', [v.name, v.base], ƒ);
     else if ('thisValue' in v)
       Ω(v.thisValue);
     else
@@ -835,6 +1078,185 @@
     return obj;
   }
 
+
+  function EvaluateCall(ref, args, tail, Ω, ƒ){
+    GetValue(ref, function(func){
+      ArgumentListEvaluation(args, function(argList){
+        IsCallable(func, function(callable){
+          if (!callable) {
+            throwException('called_non_callable', key, ƒ);
+          } else {
+            SEQUENCE([
+              function(_, Ω){
+                if (ref !== func) {
+                  if (IsPropertyReference(ref)) {
+                    GetThisValue(ref, Ω, ƒ);
+                  } else {
+                    ref.base.WithBaseObject(Ω, ƒ)
+                  }
+                } else {
+                  Ω()
+                }
+              },
+              function(thisValue, Ω){
+                func.Call(thisValue, argList, Ω, ƒ);
+              }
+            ], Ω, ƒ);
+          }
+        }, ƒ);
+      }, ƒ);
+    }, ƒ);
+  }
+
+  function ArgumentListEvaluation(args, Ω, ƒ){
+    if (args instanceof Array) {
+      var argList = [];
+      ITERATE(args, function(arg, Ω){
+        resolve(arg, function(arg){
+          argList.push(arg);
+          Ω();
+        }, ƒ);
+      }, function(){
+        Ω(argList);
+      }, ƒ);
+    } else if (args && typeof args === 'object' && 'type' in args) {
+      resolve(args, function(arg){
+        Ω([arg]);
+      }, ƒ);
+    } else {
+      Ω([]);
+    }
+  }
+
+
+  function FunctionDeclarationInstantiation(func, argsList, env, Ω, ƒ){
+    var params = func.FormalParameters,
+        code = func.Code,
+        strict = code.strict;
+
+    SEQUENCE([
+      function(_, Ω){
+        ITERATE(params, function(argName, Ω){
+          env.HasBinding(argName, function(alreadyDeclared){
+            if (!alreadyDeclared) {
+              env.CreateMutableBinding(argName, false, function(status){
+                if (!strict) {
+                  env.InitializeBinding(argName, undefined, Ω, ƒ);
+                } else {
+                  Ω();
+                }
+              }, ƒ);
+            } else {
+              Ω();
+            }
+          }, ƒ);
+        }, Ω, ƒ);
+      },
+      function(_, Ω){
+        if (strict) {
+          var args = CreateStrictArgumentsObject(argsList);
+        } else {
+          var args = CreateMappedArgumentsObject(func, params, env, argsList);
+        }
+        // Binding Initialization;
+        Ω(args);
+      },
+      function(args, Ω){
+        var decls = enumerate(code.scope);
+        ITERATE(decls, function(decl, Ω){
+          env.HasBinding(decl, function(alreadyDeclared){
+            if (!alreadyDeclared) {
+              env.CreateMutableBinding(decl, false, function(status){
+                if (!strict) {
+                  env.InitializeBinding(decl, undefined, Ω, ƒ);
+                } else {
+                  Ω();
+                }
+              }, ƒ);
+            } else {
+              Ω();
+            }
+          }, ƒ);
+        }, function(){
+          env.HasBinding('arguments', function(hasArgs){
+            if (!hasArgs) {
+              if (strict) {
+                env.CreateImmutableBinding('arguments', function(){
+                  env.InitializeBinding('arguments', args, Ω, ƒ);
+                }, ƒ);
+              } else {
+                env.CreateMutableBinding('arguments', false, function(){
+                  env.InitializeBinding('arguments', args, Ω, ƒ);
+                }, ƒ);
+              }
+            } else {
+              Ω();
+            }
+          }, ƒ);
+        }, ƒ);
+      },
+      function(_, Ω){
+        // initialize functions
+        // VarDeclaredNames
+        Ω();
+      }
+    ], Ω, ƒ);
+  }
+
+
+  // function ArgumentListEvaluation(args, Ω, ƒ){
+  //   if (!args || args instanceof Array && !args.length) {
+  //     Ω([]);
+  //   } else if (args.type === 'AssignmentExpression') {
+  //     evaluate(args, function(ref){
+  //       GetValue(ref, function(arg){
+  //         Ω([arg]);
+  //       }, ƒ);
+  //     }, ƒ);
+  //   } else if (args instanceof Array) {
+  //     var last = args[args.length - 1];
+  //     if (last && last.type === 'AssignmentExpression')
+  //   }
+  //}
+
+
+
+  function EQUALS(left, right, Ω, ƒ){
+    var leftType = typeof left,
+        rightType = typeof right;
+
+    if (leftType === rightType) {
+      STRICT_EQUALS(left, right, Ω, ƒ);
+    } else if (left == null && left == right) {
+      Ω(true);
+    } else if (leftType === NUMBER && rightType === STRING) {
+      ToNumber(right, function(right){
+        EQUALS(left, right, Ω, ƒ);
+      }, ƒ);
+    } else if (leftType === STRING && rightType === NUMBER) {
+      ToNumber(left, function(left){
+        EQUALS(left, right, Ω, ƒ);
+      }, ƒ);
+    } else if (rightType === OBJECT && leftType === STRING || leftType === OBJECT) {
+      ToPrimitive(right, function(right){
+        EQUALS(left, right, Ω, ƒ);
+      }, ƒ);
+    } else if (leftType === OBJECT && rightType === STRING || rightType === OBJECT) {
+      ToPrimitive(left, function(left){
+        EQUALS(left, right, Ω, ƒ);
+      }, ƒ);
+    } else {
+      Ω(false);
+    }
+  }
+
+  function STRICT_EQUALS(left, right, Ω, ƒ){
+    Ω(left === right);
+  }
+
+
+
+
   // ###########################
   // ###########################
   // ### Specification Types ###
@@ -983,6 +1405,10 @@
         this.deletables[name] = true;
       Ω();
     },
+    function InitializeBinding(name, value, Ω, ƒ){
+      this.bindings[name] = value;
+      Ω();
+    },
     function GetBindingValue(name, strict, Ω, ƒ){
       if (name in this.bindings) {
         var value = this.bindings[name];
@@ -1014,10 +1440,6 @@
       this.consts[name] = true;
       Ω();
     },
-    function InititalizeBinding(name, value, Ω, ƒ){
-      this.bindings[name] = value;
-      Ω();
-    },
     function DeleteBinding(name, Ω, ƒ){
       if (name in this.bindings) {
         if (name in this.deletables) {
@@ -1044,6 +1466,9 @@
     },
     function CreateMutableBinding(name, deletable, Ω, ƒ){
       this.bindings.DefineOwnProperty(name, emptyValue, true, Ω, ƒ);
+    },
+    function InitializeBinding(name, value, Ω, ƒ){
+      this.bindings.DefineOwnProperty(name, new DataDescriptor(value, ECW), true, Ω, ƒ);
     },
     function GetBindingValue(name, strict, Ω, ƒ){
       var self = this;
@@ -1269,7 +1694,7 @@
           var rejected = false;
 
           if (IsEmptyDescriptor(desc) || IsEquivalentDescriptor(desc, current)) {
-            Ω(true);
+            Ω();
           } else if (!current.configurable) {
             var nonConfigurableReject = function(){
               reject('redefine_disallowed', []);
@@ -1408,6 +1833,7 @@
     function defineDirect(key, value, attrs){
       this.properties[key] = value;
       this.attributes[key] = attrs;
+      this.keys.add(key);
     },
     function hasDirect(key){
       return key in this.properties;
@@ -1419,6 +1845,7 @@
       this.properties[key] = value;
       if (!(key in this.attributes))
         this.attributes[key] = ECW;
+      this.keys.add(key);
     },
     function getDirect(key){
       return this.properties[key];
@@ -1470,6 +1897,7 @@
     },
   ]);
 
+
   // #################
   // ### $Function ###
   // #################
@@ -1482,10 +1910,10 @@
       EvalCode = new Symbol('EvalCode'),
       FuntionCode = new Symbol('FunctionCode');
 
-  var ARROW = new Symbol('Arrow'),
-      NORMAL = new Symbol('Normal'),
-      METHOD = new Symbol('Method'),
-      GENERATOR = new Symbol('Generator');
+  var ArrowFunction = new Symbol('ArrowFunction'),
+      NormalFunction = new Symbol('NormalFunction'),
+      MethodFunction = new Symbol('MethodFunction'),
+      GeneratorFunction = new Symbol('GeneratorFunction');
 
 
   function $Function(kind, params, body, scope, strict, proto, holder, name){
@@ -1494,18 +1922,18 @@
 
     $Object.call(this, proto);
     this.FormalParameters = params;
-    this.ThisMode = kind === Arrow ? LexicalScope : strict ? StrictScope : GlobalScope;
+    this.ThisMode = kind === ArrowFunction ? LexicalScope : strict ? StrictScope : GlobalScope;
     this.Strict = strict;
     this.Realm = realm;
     this.Scope = scope;
-    this.Code = code;
-    if (home !== undefined)
+    this.Code = body;
+    if (holder !== undefined)
       this.Home = holder;
     if (name !== undefined)
       this.MethodName = name;
 
-    this.defineDirect('length', params.ExpectedArgumentCount, 0);
-    if (kind === Normal && strict) {
+    this.defineDirect('length', params.length, 0);
+    if (kind === NormalFunction && strict) {
       this.defineDirect('caller', intrinsics.ThrowTypeError, __A);
       this.defineDirect('arguments', intrinsics.ThrowTypeError, __A);
     }
@@ -1538,13 +1966,16 @@
               ToObject(receiver, function(thisValue){
                 Ω(NewMethodEnvironment(self, thisValue));
               }, ƒ);
+            } else {
+              Ω(NewMethodEnvironment(self, receiver));
             }
           }
         },
         function(local, Ω){
           ExecutionContext.push(new ExecutionContext(context, local, self.Realm, self.Code));
           FunctionDeclarationInstantiation(self, args, local, function(){
-            context.evaluate(Ω, function(result){
+            z = context;
+            evaluate(self.Code, Ω, function(result){
               if (result.type === RETURN) {
                 Ω(result.value);
               } else {
@@ -1559,7 +1990,7 @@
           });
         },
         function(result, Ω){
-          ExecutionContext.pop();
+          //ExecutionContext.pop();
           Ω(result);
         }
       ], Ω, ƒ)
@@ -1689,8 +2120,16 @@
   // ### $Array ###
   // ##############
 
-  function $Array(){
+  function $Array(items){
     $Object.call(this, intrinsics.ArrayPrototype);
+    if (items instanceof Array) {
+      var len = items.length;
+      for (var i=0; i < len; i++)
+        this.setDirect(i, items[i]);
+    } else {
+      var len = 0;
+    }
+    this.defineDirect('length', len, __W);
   }
 
   inherit($Array, $Object, {
@@ -1760,41 +2199,6 @@
     // }
   ]);
 
-  var builtinInit = [$Array, $Boolean, $Date, $Function, $Map,
-                     $Number, $RegExp, $Set, $String, $WeakMap];
-
-
-  function Realm(){
-    var intrin = this.intrinsics = new Hash;
-    var ObjectPrototype = intrin.ObjectPrototype = new $Object(null);
-
-    this.global = new $Object(ObjectPrototype);
-    this.globalEnv = new GlobalEnvironmentRecord(this.global);
-
-    for (var i = 0; i < builtinInit.length; i++) {
-      var Prototype = intrin[builtinInit[i].name.slice(1) + 'Prototype'] = create(builtinInit[i].prototype);
-      $Object.call(Prototype, ObjectPrototype);
-    }
-    var FunctionPrototype = intrin.FunctionPrototype;
-    FunctionPrototype.Realm = this;
-    FunctionPrototype.Scope = this.globalEnv;
-    FunctionPrototype.FormalParameters = [];
-    intrin.DatePrototype.PrimitiveValue = Date.prototype;
-    intrin.StringPrototype.PrimitiveValue = '';
-    intrin.NumberPrototype.PrimitiveValue = 0;
-    intrin.BooleanPrototype.PrimitiveValue = false;
-    intrin.ArrayPrototype.defineDirect('length', 0, ___);
-  }
-
-  function InstantiateFunctionDeclaration(decl) {
-    var code = decl.Code,
-        strict = code.Strict,
-        scope = realm.executionContext.LexicalEnvironment,
-        F = new $Function('Normal', code.params, code, scope, strict);
-    F.MakeConstructor();
-    return F;
-  }
-
 
   function ExecutionContext(caller, local, realm){
     this.caller = caller;
@@ -1810,10 +2214,16 @@
 
   define(ExecutionContext, [
     function update(){
-      if (context.realm !== realm) {
-        realm = ExecutionContext.realm = newContext.realm;
-        global = ExecutionContext.global = realm.global;
-        intrinsics = ExecutionContext.intrinsics = realm.intrinsics;
+      if (!context) {
+        realm = ExecutionContext.realm = null;
+        global = ExecutionContext.global = null;
+        intrinsics = ExecutionContext.intrinsics = null;
+      } else if (context.realm !== realm) {
+        realm = ExecutionContext.realm = context.realm;
+        if (realm) {
+          global = ExecutionContext.global = realm.global;
+          intrinsics = ExecutionContext.intrinsics = realm.intrinsics;
+        }
       }
     },
     function push(newContext){
@@ -1837,44 +2247,6 @@
   });
 
 
-
-  var operators = {
-    '==': EQUALS,
-    '===': STRICT_EQUALS
-  };
-
-  function EQUALS(left, right, Ω, ƒ){
-    var leftType = typeof left,
-        rightType = typeof right;
-
-    if (leftType === rightType) {
-      STRICT_EQUALS(left, right, Ω, ƒ);
-    } else if (left == null && left == right) {
-      Ω(true);
-    } else if (leftType === NUMBER && rightType === STRING) {
-      ToNumber(right, function(right){
-        EQUALS(left, right, Ω, ƒ);
-      }, ƒ);
-    } else if (leftType === STRING && rightType === NUMBER) {
-      ToNumber(left, function(left){
-        EQUALS(left, right, Ω, ƒ);
-      }, ƒ);
-    } else if (rightType === OBJECT && leftType === STRING || leftType === OBJECT) {
-      ToPrimitive(right, function(right){
-        EQUALS(left, right, Ω, ƒ);
-      }, ƒ);
-    } else if (leftType === OBJECT && rightType === STRING || rightType === OBJECT) {
-      ToPrimitive(left, function(left){
-        EQUALS(left, right, Ω, ƒ);
-      }, ƒ);
-    } else {
-      Ω(false);
-    }
-  }
-
-  function STRICT_EQUALS(left, right, Ω, ƒ){
-    Ω(left === right);
-  }
 
 
   function Emitter(){
@@ -1920,6 +2292,37 @@
     }
   ]);
 
+
+  var builtinInit = [$Array, $Boolean, $Date, $Function, $Map,
+                     $Number, $RegExp, $Set, $String, $WeakMap];
+
+
+  function Realm(){
+    var intrin = this.intrinsics = new Hash;
+    var ObjectPrototype = intrin.ObjectPrototype = new $Object(null);
+
+    this.global = new $Object(ObjectPrototype);
+    this.globalEnv = new GlobalEnvironmentRecord(this.global);
+
+    for (var i = 0; i < builtinInit.length; i++) {
+      var Prototype = intrin[builtinInit[i].name.slice(1) + 'Prototype'] = create(builtinInit[i].prototype);
+      $Object.call(Prototype, ObjectPrototype);
+    }
+    var FunctionPrototype = intrin.FunctionPrototype;
+    FunctionPrototype.Realm = this;
+    FunctionPrototype.Scope = this.globalEnv;
+    FunctionPrototype.FormalParameters = [];
+    intrin.DatePrototype.PrimitiveValue = Date.prototype;
+    intrin.StringPrototype.PrimitiveValue = '';
+    intrin.NumberPrototype.PrimitiveValue = 0;
+    intrin.BooleanPrototype.PrimitiveValue = false;
+    intrin.ArrayPrototype.defineDirect('length', 0, ___);
+    this.global.defineDirect('NaN', NaN, ___);
+    this.global.defineDirect('Infinity', Infinity, ___);
+    this.global.defineDirect('undefined', undefined, ___);
+  }
+
+  inherit(Realm, Emitter);
 
   function Script(ast, code, name){
     if (ast instanceof Script)
@@ -2022,7 +2425,7 @@
         typeof Ω === FUNCTION && Ω(result);
       }
 
-      function control(next, completion){
+      function control(completion){
         Interpreter.current = null;
         self.executing = null;
         if (completion.type === THROW) {
@@ -2036,50 +2439,66 @@
       }
 
       Interpreter.current = this;
-      evaluate(script.ast, this.realm, complete, control);
+      evaluate(script.ast, complete, control);
       return script;
     }
   ]);
 
+  var stack = 0;
 
   function evaluate(node, Ω, ƒ){
-    var next = Ω;
-    Ω = function(result){
-      Interpreter.current.emit(node, result);
-      next(result);
-    };
     if (stack++ > 100) {
       stack = 0;
       nextTick(function(){
         evaluate(node, Ω, ƒ);
       });
-    } else if (node) {
-      evaluaters[node.type](node, Ω, ƒ);
+    } else if (node && node.type) {
+      try { evaluaters[node.type](node, Ω, ƒ);
+      } catch (e) {
+        console.log(e.stack)
+      }
     } else {
-      ƒ(Ω, new Thrown('invalid node'));
+      Ω(node)
     }
+  }
+
+  function resolve(node, Ω, ƒ){
+    evaluate(node, function(value){
+      GetValue(value, Ω, ƒ);
+    }, ƒ);
+  }
+
+  function keyFromNode(node){
+    if (node == null)
+      return '';
+    else if (!isObject(node))
+      return ''+node;
+    else if (node.type === 'Literal')
+      return node.value;
+    else if (node.type === 'Identifier')
+      return node.name;
   }
 
   var evaluaters = {
     ArrayExpression: function(node, Ω, ƒ){
       var output = [];
 
-      iterate(node.elements, function(item, next){
+      ITERATE(node.elements, function(item, Ω){
         if (!item) {
           output.push(item);
-          next();
+          Ω();
         } else if (item.type === 'Literal') {
           output.push(item.value);
-          next();
+          Ω();
         } else {
-          evaluate(node.elements[i], function(value){
+          resolve(item, function(value){
             output.push(value);
-            next();
+            Ω();
           }, ƒ);
         }
       }, function(){
-        BuiltinArray.construct(output, Ω, ƒ);
-      });
+        Ω(new $Array(output));
+      }, ƒ);
     },
     ArrayPattern: function(node, Ω, ƒ){},
     ArrowFunctionExpression: function(node, Ω, ƒ){
@@ -2087,29 +2506,33 @@
       Ω(node.thunk.instantiate(context));
     },
     AssignmentExpression: function(node, Ω, ƒ){
-      reference(node.left, function(ref){
-        evaluate(node.right, function(value){
+      evaluate(node.left, function(ref){
+        resolve(node.right, function(value){
           if (node.operator === '=') {
-            ref.set(value);
-            Ω(value);
+            PutValue(ref, value, function(){
+              Ω(value);
+            }, ƒ);
           } else {
-            ToPrimitive(ref.get(), function(left){
-              ToPrimitive(value, function(value){
-                switch (node.operator) {
-                  case '*=':   value = left * value; break;
-                  case '/=':   value = left / value; break;
-                  case '%=':   value = left % value; break;
-                  case '+=':   value = left + value; break;
-                  case '-=':   value = left - value; break;
-                  case '<<=':  value = left << value; break;
-                  case '>>=':  value = left >> value; break;
-                  case '>>>=': value = left >>> value; break;
-                  case '&=':   value = left & value; break;
-                  case '^=':   value = left ^ value; break;
-                  case '|=':   value = left | value; break;
-                }
-                ref.set(value);
-                Ω(value);
+            GetValue(ref, function(left){
+              ToPrimitive(left, 'Number', function(left){
+                ToPrimitive(value, 'Number', function(value){
+                  switch (node.operator) {
+                    case '*=':   value = left * value; break;
+                    case '/=':   value = left / value; break;
+                    case '%=':   value = left % value; break;
+                    case '+=':   value = left + value; break;
+                    case '-=':   value = left - value; break;
+                    case '<<=':  value = left << value; break;
+                    case '>>=':  value = left >> value; break;
+                    case '>>>=': value = left >>> value; break;
+                    case '&=':   value = left & value; break;
+                    case '^=':   value = left ^ value; break;
+                    case '|=':   value = left | value; break;
+                  }
+                  PutValue(ref, value, function(){
+                    Ω(value);
+                  }, ƒ);
+                }, ƒ);
               }, ƒ);
             }, ƒ);
           }
@@ -2117,25 +2540,25 @@
       }, ƒ);
     },
     BinaryExpression: function(node, Ω, ƒ){
-      evaluate(node.left, function(left){
-        evaluate(node.right, function(right){
+      resolve(node.left, function(left){
+        resolve(node.right, function(right){
           if (node.operator === 'instanceof') {
-            if (isObject(right) && thunks.has(right)) {
-              Ω(isPrototypeOf.call(right.prototype, left));
+            if (right instanceof $Object) {
+              right.HasInstance(left, Ω, ƒ);
             } else {
-              ƒ(Ω, context.error('TypeError', "'instanceof' called on non-function"));
+              throwException('instanceof_function_expected', typeof right, ƒ);
             }
           } else if (node.operator === 'in') {
-            if (isObject(right)) {
-              ToString(left, function(left){
-                Ω(left in right);
+            if (right instanceof $Object) {
+              ToPropertyKey(left, function(left){
+                Ω(right.keys.has(left));
               }, ƒ);
             } else {
-              ƒ(Ω, context.error('TypeError', "'in' called on non-object"));
+              throwException('invalid_in_operator_use', typeof right, ƒ);
             }
           } else {
-            ToPrimitive(left, function(left){
-              ToPrimitive(right, function(right){
+            ToNumber(left, function(left){
+              ToNumber(right, function(right){
                 switch (node.operator) {
                   case '*':   Ω(left * right); break;
                   case '/':   Ω(left / right); break;
@@ -2165,48 +2588,19 @@
     },
     BlockStatement: function(node, Ω, ƒ){
       var completion;
-      context = context.child(BlockScope);
-      iterate(node.body, function(node, next){
-        evaluate(node, function(value){
-          completion = value;
-          next();
-        }, ƒ);
-      }, function(){
-        Ω(completion);
-      });
+      ITERATE(node.body, evaluate, function(result){
+        GetValue(result, Ω, ƒ);
+      }, ƒ);
     },
     BreakStatement: function(node, Ω, ƒ){
       if (node.label === null)
-        ƒ(Ω, BREAK);
+        ƒ(new Completion(BREAK));
     },
     CallExpression: function(node, Ω, ƒ){
       var args = [];
-
-      iterate(node.arguments, function(node, next){
-        evaluate(node, function(value){
-          args.push(value);
-          next();
-        }, ƒ);
-      }, function(){
-        evaluate(node.callee, function(callee){
-          if (isObject(callee))
-            var thunk = thunks.get(callee);
-
-          if (thunk) {
-            args.callee = callee;
-            thunk.apply(args, Ω, function(_, signal){
-              if (signal instanceof Returned)
-                Ω(signal.value);
-              else if (signal instanceof Thrown)
-                ƒ(_, signal);
-              else
-                Ω();
-            });
-          } else {
-            ƒ(Ω, context.error('TypeError', (typeof callee) + ' is not a function'));
-          }
-        }, ƒ);
-      });
+      evaluate(node.callee, function(ref){
+        EvaluateCall(ref, node.arguments, false, Ω, ƒ);
+      }, ƒ);
     },
     CatchClause: function(node, Ω, ƒ){
       evaluate(node.body, Ω, ƒ);
@@ -2214,22 +2608,22 @@
     ClassBody: function(node, Ω, ƒ){
       var descs = {};
 
-      iterate(node.body, function(property, next){
+      ITERATE(node.body, function(property, Ω){
         evaluate(property, function(desc){
           var key = property.key.name;
           if (key in descs)
             descs[key][property.kind] = desc[property.kind];
           else
             descs[key] = desc;
-          next();
+          Ω();
         }, ƒ);
       }, function(){
         var Class = descs.constructor.value;
         if (context.superClass)
-          Class.prototype = create(context.superClass.prototype);
+          Class.prototype = new $Object(context.superClass.prototype);
         defineProperties(Class.prototype, descs);
         Ω(Class);
-      });
+      }, ƒ);
     },
     ClassDeclaration: function(node, Ω, ƒ){
       context = context.child(ClassScope);
@@ -2259,7 +2653,7 @@
       }, ƒ);
     },
     ContinueStatement: function(node, Ω, ƒ){
-      ƒ(Ω, CONTINUE);
+      ƒ(new Completion(CONTINUE));
     },
     DebuggerStatement: function(node, Ω, ƒ){
       context.global.pause(Ω, ƒ);
@@ -2270,13 +2664,13 @@
           evaluate(node.test, function(test){
             test ? i > 100 ? nextTick(loop) : loop((i || 0) + 1) : Ω();
           });
-        }, function(Ω, signal){
-          if (signal === CONTINUE)
+        }, function(signal){
+          if (signal.type === CONTINUE)
             i > 100 ? nextTick(loop) : loop((i || 0) + 1);
-          else if (signal === BREAK)
+          else if (signal.type === BREAK)
             Ω();
           else
-            ƒ(Ω, signal);
+            ƒ(signal);
         });
       }();
     },
@@ -2304,7 +2698,7 @@
       evaluate(node.expression, Ω, ƒ);
     },
     ForInStatement: function(node, Ω, ƒ){
-      reference(node.left, function(left){
+      evaluate(node.left, function(left){
         evaluate(node.right, function(right){
           var keys = [],
               len = 0,
@@ -2319,13 +2713,13 @@
               return nextTick(loop);
             }
             left.set(keys[i++]);
-            evaluate(node.body, loop, function(_, __, signal){
-              if (signal === CONTINUE)
+            evaluate(node.body, loop, function(signal){
+              if (signal.type === CONTINUE)
                 loop();
-              else if (signal === BREAK)
+              else if (signal.type === BREAK)
                 Ω();
               else
-                ƒ(_, __, signal);
+                ƒ(signal);
             });
           }();
         });
@@ -2344,16 +2738,16 @@
               applyMethod(iterator, 'next', [], function(result){
                 left.set(result);
 
-                evaluate(node.body, loop, function(_, __, signal){
-                  if (signal === CONTINUE)
+                evaluate(node.body, loop, function(signal){
+                  if (signal.type === CONTINUE)
                     loop();
-                  else if (signal === BREAK)
+                  else if (signal.type === BREAK)
                     Ω();
                   else
-                    ƒ(_, __, signal);
+                    ƒ(signal);
                 });
-              }, function(_, __, signal){
-                isStopIteration(signal) ? Ω() : ƒ(_, __, signal);
+              }, function(signal){
+                isStopIteration(signal) ? Ω() : ƒ(signal);
               });
             }();
           }, ƒ);
@@ -2378,13 +2772,13 @@
         function loop(){
           evaluate(node.test, function(test){
             if (!test) return Ω();
-            evaluate(node.body, update, function(Ω, signal){
-              if (signal === CONTINUE)
+            evaluate(node.body, update, function(signal){
+              if (signal.type === CONTINUE)
                 update();
-              else if (signal === BREAK)
+              else if (signal.type === BREAK)
                 Ω();
               else
-                ƒ(Ω, signal);
+                ƒ(signal);
             });
           }, ƒ);
         }
@@ -2400,19 +2794,19 @@
         return param.id.name;
       });
 
-      var instance = new $Function(Normal, params, node.body, env, context.isStrict);
+      var instance = new $Function(NormalFunction, params, node.body, env, context.strict || node.strict);
 
       SEQUENCE([
         function(_, Ω){
           env.HasBinding(name, function(alreadyDeclared){
             if (!alreadyDeclared) {
               env.CreateVarBinding(name, context.isEval, function(){
-                env.InitializeBinding(name, Ω, ƒ);
+                env.InitializeBinding(name, instance, Ω, ƒ);
               }, ƒ);
             } else if (env.bindings === global) {
               global.GetOwnProperty(name, function(desc){
                 if (!desc || desc.configurable)
-                  global.DefineOwnProperty(emptyValue, true, Ω, ƒ);
+                  global.DefineOwnProperty(name, emptyValue, true, Ω, ƒ);
                 else
                   throwException('redeclaration', [], ƒ);
               }, ƒ);
@@ -2432,7 +2826,8 @@
     },
     Glob: function(node, Ω, ƒ){},
     Identifier: function(node, Ω, ƒ){
-      Ω(context.get(node.name));
+      var env = context.LexicalEnvironment;
+      GetIdentifierReference(env, node.name, context.strict, Ω, ƒ)
     },
     IfStatement: function(node, Ω, ƒ){
       evaluate(node.test, function(result){
@@ -2450,8 +2845,8 @@
         Ω(node.value);
     },
     LogicalExpression: function(node, Ω, ƒ){
-      evaluate(node.left, function(left){
-        evaluate(node.right, function(right){
+      resolve(node.left, function(left){
+        resolve(node.right, function(right){
           node.operator === '&&' ? Ω(left && right) : Ω(left || right);
         }, ƒ);
       }, ƒ);
@@ -2476,97 +2871,82 @@
       } else {
         node.value.id = new ID(name);
         evaluate(node.value, function(method){
-          Ω(descriptor('init', method));
+          Ω(new DataDescriptor(method, ECW));
         }, ƒ);
       }
     },
     ModuleDeclaration: function(node, Ω, ƒ){},
     NewExpression: function(node, Ω, ƒ){
-      var args = [];
-
-      iterate(node.arguments, function(node, next){
-        evaluate(node, function(value){
-          args.push(value);
-          next();
-        }, ƒ);
-      }, function(){
-        evaluate(node.callee, function(callee){
-          if (isObject(callee))
-            var thunk = thunks.get(callee);
-
-          if (thunk) {
-            args.callee = callee;
-            thunk.construct(args, Ω, ƒ);
-          } else {
-            ƒ(Ω, context.error('TypeError', (typeof callee) + ' is not a function'));
-          }
-        }, ƒ);
-      });
+      resolve(node.callee, function(callee){
+        if (typeof constructor !== 'object' || !constructor.Construct) {
+          throwException('not_constructor', [constructor], ƒ)
+        } else {
+          evaluate(node.arguments, function(argList){
+            constructor.Construct(argList, Ω, ƒ);
+          }, ƒ);
+        }
+      }, ƒ);
     },
     ObjectExpression: function(node, Ω, ƒ){
-      var properties = {};
+      var obj = new $Object;
 
-      iterate(node.properties, function(property, next){
-        toProperty(property.key, function(key){
-          evaluate(property.value, function(value){
-            if (properties[key])
-              properties[key][property.kind] = value;
-            else
-              properties[key] = descriptor(property.kind, value);
-
-            next();
-          }, ƒ);
+      ITERATE(node.properties, function(property, Ω){
+        var key = keyFromNode(property.key);
+        resolve(property.value, function(value){
+          if (property.kind === 'init') {
+            obj.setDirect(key, value);
+          } else {
+            if (!obj.keys.has(key))
+              obj.defineDirect(key, new Accessor, ECA);
+            obj.properties[key][property.kind] = value;
+          }
+          Ω();
         }, ƒ);
       }, function(){
-        BuiltinObject.construct([], function(object){
-          Ω(defineProperties(object, properties));
-        }, ƒ);
-      });
+        Ω(obj);
+      }, ƒ);
     },
     ObjectPattern: function(node, Ω, ƒ){},
     Path: function(node, Ω, ƒ){},
     Program: function(node, Ω, ƒ){
-      realm || (realm = new Realm);
+      var realm = Interpreter.current.realm;
       ExecutionContext.push(new ExecutionContext(null, realm.globalEnv, realm));
 
       var env = context.VariableEnvironment,
           funcDecls = locals(node.body, typeFilter('FunctionDeclaration')),
-          varDecls = locals(node.body, typeFilter('VariableDeclarator'));
+          varDecls = locals(node.body, typeFilter('VariableDeclaration'));
 
-      env.strict = !!node.strict;
+      env.strict = node.strict;
+      context.initializing = true;
 
       ITERATE(funcDecls, evaluate, function(){
-        ITERATE(varDecls, function(){
-          ExecutionContext.pop();
-          Ω(result);
-        });
-      });
+        ITERATE(varDecls, evaluate, function(){
+          context && (context.initializing = false);
+          ITERATE(node.body, evaluate, function(result){
+            GetValue(result, function(result){
+              ExecutionContext.pop();
+              Ω(result);
+            }, ƒ)
+          }, ƒ);
+        }, ƒ);
+      }, ƒ);
     },
     Property: function(node, Ω, ƒ){
       evaluate(node.value, Ω, ƒ);
     },
     ReturnStatement: function(node, Ω, ƒ){
       evaluate(node.argument, function(result){
-        ƒ(Ω, new Returned(result));
+        ƒ(new Completion(RETURN, result));
       }, ƒ);
     },
     SequenceExpression: function(node, Ω, ƒ){
-      var completion;
-
-      iterate(node.expressions, function(node, next){
-        evaluate(node, function(value){
-          completion = value;
-          next();
-        }, ƒ);
-      }, function(){
-        Ω(completion);
-      });
+      ITERATE(node.expressions, evaluate, Ω, ƒ);
     },
     // SwitchCase: function(node, Ω, ƒ){
     //   evaluate(node.test, function(test){
     //     if (test !== context.discriminant && test !== null) return Ω();
     //     var completion;
-    //     iterate(node.consequent, function(node, next){
+    //     ITERATE(node.consequent, function(node, next){
     //       evaluate(node, function(value){
     //         completion = value;
     //         next();
@@ -2580,31 +2960,31 @@
       evaluate(node.discriminant, function(discriminant){
         var executing;
         var control = completeIfBreak(Ω, ƒ);
-        iterate(node.cases, function(node, next){
+        ITERATE(node.cases, function(node, Ω){
           if (executing) {
-            evaluate(node.consequent, next, control);
+            evaluate(node.consequent, Ω, control);
           } else {
             evaluate(node.test, function(test){
               if (test === discriminant) {
                 executing = true;
-                evaluate(node.consequent, next, control);
+                evaluate(node.consequent, Ω, control);
               }
             }, ƒ);
           }
         }, function(){
           if (executing) return Ω();
 
-          iterate(node.cases, function(node, next){
+          ITERATE(node.cases, function(node, Ω){
             if (node.test === null)
               executing = true;
 
             if (executing)
-              evaluate(node.consequent, next, control);
+              evaluate(node.consequent, Ω, control);
             else
-              next();
-          }, Ω)
-        });
-      });
+              Ω();
+          }, Ω, ƒ)
+        }, ƒ);
+      }, ƒ);
     },
     TaggedTemplateExpression: function(node, Ω, ƒ){
       node.quasi.tagged = context.get(node.tag.name);
@@ -2616,7 +2996,7 @@
     TemplateLiteral: function(node, Ω, ƒ){
       if (!node.converted) {
         node.converted = [];
-        iterate(node.expressions, function(element, next){
+        ITERATE(node.expressions, function(element, next){
           evaluate(element, function(result){
             node.converted.push(Object.freeze(result));
             next();
@@ -2624,21 +3004,21 @@
         }, function(){
           Object.freeze(node.converted)
           finish();
-        });
+        }, ƒ);
       } else {
         finish();
       }
 
       function finish(){
         var args = [node.converted];
-        iterate(node.expressions, function(node, next){
+        ITERATE(node.expressions, function(node, next){
           evaluate(node, function(result){
             args.push(result);
             next();
           }, ƒ);
         }, function(){
           Ω(template.apply(null, args));
-        });
+        }, ƒ);
       }
     },
     ThisExpression: function(node, Ω, ƒ){
@@ -2646,20 +3026,20 @@
     },
     ThrowStatement: function(node, Ω, ƒ){
       evaluate(node.argument, function(argument){
-        ƒ(Ω, new Thrown(argument));
+        ƒ(new Completion(THROW, argument));
       }, ƒ);
     },
     TryStatement: function(node, Ω, ƒ){
-      evaluate(node.block, Ω, function(_, __, signal){
-        if (signal instanceof Thrown) {
-          iterate(node.handlers, function(node, next){
+      evaluate(node.block, Ω, function(signal){
+        if (signal.type === THROW) {
+          ITERATE(node.handlers, function(node, next){
             var catchContext = new CatchScope(node.param.name, signal.value);
             evaluate(node, catchContext, next, ƒ);
           }, function(){
             node.finalizer ? evaluate(node.finalizer, Ω, ƒ) : Ω();
           });
         } else {
-          ƒ(_, __, signal);
+          ƒ(signal);
         }
       });
     },
@@ -2704,36 +3084,37 @@
       }, ƒ);
     },
     VariableDeclaration: function(node, Ω, ƒ){
-      var out = {};
+      var env = context.VariableEnvironment;
 
-      iterate(node.declarations, function(node, Ω){
-        evaluate(node, function(result){
-          out[node.id.name] = result;
-          next();
-        }, ƒ);
-      }, function(){
-        Ω(out);
-      });
+      if (context.initializing) {
+        ITERATE(node.declarations, function(node, Ω){
+          var name = node.id.name;
+          env.HasBinding(name, function(alreadyDeclared){
+            if (!alreadyDeclared) {
+              env.CreateVarBinding(name, context.eval, function(){
+                env.InitializeBinding(name, undefined, Ω, ƒ);
+              }, ƒ);
+            } else if (env.bindings === global) {
+              global.GetOwnProperty(name, function(desc){
+                if (!desc || desc.configurable)
+                  global.DefineOwnProperty(name, emptyValue, true, Ω, ƒ);
+                else
+                  throwException('redeclaration', [], ƒ);
+              }, ƒ);
+            } else {
+              Ω();
+            }
+          }, ƒ);
+        }, Ω, ƒ);
+      } else {
+        ITERATE(node.declarations, evaluate, Ω, ƒ);
+      }
     },
     VariableDeclarator: function(node, Ω, ƒ){
-      function declare(result){
-        if (node.id.type === 'Identifier')
-          context.declare(node.kind, node.id.name, result);
-        Ω(result);
-      }
-
-      var env = context.variable;
-      if (node.id.type === 'Identifier') {
-        var name = node.id.name;
-        if (!env.hasBinding()) {
-          env.createBinding(name, ƒ)
-        }
-      }
-
-      if (node.init)
-        evaluate(node.init, declare, ƒ);
-      else
-        declare();
+      var env = context.VariableEnvironment;
+      resolve(node.init, function(init){
+        env.SetMutableBinding(node.id.name, init, context.strict, Ω, ƒ);
+      }, ƒ);
     },
     WhileStatement: function(node, Ω, ƒ){
       void function loop(i){
@@ -2741,13 +3122,13 @@
           if (!test) return Ω();
           evaluate(node.body, function(){
             i > 100 ? nextTick(loop) : loop((i || 0) + 1);
-          }, function(_, __, signal){
-            if (signal === CONTINUE)
+          }, function(signal){
+            if (signal.type === CONTINUE)
               i > 100 ? nextTick(loop) : loop((i || 0) + 1);
-            else if (signal === BREAK)
+            else if (signal.type === BREAK)
               Ω();
             else
-              ƒ(_, __, signal);
+              ƒ(signal);
           });
         }, ƒ);
       }();
@@ -2762,154 +3143,9 @@
   };
 
 
-var Visitor = function(){
-  function Cursor(parent, items){
-    this.parent = parent || null;
-    this.items = items;
-  }
-
-  function Visitor(node, callback, filter){
-    this.callback = callback;
-    this.root = node;
-    if (filter)
-      this.filter = filter;
-    this.reset();
-  }
-
-  Visitor.visit = function visit(node, callback, filter){
-    var visitor = new Visitor(node, callback, filter);
-    visitor.next();
-  }
-
-  Visitor.filter = function filter(root, filter){
-    var out = [];
-    var visitor = new Visitor(root, function(node, parent){
-      if (filter(node)) {
-        out.push(node);
-        return RECURSE;
-      } else {
-        return CONTINUE;
-      }
-    });
-    return out;
-  }
 
 
-  var BREAK    = Visitor.BREAK    = new String('break'),
-      CONTINUE = Visitor.CONTINUE = new String('continue'),
-      RECURSE  = Visitor.RECURSE  = new String('recurse');
-
-  Visitor.prototype = {
-    constructor: Visitor,
-    filter: function filter(){
-      return true;
-    },
-    reset: function reset(){
-      this.stack = [];
-      this.items = [];
-      this.queue(this.root);
-      return this;
-    },
-    next: function next(){
-      this.items.length || this.pop();
-      var item = this.items.pop();
-      var result = this.callback(item, this.cursor);
-
-      switch (result) {
-        case RECURSE: this.queue(item);
-        case CONTINUE: this.cursor && this.next();
-        case BREAK:
-        default:
-      }
-      return this;
-    },
-    queue: function queue(node){
-      if (this.cursor && this.items.length)
-        this.stack.push(new Cursor(this.cursor, this.items));
-      this.cursor = node = Object(node);
-      this.items = [];
-
-      var items = [],
-          index = 0;
-
-      for (var k in node)
-        if (this.filter(node[k]))
-          items[index++] = node[k];
-
-      while (index--)
-        this.items.push(items[index]);
-
-      return this;
-    },
-    pop: function pop(){
-      var current = this.stack.pop();
-      if (current) {
-        this.cursor = current.parent;
-        this.items = current.items;
-        if (!this.items.length)
-          this.pop();
-      } else {
-        this.cursor = null;
-        this.items = [];
-        this.depleted = true;
-      }
-      return this;
-    }
-  };
-
-  return Visitor;
-}();
-
-
-function isFunction(node){
-  return node.type === 'FunctionDeclaration'
-      || node.type === 'FunctionExpression'
-      || node.type === 'ArrowFunctionExpression';
-}
-
-function locals(root, subfilter){
-  return Visitor.filter(root, function(node, parent){
-    return !isFunction(node) && subfilter(node);
-  });
-}
-
-function typeFilter(type){
-  return function(node){
-    return node.type === type;
-  };
-}
-
-
-/*
-
-  function ƒ(completion){
-    if (completion.type === THROW) {
-      console.log(completion.value);
-      console.log(completion.value.name + ': ' + completion.value.message);
-    } else {
-      Ω(completion.value);
-    }
-  }
-
-  function Ω(r){
-    console.log(r);
-  }
-
-  console.log(new Realm)
-
-  var intrinsics = {
-    ObjectPrototype: new $Object(null),
-  };
-var o = new $Object(intrinsics.ObjectPrototype);
-
-o.Put('test', 5, false, function(){
-  builtins.Object.create(null, [o], function(obj){
-    obj.Put('x', 'grg', false, function(){
-      console.log(obj);
-      obj.GetPropertyNames(Ω, ƒ);
-      obj.DefaultValue('String', Ω, ƒ); // throw TypeError
-      console.log(CreateMappedArgumentsObject(null, ['x', 'y', 'z'], new NewDeclarativeEnvironment(null), ['a', 'b', 'c']
-    }, ƒ);
-  }, ƒ);
-}, ƒ);
-*/
+module.exports = new Interpreter;
+module.exports.parse = function(src){
+  return parse(src);
+};
