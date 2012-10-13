@@ -434,9 +434,12 @@
 
   define(PropertyList.prototype, [
     function add(key){
+      if (typeof key === 'number')
+        key += '';
+
       if (typeof key === 'string') {
         if (!(key in this.hash)) {
-          this.hash[key] = this.keys.push(key);
+          this.hash[key] = this.keys.push(key) - 1;
         }
       } else if (key instanceof PropertyList) {
         key.forEach(function(key){
@@ -1272,6 +1275,8 @@
   // ###########################
 
 
+  var NativeSigil    = new Symbol('NativeSigil'),
+      ReferenceSigil = new Symbol('ReferenceSigil');
 
   // #################
   // ### Reference ###
@@ -1282,6 +1287,10 @@
     this.name = name;
     this.strict = strict;
   }
+
+  define(Reference.prototype, {
+    Reference: ReferenceSigil
+  });
 
   // ##################
   // ### Completion ###
@@ -1579,6 +1588,7 @@
       NumberWrapper     = new NativeBrand('Number'),
       StringWrapper     = new NativeBrand('String');
 
+
   // ###############
   // ### $Object ###
   // ###############
@@ -1752,6 +1762,7 @@
               self.properties[key] = desc.value;
               self.attributes[key] = desc.writable | (desc.enumerable << 1) | (desc.configurable << 2);
             }
+            self.keys.add(key);
             Ω(true);
           }
         }
@@ -1762,14 +1773,13 @@
     },
     function HasProperty(key, Ω, ƒ){
       var proto = this.Prototype;
-      this.HasOwnProperty(key, function(hasOwn){
-        if (hasOwn)
-          Ω(true);
-        else if (!proto)
-          Ω(false)
-        else
-          proto.HasProperty(key, Ω, ƒ);
-      }, ƒ);
+      if (this.keys.has(key)) {
+        Ω(true);
+      } else if (this.Prototype) {
+        this.Prototype.HasProperty(key, Ω, ƒ);
+      } else {
+        Ω(false);
+      }
     },
     function Delete(key, strict, Ω, ƒ){
       if (!this.keys.has(key)) {
@@ -1777,6 +1787,7 @@
       } else if (this.attributes[key] & CONFIGURABLE) {
         delete this.properties[key];
         delete this.attributes[key];
+        this.keys.remove(key);
         Ω(true);
       } else if (strict) {
         throwException('strict_delete', [], ƒ);
@@ -1901,11 +1912,11 @@
         }
       }, ƒ);
     },
-    function Put(key, value, strict, Ω, ƒ){
-      var base = this.base;
-      $Object.prototype.Put.call(this, key, value, strict, function(desc){
-      }, ƒ);
-    },
+    // function Put(key, value, strict, Ω, ƒ){
+    //   var base = this.base;
+    //   this.SetP(this, key, value, function(desc){
+    //   }, ƒ);
+    // },
   ]);
 
 
@@ -1927,7 +1938,7 @@
       GeneratorFunction = new Symbol('GeneratorFunction');
 
 
-  function $Function(kind, params, body, scope, strict, proto, holder, name){
+  function $Function(kind, name, params, body, scope, strict, proto, holder, method){
     if (proto === undefined)
       proto = intrinsics.FunctionProto;
 
@@ -1940,10 +1951,13 @@
     this.Code = body;
     if (holder !== undefined)
       this.Home = holder;
-    if (name !== undefined)
+    if (method) {
       this.MethodName = name;
+    } else if (typeof name === 'string') {
+      this.defineDirect('name', name, ___);
+    }
 
-    this.defineDirect('length', params.length, 0);
+    this.defineDirect('length', params.length, ___);
     if (kind === NormalFunction && strict) {
       this.defineDirect('caller', intrinsics.ThrowTypeError, __A);
       this.defineDirect('arguments', intrinsics.ThrowTypeError, __A);
@@ -1985,11 +1999,13 @@
         function(local, Ω){
           ExecutionContext.push(new ExecutionContext(context, local, self.Realm, self.Code));
           FunctionDeclarationInstantiation(self, args, local, function(){
-            z = context;
+            Interpreter.current.emit('enter-function', context);
             evaluate(self.Code, Ω, function(result){
               if (result.type === RETURN) {
+                Interpreter.current.emit('return', result);
                 Ω(result.value);
               } else {
+                Interpreter.current.emit('abnormal', result);
                 result.context = ExecutionContext.pop();
                 result.continuation = Ω;
                 ƒ(result);
@@ -2001,7 +2017,7 @@
           });
         },
         function(result, Ω){
-          //ExecutionContext.pop();
+          ExecutionContext.pop();
           Ω(result);
         }
       ], Ω, ƒ)
@@ -2029,6 +2045,26 @@
       this.defineDirect('prototype', prototype, writablePrototype ? __W : ___);
     }
   ]);
+
+  function $NativeFunction(code, name, length){
+    $Function.call(this, NormalFunction, name, [], code, realm.globalEnv, false);
+    this.defineDirect('length', length, ___);
+  }
+
+  inherit($NativeFunction, $Function, {
+    Native: true,
+  }, [
+    function Call(receiver, args, Ω, ƒ){
+      this.Code(receiver, args, Ω, ƒ);
+    },
+    function Construct(args, Ω, ƒ){
+      if (this.hasDirect('prototype')) {
+        var instance = new $Object(this.getDirect('prototype'));
+      }
+      this.Code(instance, args, Ω, ƒ);
+    }
+  ]);
+
 
   // #############
   // ### $Date ###
@@ -2131,6 +2167,8 @@
   // ### $Array ###
   // ##############
 
+  var DefineOwn = $Object.prototype.DefineOwnProperty;
+
   function $Array(items){
     $Object.call(this, intrinsics.ArrayProto);
     if (items instanceof Array) {
@@ -2140,11 +2178,81 @@
     } else {
       var len = 0;
     }
-    this.defineDirect('length', len, __W);
+    this.defineDirect('length', len, _CW);
   }
 
   inherit($Array, $Object, {
     NativeBrand: NativeArray,
+    DefineOwnProperty: function DefineOwnProperty(key, desc, strict, Ω, ƒ){
+      var len = this.properties.length,
+          writable = this.attributes.length & WRITABLE,
+          self = this;
+
+      var reject = strict ? THROWS('strict_read_only_property', [], ƒ) : FALSE(Ω);
+      if (key === 'length') {
+        if (!('value' in desc)) {
+          DefineOwn.call(this, key, desc, strict, Ω, ƒ);
+        } else {
+          var newLen = desc.value >> 0,
+              newDesc = { value: newLen };
+
+          if (desc.value !== newDesc.value) {
+            throwException('invalid_array_length', [], ƒ);
+          } else if (newDesc.value > len) {
+            DefineOwn.call(this, 'length', newDesc, strict, Ω, ƒ);
+          } else if (!writable) {
+            reject();
+          } else {
+            newDesc.writable = true;
+            if (desc.writable === false) {
+              var deferNonWrite = true;
+            }
+            DefineOwn.call(this, 'length', newDesc, strict, function(success){
+              if (success === false) {
+                Ω(false);
+              } else {
+                void function loop(){
+                  if (newLen < len--) {
+                    self.Delete(''+len, false, function(success){
+                      if (success === false) {
+                        newDesc.value = len + 1;
+                        DefineOwn.call(self, 'length', newDesc, false, reject, ƒ);
+                      } else {
+                        loop();
+                      }
+                    }, ƒ);
+                  } else {
+                    if (deferNonWrite) {
+                      DefineOwn.call(self, 'length', { writable: false }, false, Ω, ƒ);
+                    } else {
+                      Ω(true);
+                    }
+                  }
+                }();
+              }
+            }, ƒ);
+          }
+        }
+      } else if ((+key === key | 0) && key > -1) {
+        ToUint32(key, function(index){
+          if (index > len && !writable) {
+            reject();
+          } else {
+            DefineOwn.call(self, ''+index, desc, false, function(success){
+              if (!success) {
+                reject();
+              } else {
+                if (index > len)
+                  self.properties.length = index + 1;
+                Ω(true);
+              }
+            }, ƒ);
+          }
+        }, ƒ);
+      } else {
+        DefineOwn.call(this, key, desc, strict, Ω, ƒ);
+      }
+    }
   });
 
 
@@ -2152,8 +2260,9 @@
   // ### $RegExp ###
   // ###############
 
-  function $RegExp(){
+  function $RegExp(native){
     $Object.call(this, intrinsics.RegExpProto);
+    this.Source = native;
   }
 
   inherit($RegExp, $Object, {
@@ -2248,6 +2357,12 @@
         ExecutionContext.update();
         return oldContext;
       }
+    },
+    function reset(){
+      var stack = [];
+      while (context)
+        stack.push(ExecutionContext.pop());
+      return stack;
     }
   ]);
 
@@ -2335,6 +2450,7 @@
         OP = intrinsics.ObjectProto = new $Object(null),
         global = this.global = new $Object(OP);
 
+    Emitter.call(this);
     this.globalEnv = new GlobalEnvironmentRecord(global);
 
     for (var k in $builtins) {
@@ -2470,6 +2586,9 @@
       }
 
       Interpreter.current = this;
+      var stack = ExecutionContext.reset();
+      if (stack.length)
+        this.emit('stack', stack);
       evaluate(script.ast, complete, control);
       return script;
     }
@@ -2488,6 +2607,8 @@
       } catch (e) {
         console.log(e.stack)
       }
+    } else if (node.Native === NativeSigil) {
+      Ω(node);
     } else {
       ƒ(node)
     }
@@ -2495,7 +2616,10 @@
 
   function resolve(node, Ω, ƒ){
     evaluate(node, function(value){
-      GetValue(value, Ω, ƒ);
+      if (typeof value === OBJECT && value.Reference === ReferenceSigil)
+        GetValue(value, Ω, ƒ);
+      else
+        Ω(value);
     }, ƒ);
   }
 
@@ -2618,7 +2742,6 @@
       }, ƒ);
     },
     BlockStatement: function(node, Ω, ƒ){
-      var completion;
       ITERATE(node.body, evaluate, function(result, Ω){
         GetValue(result, Ω, ƒ);
       }, Ω, ƒ);
@@ -2629,9 +2752,17 @@
     },
     CallExpression: function(node, Ω, ƒ){
       var args = [];
-      evaluate(node.callee, function(ref){
-        EvaluateCall(ref, node.arguments, false, Ω, ƒ);
-      }, ƒ);
+      if (node.callee.type === 'Identifier' && node.callee.name === 'callcc') {
+        evaluate(node.arguments[0], function(ref){
+          var cc = new $NativeFunction(Ω, 'continuation', 1);
+          cc.Native = NativeSigil;
+          EvaluateCall(ref, [cc], false, Ω, ƒ);
+        }, ƒ)
+      } else {
+        evaluate(node.callee, function(ref){
+          EvaluateCall(ref, node.arguments, false, Ω, ƒ);
+        }, ƒ);
+      }
     },
     CatchClause: function(node, Ω, ƒ){
       evaluate(node.body, Ω, ƒ);
@@ -2694,7 +2825,7 @@
         evaluate(node.body, function(){
           evaluate(node.test, function(test){
             test ? i > 100 ? nextTick(loop) : loop((i || 0) + 1) : Ω();
-          });
+          }, ƒ);
         }, function(signal){
           if (signal.type === CONTINUE)
             i > 100 ? nextTick(loop) : loop((i || 0) + 1);
@@ -2730,35 +2861,26 @@
     },
     ForInStatement: function(node, Ω, ƒ){
       evaluate(node.left, function(left){
-        evaluate(node.right, function(right){
-          var keys = [],
-              len = 0,
-              i = 0;
-
-          for (keys[len++] in right);
-
-          void function loop(){
-            if (i >= len) return Ω();
-            if (i++ > 100) {
-              i = 0;
-              return nextTick(loop);
-            }
-            left.set(keys[i++]);
-            evaluate(node.body, loop, function(signal){
-              if (signal.type === CONTINUE)
-                loop();
-              else if (signal.type === BREAK)
-                Ω();
-              else
-                ƒ(signal);
-            });
-          }();
+        resolve(node.right, function(right){
+          var keys = right.keys.toArray();
+          ITERATE(keys, function(key, next){
+            PutValue(left, key, function(){
+              evaluate(node.body, next, function(signal){
+                if (signal.type === CONTINUE)
+                  next();
+                else if (signal.type === BREAK)
+                  Ω();
+                else
+                  ƒ(signal);
+              });
+            }, ƒ)
+          }, Ω, ƒ);
         });
       });
     },
     ForOfStatement: function(node, Ω, ƒ){
-      reference(node.left, function(left){
-        evaluate(node.right, function(right){
+      evaluate(node.left, function(left){
+        resolve(node.right, function(right){
           applyMethod(right, 'iterator', [], function(iterator){
             var i = 0;
             void function loop(){
@@ -2822,10 +2944,10 @@
           name = node.id.name;
 
       var params = node.params.map(function(param){
-        return param.id.name;
+        return param.name;
       });
 
-      var instance = new $Function(NormalFunction, params, node.body, env, context.strict || node.strict);
+      var instance = new $Function(NormalFunction, name, params, node.body, env, context.strict || node.strict);
 
       SEQUENCE([
         function(_, Ω){
@@ -2852,8 +2974,15 @@
       ], Ω, ƒ);
     },
     FunctionExpression: function(node, Ω, ƒ){
-      node.thunk || (node.thunk = new FunctionExpressionThunk(node));
-      Ω(node.thunk.instantiate(context));
+      var env = context.LexicalEnvironment,
+          name = node.id ? node.id.name : '',
+          strict = context.strict || node.strict;
+
+      var params = node.params.map(function(param){
+        return param.name;
+      });
+
+      Ω(new $Function(NormalFunction, name, params, node.body, env, strict));
     },
     Glob: function(node, Ω, ƒ){},
     Identifier: function(node, Ω, ƒ){
@@ -2871,7 +3000,7 @@
     LabeledStatement: function(node, Ω, ƒ){},
     Literal: function(node, Ω, ƒ){
       if (node.value instanceof RegExp)
-        BuiltinRegExp.construct([node.value.source], Ω, ƒ);
+        Ω(new $RegExp(node.value));
       else
         Ω(node.value);
     },
@@ -2883,12 +3012,15 @@
       }, ƒ);
     },
     MemberExpression: function(node, Ω, ƒ){
-      evaluate(node.object, function(object){
-        var resolver = node.computed ? evaluate : toProperty;
-        resolver(node.property, function(key){
-          context.receiver = object;
-          Ω(object[key]);
-        }, ƒ)
+      resolve(node.object, function(object){
+        if (node.computed) {
+          resolve(node.property, function(property){
+            Ω(new Reference(object, property, context.strict));
+          }, ƒ);
+        } else {
+          if (node.property && node.property.type === 'Identifier')
+            Ω(new Reference(object, node.property.name, context.strict));
+        }
       }, ƒ);
     },
     MethodDefinition: function(node, Ω, ƒ){
@@ -2955,7 +3087,6 @@
           context && (context.initializing = false);
           ITERATE(node.body, evaluate, function(result){
             GetValue(result, function(result){
-              ExecutionContext.pop();
               Ω(result);
             }, ƒ)
           }, ƒ);
@@ -3078,17 +3209,21 @@
     },
     UnaryExpression: function(node, Ω, ƒ){
       if (node.operator === 'delete') {
-        reference(node.argument, function(ref){
-          Ω(ref.remove());
+        evaluate(node.argument, function(ref){
+          if (ref.base instanceof $Object)
+            ref.base.Delete(ref.name, Ω, ƒ);
+          else
+            Ω(true);
         }, ƒ);
       } else {
-        evaluate(node.argument, function(value){
+        resolve(node.argument, function(value){
           if (node.operator === 'typeof') {
-            if (value === null) return Ω(OBJECT);
-
-            var type = typeof value;
-            Ω(type === OBJECT && thunks.has(value) ? FUNCTION : type);
-
+            if (value === null) {
+              Ω(OBJECT);
+            } else {
+              var type = typeof value;
+              Ω(type === OBJECT && value instanceof $Function ? FUNCTION : type);
+            }
           } else if (node.operator === 'void') {
             Ω(void 0);
 
@@ -3096,7 +3231,7 @@
             Ω(!value);
 
           } else {
-            ToPrimitive([value], function(value){
+            ToNumber(value, function(value){
               switch (node.operator) {
                 case '~': Ω(~value); break;
                 case '+': Ω(+value); break;
