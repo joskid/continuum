@@ -580,6 +580,12 @@
     };
   }
 
+  function CC(Ω_, Ω){
+    return function(v){
+      Ω(v, Ω_);
+    };
+  }
+
   function IF(condition, consequent, alternate){
     return function(input, Ω, ƒ){
       condition(input, function(result){
@@ -2620,6 +2626,8 @@
       } catch (e) {
         console.log(e.stack)
       }
+    } else if (node === null) {
+      Ω();
     } else if (node.Native === NativeSigil) {
       Ω(node);
     } else {
@@ -2754,7 +2762,7 @@
     },
     BlockStatement: function(node, Ω, ƒ){
       if (node.body.length) {
-        ITERATE(node.body, evaluate, function(result, Ω){
+        ITERATE(node.body, evaluate, function(result){
           GetValue(result, function(result){
             if (result instanceof $Object || !isObject(result))
               Ω(result);
@@ -2885,11 +2893,35 @@
       evaluate(node.expression, Ω, ƒ);
     },
     ForInStatement: function(node, Ω, ƒ){
+      var oldEnv = context.LexicalEnvironment;
       evaluate(node.left, function(left){
+        if (node.left.type === 'VariableDeclaration') {
+          var update = function(value, Ω, ƒ){
+            ITERATE(node.left.declarations, function(decl, Ω){
+              BindingInitialisation(decl.id, value, undefined, Ω, ƒ);
+            }, Ω, ƒ);
+          };
+        } else if (node.left.type === 'AssignmentExpression') {
+          if (node.left.type !== 'ObjectExpression' && node.left.type !== 'ArrayExpression') {
+            var update = function(value, Ω, ƒ) {
+              PutValue(left, value, Ω, ƒ);
+            };
+          }
+        } else {
+          var update = function(value, Ω, ƒ) {
+            var iterationEnv = NewDeclarativeEnvironment(oldEnv);
+            context.LexicalEnvironment = iterationEnv;
+            BindingInitialisation(node.left, value, iterationEnv, Ω, ƒ);
+          };
+          CC(ƒ, function(v, ƒ){
+            context.LexicalEnvironment = oldEnv;
+            ƒ(v);
+          });
+        }
         resolve(node.right, function(right){
           var keys = right.keys.toArray();
           ITERATE(keys, function(key, next){
-            PutValue(left, key, function(){
+            update(key, function(){
               evaluate(node.body, next, function(signal){
                 if (signal.type === CONTINUE)
                   next();
