@@ -81,6 +81,7 @@ var continuum = (function(GLOBAL, exports){
       MethodFunction        = 'Method',
       GeneratorFunction     = 'Generator';
 
+  var UNINITIALIZED = new Symbol('UNINITIALIZED');
 
   // ##################################################
   // ### Internal Utilities not from specification ####
@@ -215,6 +216,7 @@ var continuum = (function(GLOBAL, exports){
   // ## GetIdentifierReference
 
   function GetIdentifierReference(lex, name, strict){
+      //throw
     if (lex === null) {
       return new Reference(undefined, name, strict);
     } else if (lex.HasBinding(name)) {
@@ -473,6 +475,13 @@ var continuum = (function(GLOBAL, exports){
   }
 
   function ToPropertyKey(argument){
+    if (argument && argument.IsCompletion) {
+      if (argument.IsAbruptCompletion) {
+        return argument;
+      } else {
+        argument = argument.value;
+      }
+    }
     if (argument && typeof argument === OBJECT && argument.NativeBrand === NativePrivateName) {
       return argument;
     } else {
@@ -547,16 +556,40 @@ var continuum = (function(GLOBAL, exports){
   // ## SameValue
 
   function SameValue(x, y) {
-    if (x && x.IsCompletion) { if (x.IsAbruptCompletion) return x; else x = x.value; }
-    if (y && y.IsCompletion) { if (y.IsAbruptCompletion) return y; else y = y.value; }
+    if (x && x.IsCompletion) {
+      if (x.IsAbruptCompletion) {
+        return x;
+      } else {
+        x = x.value;
+      }
+    }
+    if (y && y.IsCompletion) {
+      if (y.IsAbruptCompletion) {
+        return y;
+      } else {
+        y = y.value;
+      }
+    }
     return x === y ? (x !== 0 || 1 / x === 1 / y) : (x !== x && y !== y);
   }
 
   // ## StrictEqual
 
   function StrictEqual(x, y) {
-    if (x && x.IsCompletion) { if (x.IsAbruptCompletion) return x; else x = x.value; }
-    if (y && y.IsCompletion) { if (y.IsAbruptCompletion) return y; else y = y.value; }
+    if (x && x.IsCompletion) {
+      if (x.IsAbruptCompletion) {
+        return x;
+      } else {
+        x = x.value;
+      }
+    }
+    if (y && y.IsCompletion) {
+      if (y.IsAbruptCompletion) {
+        return y;
+      } else {
+        y = y.value;
+      }
+    }
     return x === y;
   }
 
@@ -606,7 +639,7 @@ var continuum = (function(GLOBAL, exports){
     if (writablePrototype === undefined)
       writablePrototype = true;
     if (install)
-      prototype.defineDirect('constructor', func, writablePrototype ? _CW : ___);
+      defineDirect(prototype, 'constructor', func, writablePrototype ? _CW : ___);
     defineDirect(func, 'prototype', prototype, writablePrototype ? __W : ___);
   }
 
@@ -651,22 +684,38 @@ var continuum = (function(GLOBAL, exports){
   }
 
 
-  // ## EvaluateCall
+  // ## EvaluateConstruct
 
-  function EvaluateCall(ref, args, tail){
-    var func = GetValue(ref);
-    if (!IsCallable(func))
-      return ThrowException('called_non_callable', key);
-
-    if (ref !== func) {
-      var thisValue = IsPropertyReference(ref) ? GetThisValue(ref) : ref.base.WithBaseObject();
+  function EvaluateConstruct(func, args) {
+    if (typeof func !== 'object') {
+      throw TypeError('11.2.2-6');
     }
 
-    return func.Call(thisValue, args);
+    if ('Construct' in func) {
+      return func.Construct(args);
+    } else {
+      throw TypeError('11.2.2-7');
+    }
+
   }
 
-  // ## FunctionDeclarationInstantiation
 
+  // ## EvaluateCall
+
+  function EvaluateCall(ref, func, args) {
+    if (typeof func !== 'object' || !IsCallable(func)) {
+      return ThrowException('called_non_callable', key);
+    }
+
+    if (ref instanceof Reference) {
+      var receiver = IsPropertyReference(ref) ? GetThisValue(ref) : ref.base.WithBaseObject();
+    }
+
+    return func.Call(receiver, args);
+  }
+
+
+  // ## FunctionDeclarationInstantiation
 
   function FunctionDeclarationInstantiation(func, args, env) {
     var params = func.FormalParameters,
@@ -702,9 +751,9 @@ var continuum = (function(GLOBAL, exports){
       }
     }
 
-    var declarations = func.Code.LexicalDeclarations;
-    for (var i=0; i < declarations.length; i++) {
-      var decl = declarations[i];
+    var decls = func.Code.LexicalDeclarations;
+    for (var i=0; i < decls.length; i++) {
+      var decl = decls[i];
       for (var j=0; j < decl.BoundNames.length; j++) {
         var name = decl.BoundNames[j];
         if (!env.HasBinding(name)) {
@@ -737,9 +786,9 @@ var continuum = (function(GLOBAL, exports){
 
     var funcs = create(null);
 
-    for (i=0; i < declarations.length; i++) {
-      if (declarations[i].type === 'FunctionDeclaration') {
-        decl = declarations[i];
+    for (i=0; i < decls.length; i++) {
+      if (decls[i].type === 'FunctionDeclaration') {
+        decl = decls[i];
         name = decl.BoundNames[0];
 
         if (!(name in funcs)) {
@@ -750,18 +799,55 @@ var continuum = (function(GLOBAL, exports){
     }
   }
 
-  function InstantiateFunctionDeclaration(decl) {
+
+  // ## InstantiateFunctionDeclaration
+
+  function InstantiateFunctionDeclaration(decl){
     var func = new $Function('Normal', decl.BoundNames[0], decl.Code.params, decl.Code, context.LexicalEnvironment, code.Strict);
     MakeConstructor(func);
     return func;
   }
 
+
+  // ## BlockDeclarationInstantiation
+
+  function BlockDeclarationInstantiation(code, env) {
+    var decls = code.LexicalDeclarations;
+    for (var i=0, decl; decl = decls[i]; i++) {
+      for (var j=0, name; name = decl.BoundNames[j]; j++) {
+        if (decl.IsConstantDeclaration) {
+          env.CreateImmutableBinding(name);
+        } else {
+          env.CreateMutableBinding(name, false);
+        }
+      }
+    }
+
+    for (i=0; i < decls.length; i++) {
+      if (decls[i].type === 'FunctionDeclaration') {
+        env.InitializeBinding(decls[i].BoundNames[0], InstantiateFunctionDeclaration(decls[i]));
+      }
+    }
+  }
+
+
+
+  // ## IdentifierResolution
+
   function IdentifierResolution(name) {
     return GetIdentifierReference(context.LexicalEnvironment, name, context.strict);
   }
 
+  // ## BindingInitialisation
+
   function BindingInitialisation(pattern, value, env) {
-    if (pattern.type === 'Identifier') {
+    if (typeof pattern === 'string') {
+      if (env !== undefined) {
+        return env.InitializeBinding(pattern, value);
+      } else {
+        return PutValue(IdentifierResolution(pattern), value);
+      }
+    } else if (pattern.type === 'Identifier') {
       if (env !== undefined) {
         return env.InitializeBinding(pattern.name, value);
       } else {
@@ -1095,13 +1181,13 @@ var continuum = (function(GLOBAL, exports){
       return this.bindings.DefineOwnProperty(name, emptyValue, true);
     },
     function InitializeBinding(name, value){
-      return this.bindings.DefineOwnProperty(name, new DataDescriptor(value, ECW), true);
+      return this.bindings.DefineOwnProperty(name, new NormalDescriptor(value), true);
     },
     function GetBindingValue(name, strict){
       if (this.bindings.HasProperty(name)) {
         return this.bindings.Get(name);
       } else if (strict) {
-        ThrowException('not_defined', name);
+        return ThrowException('not_defined', name);
       }
     },
     function SetMutableBinding(name, value, strict){
@@ -1479,7 +1565,7 @@ var continuum = (function(GLOBAL, exports){
     $Object.call(this, proto);
     this.FormalParameters = params;
     this.ThisMode = kind === 'Arrow' ? 'lexical' : strict ? 'strict' : 'global';
-    this.Strict = strict;
+    this.Strict = !!strict;
     this.Realm = realm;
     this.Scope = scope;
     this.Code = code;
@@ -1540,7 +1626,7 @@ var continuum = (function(GLOBAL, exports){
       }
 
       if (!this.thunk) {
-        this.thunk = createThunk(this.code);
+        this.thunk = createThunk(this.Code);
       }
       var result = this.thunk(context);
       ExecutionContext.pop();
@@ -2103,15 +2189,15 @@ var continuum = (function(GLOBAL, exports){
 
     function LITERAL(op){
       stack[sp++] = op.value;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function REGEXP(op){
       stack[sp++] = new $RegExp(op.value);
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function RESOLVE(op){
       stack[sp++] = IdentifierResolution(op.name);
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function THIS(op){
       A = ThisResolution();
@@ -2124,11 +2210,11 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function UNDEFINED(op){
       stack[sp++] = undefined;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function GET(op){
       A = GetValue(stack[--sp]);
@@ -2141,44 +2227,46 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function PUT(op){
       A = stack[--sp];
       B = stack[--sp];
-      C = PutValue(A, B);
+      C = PutValue(B, A);
       if (C && C.IsAbruptCompletion) {
         error = C.value;
         return ƒ;
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function DUP(op){
       A = stack[sp++];
       stack[sp] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function POP(op){
       sp--;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function POPN(op){
       sp -= op.number;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function BLOCK_EXIT(op){
       context.LexicalEnvironment = context.LexicalEnvironment.outer;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function FUNCTION(op){
       A = NewDeclarativeEnvironment(context.LexicalEnvironment),
       B = op.code;
-      A.CreateImmutableBinding(B.name);
-      C = new $Function(B.type, B.name, B.params, B.body, A, B.Strict);
-      C.MakeConstructor();
+      if (op.name) {
+        A.CreateImmutableBinding(op.name);
+      }
+      C = new $Function(B.Type, op.name, B.params, B, A, B.Strict);
+      MakeConstructor(C);
       stack[sp++] = C;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function CLASS_DECL(op){
       A = op.superClass ? stack[--sp] : undefined;
@@ -2192,12 +2280,12 @@ var continuum = (function(GLOBAL, exports){
         }
       }
 
-      C = BindingInitialisation(op.name, B, context.LexicalEnvironment);
+      C = BindingInitialisation(op, B, context.LexicalEnvironment);
       if (C && C.IsAbruptCompletion) {
         error = C.value;
         return ƒ;
       }
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function CLASS_EXPR(op){
       A = op.superClass ? stack[--sp] : undefined;
@@ -2211,12 +2299,12 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = B;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function ARRAY(op){
       stack[sp++] = new $Array(0);
       stack[sp++] = 0;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function INDEX(op){
       if (op.empty) {
@@ -2241,18 +2329,18 @@ var continuum = (function(GLOBAL, exports){
         })
         stack[sp++] = B;
       }
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function ARRAY_DONE(op){
       A = stack[--sp];
       stack[sp].Put('length', A);
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function BLOCK(op){
       var env = NewDeclarativeEnvironment(context.LexicalEnvironment);
-      context.LexicalEnvironment = emv;
+      context.LexicalEnvironment = env;
       BlockDeclarationInstantiation(op, context.LexicalEnvironment);
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function WITH(op){
       A = ToObject(GetValue(stack[--sp]));
@@ -2268,7 +2356,7 @@ var continuum = (function(GLOBAL, exports){
       C = context.LexicalEnvironment = NewObjectEnvironment(A, B);
       C.withEnvironment = true;
       C.outer = B;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function UPDATE(op){
       if (op.prefix) {
@@ -2293,7 +2381,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function UNARY(op){
       A = stack[--sp];
@@ -2307,7 +2395,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function BINARY(op){
       A = stack[--sp];
@@ -2322,7 +2410,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function CASE(op){
       A = stack[--sp];
@@ -2340,12 +2428,12 @@ var continuum = (function(GLOBAL, exports){
         sp--;
         ip = op.position;
       }
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function DEFAULT(op){
       sp--;
       ip = op.position;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function THROW(op){
       error = stack[--sp];
@@ -2353,13 +2441,13 @@ var continuum = (function(GLOBAL, exports){
     }
     function JUMP(op){
       ip = op.position;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function IFEQ(op){
       if (op.test === !!stack[--sp]) {
         ip = instr.position;
       }
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function IFNE(op){
       if (op.test === !!stack[sp - 1]) {
@@ -2367,11 +2455,11 @@ var continuum = (function(GLOBAL, exports){
       } else {
         sp--;
       }
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function POP_EVAL(op){
       completion = stack[--sp];
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function RETURN_EVAL(op){
       return Ω;
@@ -2382,7 +2470,7 @@ var continuum = (function(GLOBAL, exports){
     }
     function JSR(op){
 
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function ROTATE(op){
       A = [];
@@ -2394,7 +2482,7 @@ var continuum = (function(GLOBAL, exports){
       while (C--) {
         stack[sp++] = A[C];
       }
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function DEBUGGER(op){
       completion = {
@@ -2419,7 +2507,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = D;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function CONSTRUCT(op){
       sp -= op.args;
@@ -2435,7 +2523,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = C;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function SUPER_CALL(op){
       A = CallSuperSetup();
@@ -2448,7 +2536,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function SUPER_ELEMENT(op){
       A = ElementSuper(stack[--sp]);
@@ -2461,7 +2549,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function SUPER_MEMBER(op){
       A = ElementSuper(op.name);
@@ -2474,7 +2562,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function SUPER_GUARD(op){
       A = SuperGuard();
@@ -2482,11 +2570,11 @@ var continuum = (function(GLOBAL, exports){
         error = A.value;
         return ƒ;
       }
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function OBJECT(op){
       stack[sp++] = new $Object;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function MEMBER(op){
       A = stack[--sp];
@@ -2495,7 +2583,7 @@ var continuum = (function(GLOBAL, exports){
         error = A.value;
         return ƒ;
       }
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function ELEMENT(op){
       A = Element(stack[--sp], stack[--sp]);
@@ -2508,7 +2596,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function PROPERTY(op){
       A = Element(op.name, stack[--sp]);
@@ -2521,23 +2609,23 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       stack[sp++] = A;
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function METHOD(op){
 
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function VAR(op){
       BindingInitialisation(op.pattern, stack[--sp]);
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function LET(op){
       BindingInitialisation(op.pattern, stack[--sp], context.LexicalEnvironment);
-      return cmds[ip++];
+      return cmds[++ip];
     }
     function CONST(op){
       BindingInitialisation(op.pattern, stack[--sp], context.LexicalEnvironment);
-      return cmds[ip++];
+      return cmds[++ip];
     }
 
     function ƒ(){
@@ -2555,7 +2643,7 @@ var continuum = (function(GLOBAL, exports){
               stack[sp++] = error;
             }
             ip = handler.end;
-            return cmds[ip++];
+            return cmds[++ip];
           }
         }
       }
@@ -2575,9 +2663,12 @@ var continuum = (function(GLOBAL, exports){
       sp = 0;
       completion = error = A = B = C = D = undefined;
 
-      var F = cmds[0];
+      var F = cmds[ip];
 
-      while (F) F = F(ops[ip]);
+      while (F) {
+        console.log(ops[ip]);
+        F = F(ops[ip]);
+      }
       return completion;
     }
 
@@ -2677,8 +2768,8 @@ var continuum = (function(GLOBAL, exports){
 
   var x = new Continuum;
 
-  inspect(x.run('var z = 20'))
-  inspect(x.realm);
+  inspect(x.run('xy = function(){ this.hello = true }; global = this'))
+  inspect(x.realm.global);
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);

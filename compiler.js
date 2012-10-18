@@ -12,8 +12,8 @@ var Visitor = utility.Visitor,
 
 
 
-function parenter(node){
-  new Visitor(node, function(node, parent){
+function parenter(node, parent){
+  new Visitor(node, function(node){
     if (isObject(node) && parent)
       define(node, 'parent', parent);
     return Visitor.RECURSE;
@@ -71,9 +71,9 @@ function isSuperReference(node) {
   return !!node && node.type === 'Identifier' && node.name === 'super';
 }
 
-function ReferencesSuper(node, parent){
+function ReferencesSuper(node){
   var found = false;
-  Visitor.visit(node, function(node, parent){
+  Visitor.visit(node, function(node){
     if (!node) return Visitor.CONTINUE;
     switch (node.type) {
       case 'MemberExpression':
@@ -97,19 +97,53 @@ function ReferencesSuper(node, parent){
   return found;
 }
 
+function isUseStrictDirective(node){
+  return node.type === 'ExpressionSatatement'
+      && node.expression.type === 'Literal'
+      && node.expression.value === 'use strict';
+}
+
+function isFunction(node){
+  return node.type === 'FunctionDeclaration'
+      || node.type === 'FunctionExpression'
+      || node.type === 'ArrowFunctionExpression';
+}
+
+function isStrict(node){
+  if (isFunction(node)) {
+    node = node.body.body;
+  } else if (node.type === 'Program') {
+    node = node.body;
+  }
+  if (node instanceof Array) {
+    for (var i=0, element;  element = node[i]; i++) {
+      if (element) {
+        if (isUseStrictDirective(element)) {
+          return true;
+        } else if (element.type !== 'EmptyStatement' && element.type !== 'FunctionDeclaration') {
+          return false;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 
-function Code(node, source, type, isGlobal){
+
+function Code(node, source, type, isGlobal, strict){
   var body = node.type === 'Program' ? node : node.body;
   define(this, {
     body: body,
     source: source,
     LexicalDeclarations: LexicalDeclarations(node)
   });
+  this.isGlobal = isGlobal;
   this.handlers = [];
   this.Type = type || 'Normal';
   this.VarDeclaredNames = [];
   this.NeedsSuperBinding = ReferencesSuper(this.body);
+  this.Strict = strict || isStrict(this.body);
   this.params = node.params || [];
   this.params.BoundNames = BoundNames(node);
   this.params.ExpectedArgumentCount = ExpectedArgumentCount(this.params);
@@ -229,10 +263,6 @@ var ARRAY         = new OpCode( 0, 'ARRAY'),
 
 
 
-
-
-
-
 function Handler(type, begin, end){
   this.type = type;
   this.begin = begin;
@@ -291,7 +321,19 @@ define(Stack.prototype, [
 
 
 
+function Entry(labels, level){
+  this.labels = labels;
+  this.breaks = [];
+  this.level = level;
+  this.continues = null;
+}
 
+define(Entry.prototype, {
+  labels: null,
+  breaks: null,
+  continues: null,
+  level: null
+})
 
 
 
@@ -320,19 +362,18 @@ define(Compiler.prototype, {
   source: null,
   node: null,
   code: null,
-  strict: null,
   pending: null,
-  levelStack: null,
-  jumpStack: null,
-  labelSet: null,
+  levels: null,
+  jumps: null,
+  labels: null,
 });
 
 define(Compiler.prototype, [
   function compile(source){
     this.pending = new Stack;
-    this.levelStack = new Stack;
-    this.jumpStack = new Stack;
-    this.labelSet = null;
+    this.levels = new Stack;
+    this.jumps = new Stack;
+    this.labels = null;
 
     var node = parse(source);
     if (this.options.function)
@@ -351,7 +392,9 @@ define(Compiler.prototype, [
       if (this.code.eval){
         this.record(RETURN_EVAL);
       } else {
-        this.record(UNDEFINED);
+        if (!this.code.isGlobal) {
+          this.record(UNDEFINED);
+        }
         this.record(RETURN);
       }
     }
@@ -359,8 +402,9 @@ define(Compiler.prototype, [
     return code;
   },
   function queue(code){
-    if (this.code)
+    if (this.code) {
       this.code.children.push(code);
+    }
     this.pending.push(code);
   },
   function visit(node){
@@ -369,7 +413,7 @@ define(Compiler.prototype, [
     }
     return this;
   },
-  function visitGet(node, parent){
+  function visitGet(node){
     if (node) this[node.type](node);
     return this.record(GET);
   },
@@ -407,53 +451,42 @@ define(Compiler.prototype, [
     return this.record(JSR, { returns: returns, position: position })
   },
   function createFunction(name, code){
-    return this.record(FUNCTION, { name: name ? name.name : name, code: code });
+    return this.record(FUNCTION, { name: name, code: code });
   },
 
   function withBreakBlock(func){
-    if (this.labelSet){
-      var entry = {
-        labels: this.labelSet,
-        breaks: [],
-        continues: null,
-        level: this.levelStack.length
-      };
-      this.jumpStack.push(entry);
-      this.labelSet = Object.create(null);
+    if (this.labels){
+      var entry = new Entry(this.labels, this.levels.length);
+      this.jumps.push(entry);
+      this.labels = Object.create(null);
       func.call(this, function(b){
         for (var i=0, item; item = entry.breaks[i]; i++)
           item.position = b;
       });
-      this.jumpStack.pop();
+      this.jumps.pop();
     } else {
       func.call(this, function(){});
     }
   },
   function withBreak(func){
-    var entry = {
-      labels: this.labelSet,
-      breaks: [],
-      continues: null,
-      level: this.levelStack.length
-    };
-    this.jumpStack.push(entry);
-    this.labelSet = Object.create(null);
+    this.jumps.push(entry);
+    this.labels = Object.create(null);
     func.call(this, function (b, c){
       for (var i=0, item; item = entry.breaks[i]; i++)
         item.position = b;
     });
-    this.jumpStack.pop();
+    this.jumps.pop();
   },
 
   function withContinue(func){
     var entry = {
-      labels: this.labelSet,
+      labels: this.labels,
       breaks: [],
       continues: [],
-      level: this.levelStack.length
+      level: this.levels.length
     };
-    this.jumpStack.push(entry);
-    this.labelSet = Object.create(null);
+    this.jumps.push(entry);
+    this.labels = Object.create(null);
     func.call(this, function(b, c){
       for (var i=0, item; item = entry.breaks[i]; i++)
         item.position = b;
@@ -461,7 +494,7 @@ define(Compiler.prototype, [
       for (var i=0, item; item = entry.continues[i]; i++)
         item.position = c;
     });
-    this.jumpStack.pop();
+    this.jumps.pop();
   },
   function addEnvironmentHandler(func){
     var begin = this.current();
@@ -469,13 +502,13 @@ define(Compiler.prototype, [
     var end = this.current();
     this.code.handlers.push(new Handler(ENV, begin, end));
   },
-  function move(node, parent){
+  function move(node){
     if (node.label) {
-      var entry = this.jumpStack.first(function(entry){
+      var entry = this.jumps.first(function(entry){
         return node.label.name in entry.labels;
       });
     } else {
-      var entry = this.jumpStack.first(function(entry){
+      var entry = this.jumps.first(function(entry){
         return entry && entry.continues;
       });
     }
@@ -496,14 +529,14 @@ define(Compiler.prototype, [
     };
 
     var min = entry ? entry.level : 0;
-    for (var len = this.levelStack.length; len > min; --len){
-      var level = this.levelStack[len - 1];
+    for (var len = this.levels.length; len > min; --len){
+      var level = this.levels[len - 1];
       levels[level.type].call(this, level);
     }
 
     return entry;
   },
-  function AssignmentExpression(node, parent){
+  function AssignmentExpression(node){
     if (node.operator === '='){
       if (node.left.type === 'ObjectPattern' || node.left.type === 'ArrayPattern'){
         this.destructure(node);
@@ -517,7 +550,7 @@ define(Compiler.prototype, [
       this.record(PUT);
     }
   },
-  function ArrayExpression(node, parent){
+  function ArrayExpression(node){
     this.record(ARRAY);
     for (var i=0, item; i < node.elements.length; i++) {
       var props = {},
@@ -537,12 +570,12 @@ define(Compiler.prototype, [
 
     this.record(ARRAY_DONE);
   },
-  function ArrowFunctionExpression(node, parent){
-    var code = new Code(node, this.code.source, 'Arrow', false);
+  function ArrowFunctionExpression(node){
+    var code = new Code(node, this.code.source, 'Arrow', false, this.code.strict);
     this.queue(code);
     this.createFunction(null, code);
   },
-  function BinaryExpression(node, parent){
+  function BinaryExpression(node){
     this.visit(node.left);
     if (node.type === 'AssignmentExpression')
       this.record(DUP);
@@ -550,12 +583,12 @@ define(Compiler.prototype, [
     this.visitGet(node.right);
     this.record(BINARY, { operator: node.operator });
   },
-  function BreakStatement(node, parent){
+  function BreakStatement(node){
     var entry = this.move(node);
     if (entry)
       entry.breaks.push(this.jump(0));
   },
-  function BlockStatement(node, parent){
+  function BlockStatement(node){
     this.withBreakBlock(function(patch){
       this.addEnvironmentHandler(function(){
         this.record(BLOCK, {
@@ -570,7 +603,7 @@ define(Compiler.prototype, [
       patch(this.current());
     });
   },
-  function CallExpression(node, parent){
+  function CallExpression(node){
     if (0&&isResetExpression(node)) {
       this.ResetExpression(makeResetExpression(node));
     } else {
@@ -590,14 +623,14 @@ define(Compiler.prototype, [
       this.record(CALL, { args: node.arguments.length });
     }
   },
-  function CatchClause(node, parent){},
-  function ClassDeclaration(node, parent){
+  function CatchClause(node){},
+  function ClassDeclaration(node){
     var name = node.id ? node.id.name : null,
         methods = [],
         ctor;
 
     for (var i=0, method; method = node.body.body[i]; i++) {
-      var code = new Code(method.value, this.source, 'Method', false);
+      var code = new Code(method.value, this.source, 'Method', false, this.code.strict);
       code.name = name;
       this.pending.push(code);
 
@@ -605,8 +638,6 @@ define(Compiler.prototype, [
         code.Strict = true;
         method.kind = 'method';
       }
-
-      // TODO add super check
 
       if (method.key.name === 'constructor') {
         ctor = code;
@@ -630,10 +661,10 @@ define(Compiler.prototype, [
       methods: methods
     });
   },
-  function ClassExpression(node, parent){
+  function ClassExpression(node){
     this.ClassDeclaration(node);
   },
-  function ConditionalExpression(node, parent){
+  function ConditionalExpression(node){
     this.visitGet(node.test);
     var instr1 = this.ifEqual(0, false);
     this.visitGet(node.consequent)
@@ -641,12 +672,12 @@ define(Compiler.prototype, [
     instr1.position = this.current();
     instr2.position = this.visitGet(node.alternate);
   },
-  function ContinueStatement(node, parent){
+  function ContinueStatement(node){
     var entry = this.move(node);
     if (entry)
       entry.continues.push(this.jump(0));
   },
-  function DoWhileStatement(node, parent){
+  function DoWhileStatement(node){
     this.withContinue(function(patch){
       var start = this.current();
       this.visit(node.body);
@@ -656,18 +687,18 @@ define(Compiler.prototype, [
       patch(this.current(), cond);
     });
   },
-  function DebuggerStatement(node, parent){
+  function DebuggerStatement(node){
     this.record(DEBUGGER);
   },
-  function EmptyStatement(node, parent){},
-  function ExportSpecifier(node, parent){},
-  function ExportSpecifierSet(node, parent){},
-  function ExportDeclaration(node, parent){},
-  function ExpressionStatement(node, parent){
+  function EmptyStatement(node){},
+  function ExportSpecifier(node){},
+  function ExportSpecifierSet(node){},
+  function ExportDeclaration(node){},
+  function ExpressionStatement(node){
     this.visitGet(node.expression);
     this.code.eval ? this.record(POP_EVAL) : this.pop(1);
   },
-  function ForStatement(node, parent){
+  function ForStatement(node){
     this.withContinue(function(patch){
       if (node.init){
         this.visit(node.init);
@@ -694,22 +725,23 @@ define(Compiler.prototype, [
       patch(instr.position = this.current(), update);
     });
   },
-  function ForInStatement(node, parent){
+  function ForInStatement(node){
 
   },
-  function ForOfStatement(node, parent){},
-  function FunctionDeclaration(node, parent){
-    this.queue(new Code(node, this.code.source, 'Normal', false));
+  function ForOfStatement(node){},
+  function FunctionDeclaration(node){
+    this.queue(new Code(node, this.code.source, 'Normal', false, this.code.strict));
   },
-  function FunctionExpression(node, parent){
-    var code = new Code(node, this.code.source, 'Normal', false);
+  function FunctionExpression(node){
+    var code = new Code(node, this.code.source, 'Normal', false, this.code.strict);
     this.queue(code);
-    this.createFunction(node.id || { name: '' }, code);
+    var name = node.id ? node.id.name : '';
+    this.createFunction(name, code);
   },
-  function Identifier(node, parent){
+  function Identifier(node){
     this.record(RESOLVE, { name: node.name });
   },
-  function IfStatement(node, parent){
+  function IfStatement(node){
     this.visitGet(node.test);
     var instr = this.ifEqual(0, false);
     this.visit(node.consequent);
@@ -721,30 +753,30 @@ define(Compiler.prototype, [
       instr.position = this.current();
     }
   },
-  function ImportDeclaration(node, parent){},
+  function ImportDeclaration(node){},
   function ImportSpecifier(spec){},
-  function Literal(node, parent){
+  function Literal(node){
     var type = node.value instanceof RegExp ? REGEXP : LITERAL;
     this.record(type, { value: node.value });
   },
-  function LabeledStatement(node, parent){
-    if (!this.labelSet){
-      this.labelSet = Object.create(null);
-    } else if (label in this.labelSet) {
+  function LabeledStatement(node){
+    if (!this.labels){
+      this.labels = Object.create(null);
+    } else if (label in this.labels) {
       throw new SyntaxError('duplicate label');
     }
-    this.labelSet[node.label.name] = true;
+    this.labels[node.label.name] = true;
     this.visit(node.body);
-    this.labelSet = null;
+    this.labels = null;
   },
-  function LogicalExpression(node, parent){
+  function LogicalExpression(node){
     this.visitGet(node.left);
     this.ifNotEqual(0, node.operator === '||');
     var instr = this.current();
     this.visitGet(node.right);
     instr.position = this.current();
   },
-  function MemberExpression(node, parent){
+  function MemberExpression(node){
     var isSuper = isSuperReference(node.object);
     if (isSuper){
       if (this.code.Type === 'global' || this.code.Type === 'eval' && this.code.isGlobal)
@@ -761,41 +793,41 @@ define(Compiler.prototype, [
       this.record(isSuper ? SUPER_MEMBER : MEMBER, { name: node.property.name});
     }
   },
-  function ModuleDeclaration(node, parent){ },
-  function NewExpression(node, parent){
+  function ModuleDeclaration(node){ },
+  function NewExpression(node){
     this.visitGet(node.callee);
     for (var i=0, item; item = node.arguments[i]; i++) {
       this.visitGet(item);
     }
     this.record(CONSTRUCT, { args: i });
   },
-  function ObjectExpression(node, parent){
+  function ObjectExpression(node){
     this.record(OBJECT);
     for (var i=0, item; item = node.properties[i]; i++)
       this.visit(item);
   },
-  function Program(node, parent){
+  function Program(node){
     for (var i=0, item; item = node.body[i]; i++)
       this.visit(item);
   },
-  function Property(property){
-    if (property.kind === 'init'){
-      this.visitGet(property.value)
-      this.record(PROPERTY, { name: property.key.name });
+  function Property(node){
+    if (node.kind === 'init'){
+      this.visitGet(node.value)
+      this.record(PROPERTY, { name: node.key.name });
     } else {
-      var code = new Code(property.value, this.source, 'Method');
+      var code = new Code(node.value, this.source, 'Method', false, this.code.strict);
       this.queue(code);
 
-      if (property.kind === 'method')
+      if (node.kind === 'method')
         code.Strict = true;
 
       if (code.NeedsSuperBinding)
         throw new Error('ReferencesSuper MethodDefinition is true');
 
-      this.record(METHOD, { kind: kind, code: code, name: property.key.name });
+      this.record(METHOD, { kind: kind, code: code, name: node.key.name });
     }
   },
-  function ReturnStatement(node, parent){
+  function ReturnStatement(node){
     if (node.argument){
       this.visitGet(node.argument);
     } else {
@@ -819,21 +851,21 @@ define(Compiler.prototype, [
       }
     };
 
-    for (var len = this.levelStack.length; len > 0; --len){
-      var level = this.levelStack[len - 1];
+    for (var len = this.levels.length; len > 0; --len){
+      var level = this.levels[len - 1];
       levels[level.type].call(this, level);
     }
 
     this.record(RETURN);
   },
-  function SequenceExpression(node, parent){
+  function SequenceExpression(node){
     for (var i=0, item; item = node.expressions[i]; i++) {
       this.visitGet(item)
       this.pop(1);
     }
     this.visitGet(item)
   },
-  function SwitchStatement(node, parent){
+  function SwitchStatement(node){
     this.withBreak(function(patch){
       this.visitGet(node.discriminant);
 
@@ -879,24 +911,24 @@ define(Compiler.prototype, [
       patch(this.current());
     });
   },
-  function ThisExpression(node, parent){
+  function ThisExpression(node){
     this.record(THIS);
   },
-  function ThrowStatement(node, parent){
+  function ThrowStatement(node){
     this.visitGet(node.argument);
     this.record(THROW);
   },
-  function TryStatement(node, parent){
+  function TryStatement(node){
   },
-  function UnaryExpression(node, parent){
+  function UnaryExpression(node){
     this.visit(node.argument);
     this.record(UNARY, { operator: node.operator });
   },
-  function UpdateExpression(node, parent){
+  function UpdateExpression(node){
     this.visit(node.argument);
     this.record(UPDATE, { prefix: !!node.prefix, increment: node.operator === '++' });
   },
-  function VariableDeclaration(node, parent){
+  function VariableDeclaration(node){
     var op = {
       var: VAR,
       const: CONST,
@@ -909,16 +941,16 @@ define(Compiler.prototype, [
       else if (item.kind === 'let')
         this.record(UNDEFINED);
 
-      this.record(op, { name: item.id.name });
+      this.record(op, { pattern: item.id });
 
       if (node.kind === 'var')
         this.code.VarDeclaredNames.push(item.id.name);
     }
   },
-  function VariableDeclarator(node, parent){
+  function VariableDeclarator(node){
     UNREACHABLE();
   },
-  function WhileStatement(node, parent){
+  function WhileStatement(node){
     this.withContinue(function(patch){
       var start = this.current();
       this.visitGet(node.test)
@@ -928,7 +960,7 @@ define(Compiler.prototype, [
       patch(instr.position = this.current(), start);
     });
   },
-  function WithStatement(node, parent){
+  function WithStatement(node){
     this.visit(node.object)
     this.addEnvironmentHandler(function(){
       this.record(WITH);
@@ -941,7 +973,7 @@ define(Compiler.prototype, [
 
 
 function compile(code){
-  var compiler = new Compiler({ function: false });
+  var compiler = new Compiler({ function: false, eval: true });
   return compiler.compile(code);
 }
 
