@@ -54,12 +54,14 @@ var continuum = (function(GLOBAL, exports){
       return this.name;
     },
     function inspect(){
-      return '[Symbol '+this.name+']';
+      return '['+this.name+']';
     }
   ]);
 
 
   var BreakSigil            = new Symbol('Break'),
+      PauseSigil            = new Symbol('Pause'),
+      ResumeSigil           = new Symbol('Resume'),
       ThrowSigil            = new Symbol('Throw'),
       ReturnSigil           = new Symbol('Return'),
       NativeSigil           = new Symbol('Native'),
@@ -89,6 +91,10 @@ var continuum = (function(GLOBAL, exports){
 
   function noop(){}
 
+  function hide(o, k){
+    Object.defineProperty(o, k, { enumerable: false });
+  }
+  
   // ###############################
   // ###############################
   // ### Specification Functions ###
@@ -96,6 +102,9 @@ var continuum = (function(GLOBAL, exports){
   // ###############################
 
   function ThrowException(error, args){
+    if (!(args instanceof Array)) {
+      args = [args];
+    }
     return new AbruptCompletion(ThrowSigil, errors[error].apply(null, args));
   }
 
@@ -203,8 +212,20 @@ var continuum = (function(GLOBAL, exports){
   // ## IsEquivalentDescriptor
 
   function IsEquivalentDescriptor(a, b) {
-    if (a && a.IsCompletion) { if (a.IsAbruptCompletion) return a; else a = a.value; }
-    if (b && b.IsCompletion) { if (b.IsAbruptCompletion) return b; else b = b.value; }
+    if (a && a.IsCompletion) {
+      if (a.IsAbruptCompletion) {
+        return a;
+      } else {
+        a = a.value;
+      }
+    }
+    if (b && b.IsCompletion) {
+      if (b.IsAbruptCompletion) {
+        return b;
+      } else {
+        b = b.value;
+      }
+    }
     return SameValue(a.Get, b.Get) &&
            SameValue(a.Set, b.Set) &&
            SameValue(a.Value, b.Value) &&
@@ -704,7 +725,7 @@ var continuum = (function(GLOBAL, exports){
 
   function EvaluateCall(ref, func, args) {
     if (typeof func !== 'object' || !IsCallable(func)) {
-      return ThrowException('called_non_callable', key);
+      return ThrowException('called_non_callable', ref.name);
     }
 
     if (ref instanceof Reference) {
@@ -712,6 +733,54 @@ var continuum = (function(GLOBAL, exports){
     }
 
     return func.Call(receiver, args);
+  }
+
+
+
+  function TopLevelDeclarationInstantiation(code) {
+    var env = context.VariableEnvironment;
+    var configurable = code.Type === 'eval';
+    var decls = code.LexicalDeclarations;
+
+    for (var i=0; decl = decls[i]; i++) {
+      if (decl.type === 'FunctionDeclaration') {
+        var name = decl.id.name;
+        if (env.HasBinding(name)) {
+          env.CreateMutableBinding(name, configurable);
+        } else if (env === realm.globalEnv) {
+          var existing = global.GetOwnProperty(name);
+          if (!existing) {
+            global.DefineOwnProperty(name, {
+              Value: undefined,
+              Writable: true,
+              Enumerable: true,
+              Configurable: configurable
+            }, true);
+          } else if (IsAccessorDescriptor(existing) || !existing.Writable && !existing.Enumerable) {
+            return ThrowException('global invalid define');
+          }
+        }
+        env.SetMutableBinding(name, InstantiateFunctionDeclaration(decl), code.Strict);
+      }
+    }
+
+    for (var i=0; i < code.VarDeclaredNames.length; i++) {
+      var name = code.VarDeclaredNames[i];
+      if (!env.HasBinding(name)) {
+        env.CreateMutableBinding(name, configurable);
+        env.SetMutableBinding(name, undefined, code.Strict);
+      } else if (env === realm.globalEnv) {
+        var existing = global.GetOwnProperty(name);
+        if (!existing) {
+          global.DefineOwnProperty(name, {
+            Value: undefined,
+            Writable: true,
+            Enumerable: true,
+            Configurable: configurable
+          }, true);
+        }
+      }
+    }
   }
 
 
@@ -725,7 +794,7 @@ var continuum = (function(GLOBAL, exports){
     for (var i=0; i < names.length; i++) {
       if (!env.HasBinding(names[i])) {
         status = env.CreateMutableBinding(names[i]);
-        if (status.IsAbruptCompletion) {
+        if (status && status.IsAbruptCompletion) {
           return status;
         }
 
@@ -751,20 +820,6 @@ var continuum = (function(GLOBAL, exports){
       }
     }
 
-    var decls = func.Code.LexicalDeclarations;
-    for (var i=0; i < decls.length; i++) {
-      var decl = decls[i];
-      for (var j=0; j < decl.BoundNames.length; j++) {
-        var name = decl.BoundNames[j];
-        if (!env.HasBinding(name)) {
-          if (decl.IsConstantDeclaration) {
-            env.CreateImmutableBinding(name);
-          } else {
-            env.CreateMutableBinding(name, false);
-          }
-        }
-      }
-    }
 
     if (!env.HasBinding('arguments')) {
       if (func.Strict) {
@@ -777,16 +832,17 @@ var continuum = (function(GLOBAL, exports){
 
     var vardecls = func.Code.VarDeclaredNames;
 
-    for (i=0; i < vardecls.length; i++) {
+    for (var i=0; i < vardecls.length; i++) {
       if (!env.HasBinding(vardecls[i])) {
         env.CreateMutableBinding(vardecls[i]);
         env.InitializeBinding(vardecls[i], undefined);
       }
     }
 
+    var decls = func.Code.LexicalDeclarations;
     var funcs = create(null);
 
-    for (i=0; i < decls.length; i++) {
+    for (var i=0; i < decls.length; i++) {
       if (decls[i].type === 'FunctionDeclaration') {
         decl = decls[i];
         name = decl.BoundNames[0];
@@ -803,7 +859,7 @@ var continuum = (function(GLOBAL, exports){
   // ## InstantiateFunctionDeclaration
 
   function InstantiateFunctionDeclaration(decl){
-    var func = new $Function('Normal', decl.BoundNames[0], decl.Code.params, decl.Code, context.LexicalEnvironment, code.Strict);
+    var func = new $Function('Normal', decl.BoundNames[0], decl.Code.params, decl.Code, context.LexicalEnvironment, decl.Code.Strict);
     MakeConstructor(func);
     return func;
   }
@@ -811,7 +867,7 @@ var continuum = (function(GLOBAL, exports){
 
   // ## BlockDeclarationInstantiation
 
-  function BlockDeclarationInstantiation(code, env) {
+  function BlockDeclarationInstantiation(code, env){
     var decls = code.LexicalDeclarations;
     for (var i=0, decl; decl = decls[i]; i++) {
       for (var j=0, name; name = decl.BoundNames[j]; j++) {
@@ -825,7 +881,7 @@ var continuum = (function(GLOBAL, exports){
 
     for (i=0; i < decls.length; i++) {
       if (decls[i].type === 'FunctionDeclaration') {
-        env.InitializeBinding(decls[i].BoundNames[0], InstantiateFunctionDeclaration(decls[i]));
+        env.InitializeBinding(decl.BoundNames[0], InstantiateFunctionDeclaration(decls[i]));
       }
     }
   }
@@ -864,6 +920,145 @@ var continuum = (function(GLOBAL, exports){
       BindingInitialisation(element, array.Get(i), env);
     }
   }
+
+  var PrefixIncrement, PostfixIncrement, PrefixDecrement, PostfixDecrement;
+  void function(createChanger){
+    PrefixIncrement = createChanger(true, 1);
+    PostfixIncrement = createChanger(false, 1);
+    PrefixDecrement = createChanger(true, -1);
+    PostfixDecrement = createChanger(false, -1);
+  }(function(pre, change){
+    return function(ref) {
+      var val = ToNumber(GetValue(ref));
+      if (val && val.IsAbruptCompletion) {
+        return val;
+      }
+
+      var newVal = val + change,
+          result = PutValue(ref, newVal);
+
+      if (result && result.IsAbruptCompletion) {
+        return result;
+      }
+      return pre ? newVal : val;
+    };
+  });
+
+
+
+  function UnaryOperation(operator, val) {
+    switch (operator) {
+      case 'delete': return UnaryDelete(val);
+      case 'void': return UnaryVoid(val);
+      case 'typeof': return UnaryTypeof(val);
+      case '+': return UnaryPositive(val);
+      case '-': return UnaryNegative(val);
+      case '~': return UnaryBitwiseNOT(val);
+      case '!': return UnaryLogicalNOT(val);
+    }
+  }
+
+  function UnaryDelete(ref) {
+    if (!ref || !ref.IsReference)
+      return true;
+    }
+
+    if (IsUnresolvableReference(ref)) {
+      if (ref.strict) {
+        return ThrowError('strict_delete_property', [ref.name, ref.base]);
+      } else {
+        return true;
+      }
+    }
+
+    if (IsPropertyReference(ref)) {
+      if (IsSuperReference(ref)) {
+        return ThrowError('super_delete_property', ref.name);
+      } else {
+        var obj = ToObject(ref.base)
+        if (obj.IsCompletion) {
+          if (obj.IsAbruptCompletion) {
+            return obj;
+          } else {
+            obj = obj.value;
+          }
+        }
+
+        return obj.Delete(ref.name, ref.strict);
+      }
+    } else {
+      return ref.base.DeleteBinding(ref.name);
+    }
+  }
+
+  function UnaryVoid(ref) {
+    var val = GetValue(ref);
+    if (val && val.IsAbruptCompletion) {
+      return val;
+    }
+    return undefined;
+  }
+
+  function UnaryTypeof(val) {
+    var type = typeof val;
+    switch (type) {
+      case UNDEFINED:
+      case BOOLEAN:
+      case NUMBER:
+      case STRING: return type;
+      case OBJECT:
+        if (val === null) {
+          return OBJECT;
+        }
+
+        if (val.IsCompletion) {
+          if (val.IsAbruptCompletion) {
+            return val;
+          } else {
+            val = val.value;
+          }
+        }
+
+        if (val.IsReference) {
+          if (IsUnresolvableReference(val)) {
+            return UNDEFINED;
+          }
+          return UnaryTypeof(GetValue(val));
+        }
+
+        if ('Call' in val) {
+          return FUNCTION;
+        } else {
+          return OBJECT;
+        }
+      }
+  }
+
+
+  function UnaryPositive(ref){
+    return ToNumber(GetValue(ref));
+  }
+
+  var UnaryNegative, UnaryBitwiseNOT, UnaryLogicalNOT;
+  void function(createUnaryOp){
+    UnaryNegative = createUnaryOp(ToNumber, function(n){ return -n });
+    UnaryBitwiseNOT = createUnaryOp(ToInt32, function(n){ return ~n });
+    UnaryLogicalNOT = createUnaryOp(ToBoolean, function(n){ return !n });
+  }(function(convert, finalize){
+    return function(ref){
+      var val = convert(GetValue(ref));
+
+      if (val.IsCompletion) {
+        if (val.IsAbruptCompletion) {
+          return val;
+        } else {
+          val = val.value;
+        }
+      }
+
+      return finalize(val);
+    }
+  });
 
   // function ArgumentListEvaluation(args){
   //   if (!args || args instanceof Array && !args.length) {
@@ -942,7 +1137,25 @@ var continuum = (function(GLOBAL, exports){
     });
   }();
 
+  // ## Element
 
+  function Element(prop, base) {
+    var result = CheckObjectCoercible(base);
+    if (result.IsAbruptCompletion) {
+      return result;
+    }
+
+    var name = ToString(prop);
+    if (name && name.IsCompletion) {
+      if (name.IsAbruptCompletion) {
+        return name;
+      } else {
+        name = name.value;
+      }
+    }
+
+    return new Reference(base, name, context.Strict);
+  }
 
   function DefineOwn(obj, key, desc) {
     if (val && val.IsCompletion) {
@@ -1092,7 +1305,7 @@ var continuum = (function(GLOBAL, exports){
     function SetMutableBinding(name, value, strict){},
     function DeleteBinding(name){},
     function CreateVarBinding(name, deletable){
-      this.CreateMutableBinding(name, deletable);
+      return this.CreateMutableBinding(name, deletable);
     },
     function WithBaseObject(){
       return this.withBase;
@@ -1191,6 +1404,7 @@ var continuum = (function(GLOBAL, exports){
       }
     },
     function SetMutableBinding(name, value, strict){
+
       return this.bindings.Put(name, value, strict);
     },
     function DeleteBinding(name){
@@ -1244,6 +1458,9 @@ var continuum = (function(GLOBAL, exports){
     },
     function GetSuperBase(){
       return this.bindings;
+    },
+    function inspect(){
+      return '[GlobalEnvironmentRecord]';
     }
   ]);
 
@@ -1307,17 +1524,11 @@ var continuum = (function(GLOBAL, exports){
   // ###############
 
   function $Object(proto){
-    if (proto === null) {
-      this.Prototype = null;
-      this.properties = create(null);
-      this.attributes = new Hash;
-    } else {
-      if (proto === undefined)
-        proto = intrinsics.ObjectProto;
-      this.Prototype = proto;
-      this.properties = create(proto.properties);
-      this.attributes = create(proto.attributes);
-    }
+    if (proto === undefined)
+      proto = intrinsics.ObjectProto;
+    this.Prototype = proto;
+    this.properties = new Hash;
+    this.attributes = new Hash;
     define(this, 'keys', new PropertyList)
   }
 
@@ -1342,11 +1553,24 @@ var continuum = (function(GLOBAL, exports){
         return proto.GetProperty(key);
     },
     function Get(key){
+      if (key === '__proto__') {
+        return this.GetPrototype();
+      }
       return this.GetP(this, key);
     },
     function Put(key, value, strict){
-      if (!this.SetP(this, key, value) && strict)
+      if (key === '__proto__') {
+        return this.SetPrototype(value);
+      }
+      if (!this.SetP(this, key, value) && strict) {
         return ThrowException('strict_cannot_assign', [key]);
+      }
+    },
+    function GetPrototype(){
+      return this.Prototype;
+    },
+    function SetPrototype(value){
+      this.Prototype = value;
     },
     function GetP(receiver, key){
       if (!this.keys.has(key)) {
@@ -1377,7 +1601,7 @@ var continuum = (function(GLOBAL, exports){
           }
         } else if (attrs & WRITABLE) {
           if (this === receiver) {
-            return this.DefineOwnProperty(key, { value: value }, false);
+            return this.DefineOwnProperty(key, { Value: value }, false);
           } else if (!receiver.Extensible) {
             return false;
           } else {
@@ -1410,10 +1634,10 @@ var continuum = (function(GLOBAL, exports){
           return reject('define_disallowed', []);
         } else {
           if (IsGenericDescriptor(desc) || IsDataDescriptor(desc)) {
-            this.attributes[key] = desc.Writable | (desc.Enumerable << 1) | (desc.Configurable << 2);
+            this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
             this.properties[key] = desc.Value;
           } else {
-            this.attributes[key] = ACCESSOR | (desc.Enumerable << 1) | (desc.Configurable << 2);
+            this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | ACCESSOR;
             this.properties[key] = new Accessor(desc.Get, desc.Set);
           }
           this.keys.add(key);
@@ -1421,7 +1645,6 @@ var continuum = (function(GLOBAL, exports){
         }
       } else {
         var rejected = false;
-
         if (IsEmptyDescriptor(desc) || IsEquivalentDescriptor(desc, current)) {
           return;
         }
@@ -1449,7 +1672,7 @@ var continuum = (function(GLOBAL, exports){
         'Enumerable' in desc || (desc.Enumerable = current.Enumerable);
 
         if (IsAccessorDescriptor(desc)) {
-          this.attributes[key] = ACCESSOR | (desc.Enumerable << 1) | (desc.Configurable << 2);
+          this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | ACCESSOR;
           if (IsDataDescriptor(current)) {
             this.properties[key] = new Accessor(desc.Get, desc.Set);
           } else {
@@ -1464,7 +1687,7 @@ var continuum = (function(GLOBAL, exports){
           }
           'Writable' in desc || (desc.Writable = current.Writable)
           this.properties[key] = desc.Value;
-          this.attributes[key] = desc.Writable | (desc.Enumerable << 1) | (desc.Configurable << 2);
+          this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
         }
 
         this.keys.add(key);
@@ -1472,10 +1695,10 @@ var continuum = (function(GLOBAL, exports){
       }
     },
     function HasOwnProperty(key){
-      return this.keys.has(key);
+      return key === '__proto__' ? false : this.keys.has(key);
     },
     function HasProperty(key){
-      if (this.keys.has(key)) {
+      if (this.keys.has(key) || key === '__proto__') {
         return true;
       } else if (this.Prototype) {
         return this.Prototype.HasProperty(key);
@@ -1484,7 +1707,9 @@ var continuum = (function(GLOBAL, exports){
       }
     },
     function Delete(key, strict){
-      if (!this.keys.has(key)) {
+      if (key === '__proto__') {
+        return false;
+      } else if (!this.keys.has(key)) {
         return true;
       } else if (this.attributes[key] & CONFIGURABLE) {
         delete this.properties[key];
@@ -1548,7 +1773,7 @@ var continuum = (function(GLOBAL, exports){
         }
       }
 
-      return ThrowError('cannot_convert_to_primitive', []);
+      return ThrowException('cannot_convert_to_primitive', []);
     },
   ]);
 
@@ -1582,6 +1807,7 @@ var continuum = (function(GLOBAL, exports){
       defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
       defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
     }
+    hide(this, 'Realm');
   }
 
   inherit($Function, $Object, {
@@ -1628,9 +1854,9 @@ var continuum = (function(GLOBAL, exports){
       if (!this.thunk) {
         this.thunk = createThunk(this.Code);
       }
-      var result = this.thunk(context);
+      var result = this.thunk.run();
       ExecutionContext.pop();
-      if (result.type === ReturnSigil) {
+      if (result && result.type === ReturnSigil) {
         return result.Value
       }
       return result;
@@ -1670,7 +1896,7 @@ var continuum = (function(GLOBAL, exports){
       }
 
       if (typeof prototype !== 'object') {
-        return ThrowError('instanceof_nonobject_proto');
+        return ThrowException('instanceof_nonobject_proto');
       }
 
       arg = arg.Prototype;
@@ -1846,7 +2072,7 @@ var continuum = (function(GLOBAL, exports){
           result;
 
       var reject = strict
-          ? function(){ return ThrowError('strict_read_only_property') }
+          ? function(){ return ThrowException('strict_read_only_property') }
           : function(){ return false };
 
       if (key === 'length') {
@@ -2101,53 +2327,56 @@ var continuum = (function(GLOBAL, exports){
     intrinsics.FunctionProto.Realm = this;
     intrinsics.FunctionProto.Scope = this.globalEnv;
     intrinsics.FunctionProto.FormalParameters = [];
+
+    hide(intrinsics.FunctionProto, 'Realm');
+    hide(intrinsics.FunctionProto, 'Scope');
     defineDirect(intrinsics.ArrayProto, 'length', 0, __W);
     for (var k in atoms)
       defineDirect(this.global, k, atoms[k], ___);
 
+    this.active = false;
     Emitter.call(this);
   }
 
-  inherit(Realm, Emitter, [
+  var realm = null,
+      global = null,
+      context = null,
+      intrinsics = null;
 
+  inherit(Realm, Emitter, [
+    function activate(){
+      if (realm !== this) {
+        if (realm) {
+          realm.active = false;
+          realm.emit('deactivate');
+        }
+        realm = this;
+        global = this.global;
+        intrinsics = this.intrinsics;
+        this.active = true;
+        this.emit('activate');
+      }
+    }
   ]);
 
 
-  function ExecutionContext(caller, local, realm){
+  function ExecutionContext(caller, local, realm, code){
     this.caller = caller;
     this.realm = realm;
+    this.Code = code;
     this.LexicalEnvironment = local;
     this.VariableEnvironment = local;
   }
 
-  var realm = ExecutionContext.realm = null,
-      global = ExecutionContext.global = null,
-      context = ExecutionContext.context = null,
-      intrinsics = ExecutionContext.intrinsics = null;
-
   define(ExecutionContext, [
-    function update(){
-      if (!context) {
-        realm = ExecutionContext.realm = null;
-        global = ExecutionContext.global = null;
-        intrinsics = ExecutionContext.intrinsics = null;
-      } else if (context.realm !== realm) {
-        realm = ExecutionContext.realm = context.realm;
-        if (realm) {
-          global = ExecutionContext.global = realm.global;
-          intrinsics = ExecutionContext.intrinsics = realm.intrinsics;
-        }
-      }
-    },
     function push(newContext){
       context = ExecutionContext.context = newContext;
-      ExecutionContext.update();
+      context.realm.active || context.realm.activate();
     },
     function pop(){
       if (context) {
         var oldContext = context;
         context = context.caller;
-        ExecutionContext.update();
         return oldContext;
       }
     },
@@ -2180,321 +2409,56 @@ var continuum = (function(GLOBAL, exports){
       CLASS_EXPR, CONST, CONSTRUCT, DEBUGGER, DEFAULT, DUP, ELEMENT,
       FUNCTION, GET, IFEQ, IFNE, INDEX, JSR, JUMP, LET, LITERAL,
       MEMBER, METHOD, OBJECT, POP, POP_EVAL, POPN, PROPERTY, PUT,
-      REGEXP, RESOLVE, RETURN, RETURN_EVAL, ROTATE, SUPER_CALL, SUPER_ELEMENT,
+      REGEXP, RESOLVE, RETURN, RETURN_EVAL, ROTATE, RUN, SUPER_CALL, SUPER_ELEMENT,
       SUPER_GUARD, SUPER_MEMBER, THIS, THROW, UNARY, UNDEFINED, UPDATE, VAR, WITH
     ];
 
     var ops = code.ops,
         cmds = instructions(ops, opcodes);
 
-    function LITERAL(op){
-      stack[sp++] = op.value;
-      return cmds[++ip];
-    }
-    function REGEXP(op){
-      stack[sp++] = new $RegExp(op.value);
-      return cmds[++ip];
-    }
-    function RESOLVE(op){
-      stack[sp++] = IdentifierResolution(op.name);
-      return cmds[++ip];
-    }
-    function THIS(op){
-      A = ThisResolution();
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
-      stack[sp++] = A;
-      return cmds[++ip];
-    }
-    function UNDEFINED(op){
-      stack[sp++] = undefined;
-      return cmds[++ip];
-    }
-    function GET(op){
-      A = GetValue(stack[--sp]);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
-      stack[sp++] = A;
-      return cmds[++ip];
-    }
-    function PUT(op){
-      A = stack[--sp];
-      B = stack[--sp];
-      C = PutValue(B, A);
-      if (C && C.IsAbruptCompletion) {
-        error = C.value;
-        return ƒ;
-      }
-      stack[sp++] = A;
-      return cmds[++ip];
-    }
-    function DUP(op){
-      A = stack[sp++];
-      stack[sp] = A;
-      return cmds[++ip];
-    }
-    function POP(op){
-      sp--;
-      return cmds[++ip];
-    }
-    function POPN(op){
-      sp -= op.number;
-      return cmds[++ip];
-    }
-    function BLOCK_EXIT(op){
-      context.LexicalEnvironment = context.LexicalEnvironment.outer;
-      return cmds[++ip];
-    }
-    function FUNCTION(op){
-      A = NewDeclarativeEnvironment(context.LexicalEnvironment),
-      B = op.code;
-      if (op.name) {
-        A.CreateImmutableBinding(op.name);
-      }
-      C = new $Function(B.Type, op.name, B.params, B, A, B.Strict);
-      MakeConstructor(C);
-      stack[sp++] = C;
-      return cmds[++ip];
-    }
-    function CLASS_DECL(op){
-      A = op.superClass ? stack[--sp] : undefined;
-      B = ClassDefinitionEvaluation(op, A);
-      if (B && B.IsCompletion) {
-        if (B.IsAbruptCompletion) {
-          error = B.value;
-          return ƒ;
-        } else {
-          B = B.value;
-        }
-      }
-
-      C = BindingInitialisation(op, B, context.LexicalEnvironment);
-      if (C && C.IsAbruptCompletion) {
-        error = C.value;
-        return ƒ;
-      }
-      return cmds[++ip];
-    }
-    function CLASS_EXPR(op){
-      A = op.superClass ? stack[--sp] : undefined;
-      B = ClassDefinitionEvaluation(op, A);
-      if (B && B.IsCompletion) {
-        if (B.IsAbruptCompletion) {
-          error = B.value;
-          return ƒ;
-        } else {
-          B = B.value;
-        }
-      }
-      stack[sp++] = B;
-      return cmds[++ip];
-    }
-    function ARRAY(op){
+    function ARRAY(){
       stack[sp++] = new $Array(0);
       stack[sp++] = 0;
       return cmds[++ip];
     }
-    function INDEX(op){
-      if (op.empty) {
-        stack[sp]++;
-      } else {
-        A = stack[--sp];
-        B = stack[--sp];
-        C = GetValue(A);
-        if (C && C.IsCompletion) {
-          if (C.IsAbruptCompletion) {
-            error = C.value;
-            return ƒ;
-          } else {
-            C = C.value;
-          }
-        }
-        stack[sp - 1].DefineOwnProperty(B,  {
-          Value: C,
-          Writable: true,
-          Enumerable: true,
-          Configurable: true
-        })
-        stack[sp++] = B;
-      }
-      return cmds[++ip];
-    }
-    function ARRAY_DONE(op){
+
+    function ARRAY_DONE(){
       A = stack[--sp];
       stack[sp].Put('length', A);
       return cmds[++ip];
     }
-    function BLOCK(op){
+
+    function BINARY(){
+      A = stack[--sp];
+      B = stack[--sp];
+      res = BinaryOperation(ops[ip][0], A, B);
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function BLOCK(){
       var env = NewDeclarativeEnvironment(context.LexicalEnvironment);
       context.LexicalEnvironment = env;
-      BlockDeclarationInstantiation(op, context.LexicalEnvironment);
+      BlockDeclarationInstantiation(ops[ip][0], context.LexicalEnvironment);
       return cmds[++ip];
     }
-    function WITH(op){
-      A = ToObject(GetValue(stack[--sp]));
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
-      B = context.LexicalEnvironment;
-      C = context.LexicalEnvironment = NewObjectEnvironment(A, B);
-      C.withEnvironment = true;
-      C.outer = B;
-      return cmds[++ip];
-    }
-    function UPDATE(op){
-      if (op.prefix) {
-        if (op.increment) {
-          A = PrefixIncrement(stack[--sp]);
-        } else {
-          A = PrefixDecrement(stack[--sp]);
-        }
-      } else {
-        if (op.increment) {
-          A = PostfixIncrement(stack[--sp]);
-        } else {
-          A = PostfixDecrement(stack[--sp]);
-        }
-      }
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
-      stack[sp++] = A;
-      return cmds[++ip];
-    }
-    function UNARY(op){
-      A = stack[--sp];
-      B = UnaryOperation(op.operator, A);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
-      stack[sp++] = A;
-      return cmds[++ip];
-    }
-    function BINARY(op){
-      A = stack[--sp];
-      B = stack[--sp];
-      res = BinaryOperation(op.operator, A, B);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
-      stack[sp++] = A;
-      return cmds[++ip];
-    }
-    function CASE(op){
-      A = stack[--sp];
-      B = stack[sp - 1];
-      C = StrictEqualityComparison(A, B);
-      if (C && C.IsCompletion) {
-        if (C.IsAbruptCompletion) {
-          error = C.value;
-          return ƒ;
-        } else {
-          C = C.value;
-        }
-      }
-      if (C) {
-        sp--;
-        ip = op.position;
-      }
-      return cmds[++ip];
-    }
-    function DEFAULT(op){
-      sp--;
-      ip = op.position;
-      return cmds[++ip];
-    }
-    function THROW(op){
-      error = stack[--sp];
-      return ƒ;
-    }
-    function JUMP(op){
-      ip = op.position;
-      return cmds[++ip];
-    }
-    function IFEQ(op){
-      if (op.test === !!stack[--sp]) {
-        ip = instr.position;
-      }
-      return cmds[++ip];
-    }
-    function IFNE(op){
-      if (op.test === !!stack[sp - 1]) {
-        ip = instr.position;
-      } else {
-        sp--;
-      }
-      return cmds[++ip];
-    }
-    function POP_EVAL(op){
-      completion = stack[--sp];
-      return cmds[++ip];
-    }
-    function RETURN_EVAL(op){
-      return Ω;
-    }
-    function RETURN(op){
-      completion = stack[--sp];
-      return Ω;
-    }
-    function JSR(op){
 
+    function BLOCK_EXIT(){
+      context.LexicalEnvironment = context.LexicalEnvironment.outer;
       return cmds[++ip];
     }
-    function ROTATE(op){
-      A = [];
-      B = stack[--sp];
-      for (C = 0; C < op.number; C++) {
-        A[C] = stack[--sp];
-      }
-      A[C++] = B;
-      while (C--) {
-        stack[sp++] = A[C];
-      }
-      return cmds[++ip];
-    }
-    function DEBUGGER(op){
-      completion = {
-        op: op,
-        sp: sp,
-        ip: ip
-      };
-      return false;
-    }
-    function CALL(op){
-      sp -= op.args;
-      A = stack.slice(sp, sp + op.args);
+
+    function CALL(){
+      sp -= ops[ip][0];
+      A = stack.slice(sp, sp + ops[ip][0]);
       B = stack[--sp];
       C = stack[--sp];
       D = EvaluateCall(C, B, A);
@@ -2509,9 +2473,69 @@ var continuum = (function(GLOBAL, exports){
       stack[sp++] = D;
       return cmds[++ip];
     }
-    function CONSTRUCT(op){
-      sp -= op.args;
-      A = stack.slice(sp, sp + op.args);
+
+    function CASE(){
+      A = stack[--sp];
+      B = stack[sp - 1];
+      C = StrictEqual(A, B);
+      if (C && C.IsCompletion) {
+        if (C.IsAbruptCompletion) {
+          error = C.value;
+          return ƒ;
+        } else {
+          C = C.value;
+        }
+      }
+      if (C) {
+        sp--;
+        ip = ops[ip][0];
+      }
+      return cmds[++ip];
+    }
+
+    function CLASS_DECL(){
+      A = ops[ip][1] ? stack[--sp] : undefined;
+      B = ClassDefinitionEvaluation(ops[ip][0], A);
+      if (B && B.IsCompletion) {
+        if (B.IsAbruptCompletion) {
+          error = B.value;
+          return ƒ;
+        } else {
+          B = B.value;
+        }
+      }
+
+      C = BindingInitialisation(ops[ip][0], B, context.LexicalEnvironment);
+      if (C && C.IsAbruptCompletion) {
+        error = C.value;
+        return ƒ;
+      }
+      return cmds[++ip];
+    }
+
+    function CLASS_EXPR(){
+      A = ops[ip][1] ? stack[--sp] : undefined;
+      B = ClassDefinitionEvaluation(ops[ip], A);
+      if (B && B.IsCompletion) {
+        if (B.IsAbruptCompletion) {
+          error = B.value;
+          return ƒ;
+        } else {
+          B = B.value;
+        }
+      }
+      stack[sp++] = B;
+      return cmds[++ip];
+    }
+
+    function CONST(){
+      BindingInitialisation(ops[ip][0], stack[--sp], context.LexicalEnvironment);
+      return cmds[++ip];
+    }
+
+    function CONSTRUCT(){
+      sp -= ops[ip][0];
+      A = stack.slice(sp, sp + ops[ip][0]);
       B = stack[--sp];
       C = EvaluateConstruct(B, A);
       if (C && C.IsCompletion) {
@@ -2525,67 +2549,25 @@ var continuum = (function(GLOBAL, exports){
       stack[sp++] = C;
       return cmds[++ip];
     }
-    function SUPER_CALL(op){
-      A = CallSuperSetup();
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
+
+    function DEBUGGER(){
+      cleanup = pauseCleanup;
+      return false;
+    }
+
+    function DEFAULT(){
+      sp--;
+      ip = ops[ip][0];
+      return cmds[++ip];
+    }
+
+    function DUP(){
+      A = stack[sp - 1];
       stack[sp++] = A;
       return cmds[++ip];
     }
-    function SUPER_ELEMENT(op){
-      A = ElementSuper(stack[--sp]);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
-      stack[sp++] = A;
-      return cmds[++ip];
-    }
-    function SUPER_MEMBER(op){
-      A = ElementSuper(op.name);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
-          return ƒ;
-        } else {
-          A = A.value;
-        }
-      }
-      stack[sp++] = A;
-      return cmds[++ip];
-    }
-    function SUPER_GUARD(op){
-      A = SuperGuard();
-      if (A && A.IsAbruptCompletion) {
-        error = A.value;
-        return ƒ;
-      }
-      return cmds[++ip];
-    }
-    function OBJECT(op){
-      stack[sp++] = new $Object;
-      return cmds[++ip];
-    }
-    function MEMBER(op){
-      A = stack[--sp];
-      B = DefineProperty(stack[sp - 1], op.name, A);
-      if (A && A.IsAbruptCompletion) {
-        error = A.value;
-        return ƒ;
-      }
-      return cmds[++ip];
-    }
-    function ELEMENT(op){
+
+    function ELEMENT(){
       A = Element(stack[--sp], stack[--sp]);
       if (A && A.IsCompletion) {
         if (A.IsAbruptCompletion) {
@@ -2598,8 +2580,18 @@ var continuum = (function(GLOBAL, exports){
       stack[sp++] = A;
       return cmds[++ip];
     }
-    function PROPERTY(op){
-      A = Element(op.name, stack[--sp]);
+
+    function FUNCTION(){
+      A = NewDeclarativeEnvironment(context.LexicalEnvironment),
+      B = ops[ip][1];
+      C = new $Function(B.Type, ops[ip][0], B.params, B, A, B.Strict);
+      MakeConstructor(C);
+      stack[sp++] = C;
+      return cmds[++ip];
+    }
+
+    function GET(){
+      A = GetValue(stack[--sp]);
       if (A && A.IsCompletion) {
         if (A.IsAbruptCompletion) {
           error = A.value;
@@ -2611,20 +2603,290 @@ var continuum = (function(GLOBAL, exports){
       stack[sp++] = A;
       return cmds[++ip];
     }
-    function METHOD(op){
+
+    function IFEQ(){
+      if (ops[ip][1] === !!stack[--sp]) {
+        ip = instr[0];
+      }
+      return cmds[++ip];
+    }
+
+    function IFNE(){
+      if (ops[ip][1] === !!stack[sp - 1]) {
+        ip = instr[0];
+      } else {
+        sp--;
+      }
+      return cmds[++ip];
+    }
+
+    function INDEX(){
+      if (ops[ip][0]) {
+        stack[sp]++;
+      } else {
+        A = stack[--sp];
+        B = stack[--sp];
+        C = GetValue(A);
+        if (C && C.IsCompletion) {
+          if (C.IsAbruptCompletion) {
+            error = C.value;
+            return ƒ;
+          } else {
+            C = C.value;
+          }
+        }
+        stack[sp - 1].DefineOwnProperty(B, new NormalDescriptor(C));
+        stack[sp++] = B;
+      }
+      return cmds[++ip];
+    }
+
+    function LITERAL(){
+      stack[sp++] = ops[ip][0];
+      return cmds[++ip];
+    }
+
+    function JUMP(){
+      ip = ops[ip][0];
+      return cmds[++ip];
+    }
+
+    function JSR(){
+      return cmds[++ip];
+    }
+
+    function LET(){
+      BindingInitialisation(ops[ip][0], stack[--sp], context.LexicalEnvironment);
+      return cmds[++ip];
+    }
+
+    function MEMBER(){
+      A = Element(ops[ip][0], stack[--sp]);
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function METHOD(){
 
       return cmds[++ip];
     }
-    function VAR(op){
-      BindingInitialisation(op.pattern, stack[--sp]);
+
+    function PROPERTY(){
+      A = stack[--sp];
+      B = DefineProperty(stack[sp - 1], ops[ip][0], A);
+      if (A && A.IsAbruptCompletion) {
+        error = A.value;
+        return ƒ;
+      }
       return cmds[++ip];
     }
-    function LET(op){
-      BindingInitialisation(op.pattern, stack[--sp], context.LexicalEnvironment);
+
+    function OBJECT(){
+      stack[sp++] = new $Object;
       return cmds[++ip];
     }
-    function CONST(op){
-      BindingInitialisation(op.pattern, stack[--sp], context.LexicalEnvironment);
+
+    function POP(){
+      sp--;
+      return cmds[++ip];
+    }
+
+    function POPN(){
+      sp -= ops[ip][0];
+      return cmds[++ip];
+    }
+
+    function PUT(){
+      A = stack[--sp];
+      B = stack[--sp];
+      C = PutValue(B, A);
+      if (C && C.IsAbruptCompletion) {
+        error = C.value;
+        return ƒ;
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function POP_EVAL(){
+      completion = stack[--sp];
+      return cmds[++ip];
+    }
+
+    function REGEXP(){
+      stack[sp++] = new $RegExp(ops[ip][0]);
+      return cmds[++ip];
+    }
+
+    function RESOLVE(){
+      stack[sp++] = IdentifierResolution(ops[ip][0]);
+      return cmds[++ip];
+    }
+
+    function RETURN_EVAL(){
+      return false;
+    }
+
+    function RETURN(){
+      completion = stack[--sp];
+      return false;
+    }
+
+    function ROTATE(){
+      A = [];
+      B = stack[--sp];
+      for (C = 0; C < ops[ip][0]; C++) {
+        A[C] = stack[--sp];
+      }
+      A[C++] = B;
+      while (C--) {
+        stack[sp++] = A[C];
+      }
+      return cmds[++ip];
+    }
+
+    function RUN(){
+      ExecutionContext.push(new ExecutionContext(context, realm.globalEnv, realm, code));
+      TopLevelDeclarationInstantiation(code);
+      return cmds[++ip];
+    }
+
+    function SUPER_CALL(){
+      A = CallSuperSetup();
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function SUPER_ELEMENT(){
+      A = ElementSuper(stack[--sp]);
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function SUPER_GUARD(){
+      A = SuperGuard();
+      if (A && A.IsAbruptCompletion) {
+        error = A.value;
+        return ƒ;
+      }
+      return cmds[++ip];
+    }
+
+    function SUPER_MEMBER(){
+      A = ElementSuper(ops[ip][0]);
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function THIS(){
+      A = ThisResolution();
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function THROW(){
+      error = stack[--sp];
+      return ƒ;
+    }
+
+    function UNARY(){
+      A = stack[--sp];
+      B = UnaryOperation(ops[ip][0], A);
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function UNDEFINED(){
+      stack[sp++] = undefined;
+      return cmds[++ip];
+    }
+
+    function UPDATE(){
+      switch (ops[ip][0]) {
+        case 0: A = PostfixDecrement(stack[--sp]); break;
+        case 1: A = PrefixDecrement(stack[--sp]); break;
+        case 2: A = PostfixIncrement(stack[--sp]); break;
+        case 3: A = PrefixIncrement(stack[--sp]); break;
+      }
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      stack[sp++] = A;
+      return cmds[++ip];
+    }
+
+    function VAR(){
+      BindingInitialisation(ops[ip][0], stack[--sp]);
+      return cmds[++ip];
+    }
+
+    function WITH(){
+      A = ToObject(GetValue(stack[--sp]));
+      if (A && A.IsCompletion) {
+        if (A.IsAbruptCompletion) {
+          error = A.value;
+          return ƒ;
+        } else {
+          A = A.value;
+        }
+      }
+      B = context.LexicalEnvironment;
+      C = context.LexicalEnvironment = NewObjectEnvironment(A, B);
+      C.withEnvironment = true;
+      C.outer = B;
       return cmds[++ip];
     }
 
@@ -2648,33 +2910,85 @@ var continuum = (function(GLOBAL, exports){
         }
       }
       completion = error;
-      return Ω;
-    }
-
-    function Ω(){
       return false;
     }
 
-    var completion, stack, ip, sp, error, A, B, C, D;
-
-    function execute(){
+    function normalPrepare(){
       stack = [];
       ip = 0;
       sp = 0;
       completion = error = A = B = C = D = undefined;
-
-      var F = cmds[ip];
-
-      while (F) {
-        console.log(ops[ip]);
-        F = F(ops[ip]);
-      }
-      return completion;
     }
 
-    return execute;
+    function normalExecute(){
+      var F = cmds[ip];
+      while (F) F = F();
+    }
+
+    function normalCleanup(){
+      var result = completion;
+      prepare();
+      return result;
+    }
+
+    function instrumentedExecute(){
+      var F = cmds[ip];
+      while (F) {
+        thunk.emit('op', ops[ip]);
+        F = F();
+      }
+    }
+
+    function resumePrepare(){
+      delete thunk.ip;
+      delete thunk.stack;
+      prepare = normalPrepare;
+      context = ctx;
+      ctx = undefined;
+      context.realm.activate();
+    }
+
+    function pauseCleanup(){
+      thunk.ip = ip;
+      thunk.stack = stack;
+      stack.length = sp;
+      prepare = resumePrepare;
+      cleanup = normalCleanup;
+      ctx = context;
+      return PauseSigil;
+    }
+
+    var completion, stack, ip, sp, error, A, B, C, D, ctx;
+
+    var prepare = normalPrepare,
+        execute = normalExecute,
+        cleanup = normalCleanup;
+
+    function run(){
+      prepare();
+      execute();
+      return cleanup();
+    }
+
+    var thunk = new Thunk(code, run, function(){
+      if (execute = normalExecute) {
+        execute = instrumentedExecute;
+      } else {
+        execute = normalExecute;
+      }
+    });
+
+    return thunk;
   }
 
+  function Thunk(code, run, instrument){
+    Emitter.call(this);
+    this.run = run;
+    this.code = code;
+    this.instrument = instrument;
+  }
+
+  inherit(Thunk, Emitter, []);
 
   function Script(ast, code, name){
     if (ast instanceof Script)
@@ -2737,40 +3051,61 @@ var continuum = (function(GLOBAL, exports){
       scripts: [],
       realm: new Realm
     });
+
+    this.state = 'idle';
   }
 
   inherit(Continuum, Emitter, [
-    function pause(){
-      this.realm.pause();
-      return this;
-    },
     function resume(){
-      this.realm.resume();
-      return this;
+      if (this.executing) {
+        this.emit('resume');
+        return this.run(this.executing);
+      }
     },
-    function run(subject){
-      var script = this.executing = new Script(subject);
+    function run(thunk){
+      this.realm.activate();
+      this.executing = thunk;
+      this.state = 'executing';
+      this.emit('executing', thunk);
+      var result = thunk.run();
+      if (result === PauseSigil) {
+        this.state = 'paused';
+        this.emit('pause');
+      } else {
+        ExecutionContext.pop();
+        this.executing = null;
+        this.state = 'idle';
+        this.emit('complete', result);
+        return result;
+      }
+    },
+    function eval(subject){
+      var script = new Script(subject),
+          self = this;
+
       this.scripts.push(script);
-      interpreter = this;
-      ExecutionContext.push(new ExecutionContext(null, this.realm.globalEnv, this.realm));
-      var result = script.thunk();
-      ExecutionContext.pop();
-      return result;
+      script.thunk.instrument();
+      script.thunk.on('op', function(op){
+        self.emit('op', op);
+      });
+      this.run(script.thunk);
     }
   ]);
 
 
   function inspect(o){
-    console.log(require('util').inspect(o, null, 10));
+    o = require('util').inspect(o, null, 10);
+    console.log(o);
+    return o;
   }
 
   exports.Continuum = Continuum;
 
   var x = new Continuum;
+  x.on('*', console.log);
 
-  inspect(x.run('xy = function(){ this.hello = true }; global = this'))
-  inspect(x.realm.global);
+  x.eval('function xy(){ return this.hello = true } debugger');
+  inspect(x)
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
-
