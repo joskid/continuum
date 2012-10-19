@@ -10,6 +10,7 @@ var BOOLEAN   = 'boolean',
 
 var defineProperty = Object.defineProperty,
     getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor,
+    objectToString = {}.toString,
     slice = [].slice;
 
 function isObject(v){
@@ -66,6 +67,7 @@ function enumerate(o){
 
 exports.enumerate = enumerate;
 
+var hasDunderProto = { __proto__: [] } instanceof Array;
 
 if (Object.keys) {
   var ownKeys = exports.keys = Object.keys;
@@ -82,12 +84,57 @@ if (Object.keys) {
   })({}.hasOwnProperty);
 }
 
+function getBrandOf(o){
+  return objectToString.call(o).slice(9, -1);
+}
+
+function ensureObject(name, o){
+  if (!o || typeof o !== 'object') {
+    throw new TypeError(name + ' called with non-object ' + getBrandOf(o));
+  }
+}
+
+var getPrototypeOf;
+
+if (Object.getPrototypeOf) {
+  getPrototypeOf = Object.getPrototypeOf;
+} else if (hasDunderProto) {
+  getPrototypeOf = (function(){
+    function getPrototypeOf(o){
+      ensureObject('getPrototypeOf', o);
+      return o.__proto__;
+    }
+    return getPrototypeOf;
+  })();
+} else {
+  getPrototypeOf = (function(){
+    function getPrototypeOf(o){
+      ensureObject('getPrototypeOf', o);
+      if (typeof o.constructor === 'function') {
+        return o.constructor.prototype;
+      }
+    }
+    return getPrototypeOf;
+  })();
+}
+
+exports.getPrototypeOf = getPrototypeOf
+
+function copy(o){
+  return assign(create(getPrototypeOf(o)), o);
+}
+
+exports.copy = copy;
+
+
 function define(o, p, v){
   switch (typeof p) {
     case STRING:
-      return defineProperty(o, p, { configurable: true, writable: true, value: v });
+      defineProperty(o, p, { configurable: true, writable: true, value: v });
+      break;
     case FUNCTION:
-      return defineProperty(o, p.name, { configurable: true, writable: true, value: p });
+      defineProperty(o, p.name, { configurable: true, writable: true, value: p });
+      break;
     case OBJECT:
       if (p instanceof Array) {
         for (var i=0; i < p.length; i++) {
@@ -121,6 +168,41 @@ function define(o, p, v){
 
 exports.define = define;
 
+function assign(o, p, v){
+  switch (typeof p) {
+    case STRING:
+      o[p] = v;
+      break;
+    case FUNCTION:
+      o[p.name] = p;
+      break;
+    case OBJECT:
+      if (p instanceof Array) {
+        for (var i=0; i < p.length; i++) {
+          var f = p[i];
+          if (typeof f === FUNCTION && f.name) {
+            var name = f.name;
+          } else if (typeof f === STRING && typeof p[i+1] !== FUNCTION || !p[i+1].name) {
+            var name = f;
+            f = p[i+1];
+          }
+          if (name) {
+            o[name] = f;
+          }
+        }
+      } else if (p) {
+        var keys = ownKeys(p)
+
+        for (var i=0; i < keys.length; i++) {
+          var k = keys[i];
+          o[k] = p[k];
+        }
+      }
+  }
+  return o;
+}
+
+exports.assign = assign;
 
 
 function inherit(Ctor, Super, properties, methods){
@@ -513,4 +595,51 @@ define(PropertyList.prototype, [
   function toArray(){
     return this.keys.slice();
   },
+]);
+
+
+
+function Stack(){
+  this.empty();
+  for (var k in arguments)
+    this.record(arguments[k]);
+}
+
+exports.Stack = Stack;
+
+define(Stack.prototype, [
+  function push(item){
+    this.items.push(item);
+    this.length++;
+    this.top = item;
+    return this;
+  },
+  function pop(){
+    this.length--;
+    this.top = this.items[this.length - 1];
+    return this.items.pop();
+  },
+  function empty(){
+    this.length = 0;
+    this.items = [];
+    this.top = undefined;
+  },
+  function first(callback, context){
+    var i = this.length;
+    context || (context = this);
+    while (i--)
+      if (callback.call(context, this[i], i, this))
+        return this[i];
+  },
+  function filter(callback, context){
+    var i = this.length,
+        out = new Stack;
+    context || (context = this);
+
+    for (var i=0; i < this.length; i++)
+      if (callback.call(context, this[i], i, this))
+        out.push(this[i]);
+
+    return out;
+  }
 ]);
