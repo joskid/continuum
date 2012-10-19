@@ -94,7 +94,7 @@ var continuum = (function(GLOBAL, exports){
   function hide(o, k){
     Object.defineProperty(o, k, { enumerable: false });
   }
-  
+
   // ###############################
   // ###############################
   // ### Specification Functions ###
@@ -958,8 +958,8 @@ var continuum = (function(GLOBAL, exports){
     }
   }
 
-  function UnaryDelete(ref) {
-    if (!ref || !ref.IsReference)
+  function UnaryDelete(ref){
+    if (!ref || !ref.IsReference) {
       return true;
     }
 
@@ -991,7 +991,7 @@ var continuum = (function(GLOBAL, exports){
     }
   }
 
-  function UnaryVoid(ref) {
+  function UnaryVoid(ref){
     var val = GetValue(ref);
     if (val && val.IsAbruptCompletion) {
       return val;
