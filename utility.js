@@ -9,7 +9,8 @@ var BOOLEAN   = 'boolean',
     UNDEFINED = 'undefined';
 
 var defineProperty = Object.defineProperty,
-    getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+    getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor,
+    slice = [].slice;
 
 function isObject(v){
   return typeof v === OBJECT ? v !== null : typeof v === FUNCTION;
