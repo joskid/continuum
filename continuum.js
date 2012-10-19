@@ -3101,11 +3101,5 @@ var continuum = (function(GLOBAL, exports){
 
   exports.Continuum = Continuum;
 
-  var x = new Continuum;
-  x.on('*', console.log);
-
-  x.eval('function xy(){ return this.hello = true } debugger');
-  inspect(x)
-
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
