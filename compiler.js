@@ -3,12 +3,14 @@ var utility   = require('./utility'),
 
 var Visitor = utility.Visitor,
     Collector = utility.Collector,
+    Stack = utility.Stack,
     define = utility.define,
+    create = utility.create,
+    copy = utility.copy,
     parse = utility.parse,
     decompile = utility.decompile,
     inherit = utility.inherit,
     isObject = utility.isObject,
-    create = utility.create,
     quotes = utility.quotes;
 
 
@@ -176,24 +178,6 @@ define(OpCode.prototype, [
 ]);
 
 
-function Operation(op, a, b, c, d){
-  this.op = op;
-  for (var i=0; i < op.params; i++) {
-    this[i] = arguments[i + 1];
-  }
-}
-
-define(Operation.prototype, [
-  function inspect(){
-    var out = [];
-    for (var i=0; i < this.op.params; i++) {
-      out[i] = util.inspect(this[i]);
-    }
-
-    return util.inspect(this.op)+'('+out.join(', ')+')';
-  }
-]);
-
 
 var ARRAY         = new OpCode( 0, 0, 'ARRAY'),
     ARRAY_DONE    = new OpCode( 1, 0, 'ARRAY_DONE'),
@@ -247,6 +231,25 @@ var ARRAY         = new OpCode( 0, 0, 'ARRAY'),
 
 
 
+function Operation(op, a, b, c, d){
+  this.op = op;
+  for (var i=0; i < op.params; i++) {
+    this[i] = arguments[i + 1];
+  }
+}
+
+define(Operation.prototype, [
+  function inspect(){
+    var out = [];
+    for (var i=0; i < this.op.params; i++) {
+      out[i] = util.inspect(this[i]);
+    }
+
+    return util.inspect(this.op)+'('+out.join(', ')+')';
+  }
+]);
+
+
 
 function Handler(type, begin, end){
   this.type = type;
@@ -258,51 +261,6 @@ var ENV = 'ENV',
     FINALLY = 'FINALLY',
     CATCH = 'CATCH';
 
-
-
-
-function Stack(){
-  this.empty();
-  for (var k in arguments)
-    this.record(arguments[k]);
-}
-
-define(Stack.prototype, [
-  function push(item){
-    this.items.push(item);
-    this.length++;
-    this.top = item;
-    return this;
-  },
-  function pop(){
-    this.length--;
-    this.top = this.items[this.length - 1];
-    return this.items.pop();
-  },
-  function empty(){
-    this.length = 0;
-    this.items = [];
-    this.top = undefined;
-  },
-  function first(callback, context){
-    var i = this.length;
-    context || (context = this);
-    while (i--)
-      if (callback.call(context, this[i], i, this))
-        return this[i];
-  },
-  function filter(callback, context){
-    var i = this.length,
-        out = new Stack;
-    context || (context = this);
-
-    for (var i=0; i < this.length; i++)
-      if (callback.call(context, this[i], i, this))
-        out.push(this[i]);
-
-    return out;
-  }
-]);
 
 
 
@@ -502,7 +460,12 @@ define(Compiler.prototype, [
         this.record(PUT);
       }
     } else {
-      this.BinaryExpression(node);
+      this.visit(node.left);
+      this.record(DUP);
+      this.record(GET);
+      this.visit(node.right);
+      this.record(GET);
+      this.record(BINARY, node.operator.slice(0, -1));
       this.record(PUT);
     }
   },
@@ -534,8 +497,6 @@ define(Compiler.prototype, [
   },
   function BinaryExpression(node){
     this.visit(node.left);
-    if (node.type === 'AssignmentExpression')
-      this.record(DUP);
     this.record(GET);
     this.visit(node.right);
     this.record(GET);
