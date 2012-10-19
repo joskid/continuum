@@ -1,4 +1,4 @@
-var continuum = (function(GLOBAL, exports){
+var continuum = (function(GLOBAL, exports, undefined){
   var errors  = require('./errors'),
       utility = require('./utility'),
       compile = require('./compiler');
@@ -21,14 +21,22 @@ var continuum = (function(GLOBAL, exports){
       NUMBER    = 'number',
       OBJECT    = 'object',
       STRING    = 'string',
-      UNDEFINED = 'undefined';
+      UNDEFINED = 'undefined',
+      ARGUMENTS = 'arguments';
 
-  var ENUMERABLE   = 0x1,
-      CONFIGURABLE = 0x2,
-      WRITABLE     = 0x4,
-      ACCESSOR   = 0x8;
+  var GET          = 'Get',
+      SET          = 'Set',
+      VALUE        = 'Value',
+      WRITABLE     = 'Writable',
+      ENUMERABLE   = 'Enumerable',
+      CONFIGURABLE = 'Configurable';
 
-  var ___ =  0,
+
+  var E = 0x1,
+      C = 0x2,
+      W = 0x4,
+      A = 0x8,
+      ___ =  0,
       E__ =  1,
       _C_ =  2,
       EC_ =  3,
@@ -128,7 +136,7 @@ var continuum = (function(GLOBAL, exports){
   // ## ToPropertyDescriptor
 
   var descFields = ['value', 'writable', 'enumerable', 'configurable', 'get', 'set'];
-  var descProps = ['Value', 'Writable', 'Enumerable', 'Configurable', 'Get', 'Set'];
+  var descProps = [VALUE, WRITABLE, ENUMERABLE, CONFIGURABLE, GET, SET];
 
   function ToPropertyDescriptor(obj) {
     if (obj.IsCompletion) { if (obj.IsAbruptCompletion) return obj; else obj = obj.value; }
@@ -146,17 +154,17 @@ var continuum = (function(GLOBAL, exports){
       }
     }
 
-    if ('Get' in desc) {
+    if (GET in desc) {
       if (desc.Get !== undefined && !desc.Get || !desc.Get.Call)
         return ThrowException('getter_must_be_callable', [typeof desc.Get]);
     }
 
-    if ('Set' in desc) {
+    if (SET in desc) {
       if (desc.Set !== undefined && !desc.Set ||  !desc.Set.Call)
         return ThrowException('setter_must_be_callable', [typeof desc.Set]);
     }
 
-    if (('Get' in desc || 'Set' in desc) && ('Value' in desc || 'Writable' in desc))
+    if ((GET in desc || SET in desc) && (VALUE in desc || WRITABLE in desc))
       return ThrowException('value_and_accessor', [desc]);
 
     return desc;
@@ -165,13 +173,13 @@ var continuum = (function(GLOBAL, exports){
   // ## IsAccessorDescriptor
 
   function IsAccessorDescriptor(desc) {
-    return desc === undefined ? false : 'Get' in desc || 'Set' in desc;
+    return desc === undefined ? false : GET in desc || SET in desc;
   }
 
   // ## IsDataDescriptor
 
   function IsDataDescriptor(desc) {
-    return desc === undefined ? false : 'Value' in desc || 'Writable' in desc;
+    return desc === undefined ? false : VALUE in desc || WRITABLE in desc;
   }
 
   // ## IsGenericDescriptor
@@ -187,26 +195,26 @@ var continuum = (function(GLOBAL, exports){
     if (desc.IsCompletion) { if (desc.IsAbruptCompletion) return desc; else desc = desc.value; }
 
     if (IsGenericDescriptor(desc) || IsDataDescriptor(desc)) {
-      'Value' in desc    || (desc.Value = undefined);
-      'Writable' in desc || (desc.Writable = false);
+      VALUE in desc    || (desc.Value = undefined);
+      WRITABLE in desc || (desc.Writable = false);
     } else {
-      'Get' in desc || (desc.Get = undefined);
-      'Set' in desc || (desc.Set = undefined);
+      GET in desc || (desc.Get = undefined);
+      SET in desc || (desc.Set = undefined);
     }
-    'Enumerable' in desc   || (desc.Enumerable = false);
-    'Configurable' in desc || (desc.Configurable = false);
+    ENUMERABLE in desc   || (desc.Enumerable = false);
+    CONFIGURABLE in desc || (desc.Configurable = false);
     return desc;
   }
 
   // ## IsEmptyDescriptor
 
   function IsEmptyDescriptor(desc) {
-    return !('Get' in desc
-          || 'Set' in desc
-          || 'Value' in desc
-          || 'Writable' in desc
-          || 'Enumerable' in desc
-          || 'Configurable' in desc);
+    return !(GET in desc
+          || SET in desc
+          || VALUE in desc
+          || WRITABLE in desc
+          || ENUMERABLE in desc
+          || CONFIGURABLE in desc);
   }
 
   // ## IsEquivalentDescriptor
@@ -226,12 +234,12 @@ var continuum = (function(GLOBAL, exports){
         b = b.value;
       }
     }
-    return SameValue(a.Get, b.Get) &&
-           SameValue(a.Set, b.Set) &&
-           SameValue(a.Value, b.Value) &&
-           SameValue(a.Writable, b.Writable) &&
-           SameValue(a.Enumerable, b.Enumerable) &&
-           SameValue(a.Configurable, b.Configurable);
+    return IS(a.Get, b.Get) &&
+           IS(a.Set, b.Set) &&
+           IS(a.Value, b.Value) &&
+           IS(a.Writable, b.Writable) &&
+           IS(a.Enumerable, b.Enumerable) &&
+           IS(a.Configurable, b.Configurable);
   }
 
   // ## GetIdentifierReference
@@ -574,68 +582,6 @@ var continuum = (function(GLOBAL, exports){
   }
 
 
-  // ## SameValue
-
-  function SameValue(x, y) {
-    if (x && x.IsCompletion) {
-      if (x.IsAbruptCompletion) {
-        return x;
-      } else {
-        x = x.value;
-      }
-    }
-    if (y && y.IsCompletion) {
-      if (y.IsAbruptCompletion) {
-        return y;
-      } else {
-        y = y.value;
-      }
-    }
-    return x === y ? (x !== 0 || 1 / x === 1 / y) : (x !== x && y !== y);
-  }
-
-  // ## StrictEqual
-
-  function StrictEqual(x, y) {
-    if (x && x.IsCompletion) {
-      if (x.IsAbruptCompletion) {
-        return x;
-      } else {
-        x = x.value;
-      }
-    }
-    if (y && y.IsCompletion) {
-      if (y.IsAbruptCompletion) {
-        return y;
-      } else {
-        y = y.value;
-      }
-    }
-    return x === y;
-  }
-
-  // ## Equal
-
-  function Equal(left, right){
-    var leftType = typeof left,
-        rightType = typeof right;
-
-    if (leftType === rightType) {
-      return StrictEqual(left, right);
-    } else if (left == null && left == right) {
-      return true;
-    } else if (leftType === NUMBER && rightType === STRING) {
-      return Equal(left, ToNumber(right));
-    } else if (leftType === STRING && rightType === NUMBER) {
-      return Equal(ToNumber(left), right);
-    } else if (rightType === OBJECT && leftType === STRING || leftType === OBJECT) {
-      return Equal(left, ToPrimitive(right));
-    } else if (leftType === OBJECT && rightType === STRING || rightType === OBJECT) {
-      return Equal(ToPrimitive(left), right);
-    } else {
-      return false;
-    }
-  }
 
   // ## Invoke
 
@@ -675,7 +621,7 @@ var continuum = (function(GLOBAL, exports){
       defineDirect(obj, i, args[i], ECW);
 
     //defineDirect(obj, 'caller', intrinsics.ThrowTypeError, __A);
-    //defineDirect(obj, 'arguments', intrinsics.ThrowTypeError, __A);
+    //defineDirect(obj, ARGUMENTS, intrinsics.ThrowTypeError, __A);
     return obj;
   }
 
@@ -738,11 +684,11 @@ var continuum = (function(GLOBAL, exports){
 
 
   function TopLevelDeclarationInstantiation(code) {
-    var env = context.VariableEnvironment;
-    var configurable = code.Type === 'eval';
-    var decls = code.LexicalDeclarations;
+    var env = context.VariableEnvironment,
+        configurable = code.Type === 'eval',
+        decls = code.LexicalDeclarations;
 
-    for (var i=0; decl = decls[i]; i++) {
+    for (var i=0, decl; decl = decls[i]; i++) {
       if (decl.type === 'FunctionDeclaration') {
         var name = decl.id.name;
         if (env.HasBinding(name)) {
@@ -821,13 +767,13 @@ var continuum = (function(GLOBAL, exports){
     }
 
 
-    if (!env.HasBinding('arguments')) {
+    if (!env.HasBinding(ARGUMENTS)) {
       if (func.Strict) {
-        env.CreateImmutableBinding('arguments');
+        env.CreateImmutableBinding(ARGUMENTS);
       } else {
-        env.CreateMutableBinding('arguments');
+        env.CreateMutableBinding(ARGUMENTS);
       }
-      env.InitializeBinding('arguments', ao);
+      env.InitializeBinding(ARGUMENTS, ao);
     }
 
     var vardecls = func.Code.VarDeclaredNames;
@@ -886,8 +832,6 @@ var continuum = (function(GLOBAL, exports){
     }
   }
 
-
-
   // ## IdentifierResolution
 
   function IdentifierResolution(name) {
@@ -921,12 +865,12 @@ var continuum = (function(GLOBAL, exports){
     }
   }
 
-  var PrefixIncrement, PostfixIncrement, PrefixDecrement, PostfixDecrement;
+  var PRE_INC, POST_INC, PRE_DEC, POST_DEC;
   void function(createChanger){
-    PrefixIncrement = createChanger(true, 1);
-    PostfixIncrement = createChanger(false, 1);
-    PrefixDecrement = createChanger(true, -1);
-    PostfixDecrement = createChanger(false, -1);
+    PRE_INC = createChanger(true, 1);
+    POST_INC = createChanger(false, 1);
+    PRE_DEC = createChanger(true, -1);
+    POST_DEC = createChanger(false, -1);
   }(function(pre, change){
     return function(ref) {
       var val = ToNumber(GetValue(ref));
@@ -946,26 +890,15 @@ var continuum = (function(GLOBAL, exports){
 
 
 
-  function UnaryOperation(operator, val) {
-    switch (operator) {
-      case 'delete': return UnaryDelete(val);
-      case 'void': return UnaryVoid(val);
-      case 'typeof': return UnaryTypeof(val);
-      case '+': return UnaryPositive(val);
-      case '-': return UnaryNegative(val);
-      case '~': return UnaryBitwiseNOT(val);
-      case '!': return UnaryLogicalNOT(val);
-    }
-  }
 
-  function UnaryDelete(ref){
+  function DELETE(ref){
     if (!ref || !ref.IsReference) {
       return true;
     }
 
     if (IsUnresolvableReference(ref)) {
       if (ref.strict) {
-        return ThrowError('strict_delete_property', [ref.name, ref.base]);
+        return ThrowException('strict_delete_property', [ref.name, ref.base]);
       } else {
         return true;
       }
@@ -973,7 +906,7 @@ var continuum = (function(GLOBAL, exports){
 
     if (IsPropertyReference(ref)) {
       if (IsSuperReference(ref)) {
-        return ThrowError('super_delete_property', ref.name);
+        return ThrowException('super_delete_property', ref.name);
       } else {
         var obj = ToObject(ref.base)
         if (obj.IsCompletion) {
@@ -991,7 +924,7 @@ var continuum = (function(GLOBAL, exports){
     }
   }
 
-  function UnaryVoid(ref){
+  function VOID(ref){
     var val = GetValue(ref);
     if (val && val.IsAbruptCompletion) {
       return val;
@@ -999,7 +932,7 @@ var continuum = (function(GLOBAL, exports){
     return undefined;
   }
 
-  function UnaryTypeof(val) {
+  function TYPEOF(val) {
     var type = typeof val;
     switch (type) {
       case UNDEFINED:
@@ -1023,7 +956,7 @@ var continuum = (function(GLOBAL, exports){
           if (IsUnresolvableReference(val)) {
             return UNDEFINED;
           }
-          return UnaryTypeof(GetValue(val));
+          return TYPEOF(GetValue(val));
         }
 
         if ('Call' in val) {
@@ -1035,17 +968,20 @@ var continuum = (function(GLOBAL, exports){
   }
 
 
-  function UnaryPositive(ref){
+  function POSITIVE(ref){
     return ToNumber(GetValue(ref));
   }
 
-  var UnaryNegative, UnaryBitwiseNOT, UnaryLogicalNOT;
+  var NEGATIVE, BIT_NOT, NOT;
   void function(createUnaryOp){
-    UnaryNegative = createUnaryOp(ToNumber, function(n){ return -n });
-    UnaryBitwiseNOT = createUnaryOp(ToInt32, function(n){ return ~n });
-    UnaryLogicalNOT = createUnaryOp(ToBoolean, function(n){ return !n });
+    NEGATIVE = createUnaryOp(ToNumber, function(n){ return -n });
+    BIT_NOT = createUnaryOp(ToInt32, function(n){ return ~n });
+    NOT = createUnaryOp(ToBoolean, function(n){ return !n });
   }(function(convert, finalize){
     return function(ref){
+      if (!ref || typeof ref !== 'object') {
+        return finalize(ref);
+      }
       var val = convert(GetValue(ref));
 
       if (val.IsCompletion) {
@@ -1059,6 +995,385 @@ var continuum = (function(GLOBAL, exports){
       return finalize(val);
     }
   });
+
+  var MUL, DIV, MOD;
+  void function(makeMultiplier){
+    MUL = makeMultiplier(function(l, r){ return l * r });
+    DIV = makeMultiplier(function(l, r){ return l / r });
+    MOD = makeMultiplier(function(l, r){ return l % r });
+  }(function(finalize){
+    return function(lval, rval) {
+      lval = ToNumber(lval);
+      if (lval.IsCompletion) {
+        if (lval.IsAbruptCompletion) {
+          return lval;
+        } else {
+          lval = lval.value;
+        }
+      }
+      rval = ToNumber(rval);
+      if (rval.IsCompletion) {
+        if (rval.IsAbruptCompletion) {
+          return rval;
+        } else {
+          rval = rval.value;
+        }
+      }
+      return finalize(lval, rval);
+    };
+  });
+
+  function ADD(lval, rval) {
+    lval = ToPrimitive(lval);
+    if (lval.IsCompletion) {
+      if (lval.IsAbruptCompletion) {
+        return lval;
+      } else {
+        lval = lval.value;
+      }
+    }
+
+    rval = ToPrimitive(rval);
+    if (rval.IsCompletion) {
+      if (rval.IsAbruptCompletion) {
+        return rval;
+      } else {
+        rval = rval.value;
+      }
+    }
+
+    var ltype = typeof lval,
+        rtype = typeof rval;
+
+    if (ltype === 'string' || rtype === 'string') {
+      if (ltype !== 'string') {
+        lval = ToString(lval);
+        if (lval.IsCompletion) {
+          if (lval.IsAbruptCompletion) {
+            return lval;
+          } else {
+            lval = lval.value;
+          }
+        }
+      } else if (rtype !== 'string') {
+        rval = ToString(rval);
+        if (rval.IsCompletion) {
+          if (rval.IsAbruptCompletion) {
+            return rval;
+          } else {
+            rval = rval.value;
+          }
+        }
+      }
+    } else {
+      if (ltype !== 'number') {
+        lval = ToNumber(lval);
+        if (lval.IsCompletion) {
+          if (lval.IsAbruptCompletion) {
+            return lval;
+          } else {
+            lval = lval.value;
+          }
+        }
+      } else if (rtype !== 'number') {
+        rval = ToNumber(rval);
+        if (rval.IsCompletion) {
+          if (rval.IsAbruptCompletion) {
+            return rval;
+          } else {
+            rval = rval.value;
+          }
+        }
+      }
+    }
+
+    return lval + rval;
+  }
+
+  var SHL, SHR, SAR;
+  void function(makeShifter){
+    SHL = makeShifter(function(l, r){ return l << r });
+    SHR = makeShifter(function(l, r){ return l >> r });
+    SAR = makeShifter(function(l, r){ return l >>> r });
+  }(function(finalize){
+    return function(lval, rval) {
+      lval = ToInt32(lval);
+      if (lval.IsCompletion) {
+        if (lval.IsAbruptCompletion) {
+          return lval;
+        } else {
+          lval = lval.value;
+        }
+      }
+      rval = ToUint32(rval);
+      if (rval.IsCompletion) {
+        if (rval.IsAbruptCompletion) {
+          return rval;
+        } else {
+          rval = rval.value;
+        }
+      }
+      return finalize(lval, rval & 0x1F);
+    };
+  });
+
+
+
+  function COMPARE(x, y, left){
+    if (left === false) {
+      var lval = x,
+          rval = y;
+    } else {
+      var lval = y,
+          rval = x;
+    }
+
+    lval = ToPrimitive(lval, 'Number');
+    if (lval.IsCompletion) {
+      if (lval.IsAbruptCompletion) {
+        return lval;
+      } else {
+        lval = lval.value;
+      }
+    }
+
+    rval = ToPrimitive(rval, 'Number');
+    if (rval.IsCompletion) {
+      if (rval.IsAbruptCompletion) {
+        return rval;
+      } else {
+        rval = rval.value;
+      }
+    }
+
+    var ltype = typeof lval,
+        rtype = typeof rval;
+
+    if (ltype === 'string' || rtype === 'string') {
+      if (ltype !== 'string') {
+        lval = ToString(lval);
+        if (lval.IsCompletion) {
+          if (lval.IsAbruptCompletion) {
+            return lval;
+          } else {
+            lval = lval.value;
+          }
+        }
+      } else if (rtype !== 'string') {
+        rval = ToString(rval);
+        if (rval.IsCompletion) {
+          if (rval.IsAbruptCompletion) {
+            return rval;
+          } else {
+            rval = rval.value;
+          }
+        }
+      }
+      if (typeof lval === 'string' && typeof rval === 'string') {
+        return lval < rval;
+      }
+    } else {
+      if (ltype !== 'number') {
+        lval = ToNumber(lval);
+        if (lval.IsCompletion) {
+          if (lval.IsAbruptCompletion) {
+            return lval;
+          } else {
+            lval = lval.value;
+          }
+        }
+      }
+      if (rtype !== 'number') {
+        rval = ToNumber(rval);
+        if (rval.IsCompletion) {
+          if (rval.IsAbruptCompletion) {
+            return rval;
+          } else {
+            rval = rval.value;
+          }
+        }
+      }
+      if (typeof lval === 'number' && typeof rval === 'number') {
+        return lval < rval;
+      }
+    }
+  }
+
+  var LT, GT, LTE, GTE;
+  void function(creatorComparer){
+    LT = creatorComparer(false, false);
+    GT = creatorComparer(true, false);
+    LTE = creatorComparer(false, true);
+    GTE = creatorComparer(true, true);
+  }(function(reverse, left){
+    return function(lval, rval){
+      if (reverse) {
+        var temp = lval;
+        lval = rval;
+        rval = temp;
+      }
+
+      var result = COMPARE(lval, rval, left);
+      if (result.IsCompletion) {
+        if (result.IsAbruptCompletion) {
+          return result;
+        } else {
+          result = result.value;
+        }
+      }
+
+      if (result === undefined) {
+        return false;
+      } else if (left) {
+        return !result;
+      } else {
+        return result;
+      }
+    };
+  });
+
+
+  function INSTANCE_OF(lval, rval) {
+    if (lval === null || typeof lval !== 'object' || !('HasInstance' in lval)) {
+      return ThrowException('instanceof_function_expected', lval);
+    }
+
+    return lval.HasInstance(rval);
+  }
+
+  function IN(lval, rval) {
+    if (lval === null || typeof lval !== 'object') {
+      return ThrowException('invalid_in_operator_use', [rval, lval]);
+    }
+
+    rval = ToString(rval);
+    if (rval && rval.IsCompletion) {
+      if (rval.IsAbruptCompletion) {
+        return rval;
+      } else {
+        rval = rval.value;
+      }
+    }
+
+    return lval.HasProperty(rval);
+  }
+
+
+
+  function IS(x, y) {
+    if (x && x.IsCompletion) {
+      if (x.IsAbruptCompletion) {
+        return x;
+      } else {
+        x = x.value;
+      }
+    }
+    if (y && y.IsCompletion) {
+      if (y.IsAbruptCompletion) {
+        return y;
+      } else {
+        y = y.value;
+      }
+    }
+    return x === y ? (x !== 0 || 1 / x === 1 / y) : (x !== x && y !== y);
+  }
+
+  function STRICT_EQUAL(x, y) {
+    if (x && x.IsCompletion) {
+      if (x.IsAbruptCompletion) {
+        return x;
+      } else {
+        x = x.value;
+      }
+    }
+    if (y && y.IsCompletion) {
+      if (y.IsAbruptCompletion) {
+        return y;
+      } else {
+        y = y.value;
+      }
+    }
+    return x === y;
+  }
+
+
+  function EQUAL(x, y){
+    if (x && x.IsCompletion) {
+      if (x.IsAbruptCompletion) {
+        return x;
+      } else {
+        x = x.value;
+      }
+    }
+    if (y && y.IsCompletion) {
+      if (y.IsAbruptCompletion) {
+        return y;
+      } else {
+        y = y.value;
+      }
+    }
+
+    var ltype = typeof x,
+        rtype = typeof y;
+
+    if (ltype === rtype) {
+      return STRICT_EQUAL(x, y);
+    } else if (x == null && x == y) {
+      return true;
+    } else if (ltype === NUMBER && rtype === STRING) {
+      return EQUAL(x, ToNumber(y));
+    } else if (ltype === STRING && rtype === NUMBER) {
+      return EQUAL(ToNumber(x), y);
+    } else if (rtype === OBJECT && ltype === STRING || ltype === OBJECT) {
+      return EQUAL(x, ToPrimitive(y));
+    } else if (ltype === OBJECT && rtype === STRING || rtype === OBJECT) {
+      return EQUAL(ToPrimitive(x), y);
+    } else {
+      return false;
+    }
+  }
+
+  function UnaryOp(operator, val) {
+    switch (operator) {
+      case 'delete': return DELETE(val);
+      case 'void':   return VOID(val);
+      case 'typeof': return TYPEOF(val);
+      case '+':      return POSITIVE(val);
+      case '-':      return NEGATIVE(val);
+      case '~':      return BIT_NOT(val);
+      case '!':      return NOT(val);
+    }
+  }
+
+  function BinaryOp(operator, lval, rval) {
+    switch (operator) {
+      case 'instanceof': return INSTANCE_OF(lval, rval);
+      case 'in':   return IN(lval, rval);
+      case 'is':   return IS(lval, rval);
+      case 'isnt': return NOT(IS(lval, rval));
+      case '==':   return EQUAL(lval, rval);
+      case '!=':   return NOT(EQUAL(lval, rval));
+      case '===':  return STRICT_EQUAL(lval, rval);
+      case '!==':  return NOT(STRICT_EQUAL(lval, rval));
+      case '<':    return LT(lval, rval);
+      case '>':    return GT(lval, rval);
+      case '<=':   return LTE(lval, rval);
+      case '>=':   return GTE(lval, rval);
+      case '*':    return MUL(lval, rval);
+      case '/':    return DIV(lval, rval);
+      case '%':    return MOD(lval, rval);
+      case '+':    return ADD(lval, rval);
+      case '-':    return SUB(lval, rval);
+      case '<<':   return SHL(lval, rval);
+      case '>>':   return SHR(lval, rval);
+      case '>>>':  return SAR(lval, rval);
+      case '|':    return BIT_OR(lval, rval);
+      case '&':    return BIT_AND(lval, rval);
+      case '^':    return BIT_XOR(lval, rval);
+    }
+  }
+
+
 
   // function ArgumentListEvaluation(args){
   //   if (!args || args instanceof Array && !args.length) {
@@ -1117,20 +1432,20 @@ var continuum = (function(GLOBAL, exports){
       };
     }
 
-    DefineMethod = makeDefiner(false, 'Value', {
+    DefineMethod = makeDefiner(false, VALUE, {
       Value: undefined,
       Writable: true,
       Enumerable: true,
       Configurable: true
     });
 
-    DefineGetter = makeDefiner(true, 'Get', {
+    DefineGetter = makeDefiner(true, GET, {
       Get: undefined,
       Enumerable: true,
       Configurable: true
     });
 
-    DefineSetter = makeDefiner(true, 'Set', {
+    DefineSetter = makeDefiner(true, SET, {
       Set: undefined,
       Enumerable: true,
       Configurable: true
@@ -1157,16 +1472,6 @@ var continuum = (function(GLOBAL, exports){
     return new Reference(base, name, context.Strict);
   }
 
-  function DefineOwn(obj, key, desc) {
-    if (val && val.IsCompletion) {
-      if (val.IsAbruptCompletion) {
-        return val;
-      } else {
-        val = val.value;
-      }
-    }
-    return DefineOwnProperty.call(obj, key, desc, false);
-  }
 
   // ###########################
   // ###########################
@@ -1229,8 +1534,8 @@ var continuum = (function(GLOBAL, exports){
   // ##########################
 
   function PropertyDescriptor(attributes){
-    this.Enumerable = (attributes & ENUMERABLE) > 0;
-    this.Configurable = (attributes & CONFIGURABLE) > 0;
+    this.Enumerable = (attributes & E) > 0;
+    this.Configurable = (attributes & C) > 0;
   }
 
   define(PropertyDescriptor.prototype, {
@@ -1240,9 +1545,9 @@ var continuum = (function(GLOBAL, exports){
 
   function DataDescriptor(value, attributes){
     this.Value = value;
-    this.Writable = (attributes & WRITABLE) > 0;
-    this.Enumerable = (attributes & ENUMERABLE) > 0;
-    this.Configurable = (attributes & CONFIGURABLE) > 0;
+    this.Writable = (attributes & W) > 0;
+    this.Enumerable = (attributes & E) > 0;
+    this.Configurable = (attributes & C) > 0;
   }
 
   inherit(DataDescriptor, PropertyDescriptor, {
@@ -1253,8 +1558,8 @@ var continuum = (function(GLOBAL, exports){
   function AccessorDescriptor(accessors, attributes){
     this.Get = accessors.Get;
     this.Set = accessors.Set;
-    this.Enumerable = (attributes & ENUMERABLE) > 0;
-    this.Configurable = (attributes & CONFIGURABLE) > 0;
+    this.Enumerable = (attributes & E) > 0;
+    this.Configurable = (attributes & C) > 0;
   }
 
   inherit(AccessorDescriptor, PropertyDescriptor, {
@@ -1541,7 +1846,7 @@ var continuum = (function(GLOBAL, exports){
     function GetOwnProperty(key){
       if (this.keys.has(key)) {
         var attrs = this.attributes[key];
-        var Descriptor = attrs & ACCESSOR ? AccessorDescriptor : DataDescriptor;
+        var Descriptor = attrs & A ? AccessorDescriptor : DataDescriptor;
         return new Descriptor(this.properties[key], attrs);
       }
     },
@@ -1579,7 +1884,7 @@ var continuum = (function(GLOBAL, exports){
         }
       } else {
         var attrs = this.attributes[key];
-        if (attrs & ACCESSOR) {
+        if (attrs & A) {
           var getter = this.properties[key].get;
           if (IsCallable(getter))
             return getter.Call(receiver, []);
@@ -1591,7 +1896,7 @@ var continuum = (function(GLOBAL, exports){
     function SetP(receiver, key, value) {
       if (this.keys.has(key)) {
         var attrs = this.attributes[key];
-        if (attrs & ACCESSOR) {
+        if (attrs & A) {
           var setter = this.properties[key].set;
           if (IsCallable(setter)) {
             setter.Call(receiver, [value]);
@@ -1599,7 +1904,7 @@ var continuum = (function(GLOBAL, exports){
           } else {
             return false;
           }
-        } else if (attrs & WRITABLE) {
+        } else if (attrs & W) {
           if (this === receiver) {
             return this.DefineOwnProperty(key, { Value: value }, false);
           } else if (!receiver.Extensible) {
@@ -1637,7 +1942,7 @@ var continuum = (function(GLOBAL, exports){
             this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
             this.properties[key] = desc.Value;
           } else {
-            this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | ACCESSOR;
+            this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | A;
             this.properties[key] = new Accessor(desc.Get, desc.Set);
           }
           this.keys.add(key);
@@ -1659,33 +1964,33 @@ var continuum = (function(GLOBAL, exports){
             if (currentIsData !== descIsData)
               return reject('redefine_disallowed', []);
             else if (currentIsData && descIsData)
-              if (!current.Writable && 'Value' in desc && desc.Value !== current.Value)
+              if (!current.Writable && VALUE in desc && desc.Value !== current.Value)
                 return reject('redefine_disallowed', []);
-            else if ('Set' in desc && desc.Set !== current.Set)
+            else if (SET in desc && desc.Set !== current.Set)
               return reject('redefine_disallowed', []);
-            else if ('Get' in desc && desc.Get !== current.Get)
+            else if (GET in desc && desc.Get !== current.Get)
               return reject('redefine_disallowed', []);
           }
         }
 
-        'Configurable' in desc || (desc.Configurable = current.Configurable);
-        'Enumerable' in desc || (desc.Enumerable = current.Enumerable);
+        CONFIGURABLE in desc || (desc.Configurable = current.Configurable);
+        ENUMERABLE in desc || (desc.Enumerable = current.Enumerable);
 
         if (IsAccessorDescriptor(desc)) {
-          this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | ACCESSOR;
+          this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | A;
           if (IsDataDescriptor(current)) {
             this.properties[key] = new Accessor(desc.Get, desc.Set);
           } else {
-            if ('Set' in desc)
+            if (SET in desc)
               this.properties[key].Set = desc.Set;
-            if ('Get' in desc)
+            if (GET in desc)
               this.properties[key].Get = desc.Get;
           }
         } else {
           if (IsAccessorDescriptor(current)) {
             current.Writable = true;
           }
-          'Writable' in desc || (desc.Writable = current.Writable)
+          WRITABLE in desc || (desc.Writable = current.Writable)
           this.properties[key] = desc.Value;
           this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
         }
@@ -1711,7 +2016,7 @@ var continuum = (function(GLOBAL, exports){
         return false;
       } else if (!this.keys.has(key)) {
         return true;
-      } else if (this.attributes[key] & CONFIGURABLE) {
+      } else if (this.attributes[key] & C) {
         delete this.properties[key];
         delete this.attributes[key];
         this.keys.remove(key);
@@ -1724,7 +2029,7 @@ var continuum = (function(GLOBAL, exports){
     },
     function Enumerate(){
       var props = this.keys.filter(function(key){
-        return this.attributes[key] & ENUMERABLE;
+        return this.attributes[key] & E;
       }, this);
 
       if (this.Prototype) {
@@ -1777,7 +2082,7 @@ var continuum = (function(GLOBAL, exports){
     },
   ]);
 
-  var DefineOwnProperty = $Object.prototype.DefineOwnProperty;
+  var DefineOwn = $Object.prototype.DefineOwnProperty;
 
   // #################
   // ### $Function ###
@@ -1805,7 +2110,7 @@ var continuum = (function(GLOBAL, exports){
     defineDirect(this, 'length', params.ExpectedArgumentCount, ___);
     if (kind === 'Normal' && strict) {
       defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
+      defineDirect(this, ARGUMENTS, intrinsics.ThrowTypeError, __A);
     }
     hide(this, 'Realm');
   }
@@ -2068,7 +2373,7 @@ var continuum = (function(GLOBAL, exports){
     NativeBrand: NativeArray,
     DefineOwnProperty: function DefineOwnProperty(key, desc, strict){
       var len = this.properties.length,
-          writable = this.attributes.length & WRITABLE,
+          writable = this.attributes.length & W,
           result;
 
       var reject = strict
@@ -2076,8 +2381,8 @@ var continuum = (function(GLOBAL, exports){
           : function(){ return false };
 
       if (key === 'length') {
-        if (!('Value' in desc)) {
-          return DefineOwn(this, key, desc, strict);
+        if (!(VALUE in desc)) {
+          return DefineOwn.call(this, key, desc, strict);
         }
 
         var newLen = desc.Value >> 0,
@@ -2086,7 +2391,7 @@ var continuum = (function(GLOBAL, exports){
         if (desc.Value !== newDesc.Value) {
           return ThrowException('invalid_array_length', [], ƒ);
         } else if (newDesc.Value > len) {
-          return DefineOwn(this, 'length', newDesc, strict);
+          return DefineOwn.call(this, 'length', newDesc, strict);
         } else if (!writable) {
           return reject();
         }
@@ -2097,7 +2402,7 @@ var continuum = (function(GLOBAL, exports){
           var deferNonWrite = true;
         }
 
-        result = DefineOwn(this, 'length', newDesc, strict);
+        result = DefineOwn.call(this, 'length', newDesc, strict);
         if (result.IsCompletion) {
           if (result.IsAbruptCompletion) {
             return result;
@@ -2122,7 +2427,7 @@ var continuum = (function(GLOBAL, exports){
 
           if (result === false) {
             newDesc.Value = len + 1;
-            result = DefineOwn(this, 'length', newDesc, false);
+            result = DefineOwn.call(this, 'length', newDesc, false);
             if (result.IsAbruptCompletion) {
               return result;
             }
@@ -2131,7 +2436,7 @@ var continuum = (function(GLOBAL, exports){
         }
 
         if (deferNonWrite) {
-          DefineOwn(this, 'length', { Writable: false }, false);
+          DefineOwn.call(this, 'length', { Writable: false }, false);
         }
 
         return true;
@@ -2149,7 +2454,7 @@ var continuum = (function(GLOBAL, exports){
           return reject();
         }
 
-        result = DefineOwn(this, ''+index, desc, false);
+        result = DefineOwn.call(this, ''+index, desc, false);
         if (result.IsCompletion) {
           if (result.IsAbruptCompletion) {
             return result;
@@ -2167,7 +2472,7 @@ var continuum = (function(GLOBAL, exports){
           return true;
         }
       } else {
-        return DefineOwn(this, key, desc, strict);
+        return DefineOwn.call(this, key, desc, strict);
       }
     }
   });
@@ -2370,7 +2675,7 @@ var continuum = (function(GLOBAL, exports){
 
   define(ExecutionContext, [
     function push(newContext){
-      context = ExecutionContext.context = newContext;
+      context = newContext;
       context.realm.active || context.realm.activate();
     },
     function pop(){
@@ -2423,24 +2728,22 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function ARRAY_DONE(){
-      A = stack[--sp];
-      stack[sp].Put('length', A);
+      a = stack[--sp];
+      stack[sp - 1].Put('length', a);
       return cmds[++ip];
     }
 
     function BINARY(){
-      A = stack[--sp];
-      B = stack[--sp];
-      res = BinaryOperation(ops[ip][0], A, B);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = BinaryOp(ops[ip][0], stack[--sp], stack[--sp]);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2458,35 +2761,33 @@ var continuum = (function(GLOBAL, exports){
 
     function CALL(){
       sp -= ops[ip][0];
-      A = stack.slice(sp, sp + ops[ip][0]);
-      B = stack[--sp];
-      C = stack[--sp];
-      D = EvaluateCall(C, B, A);
-      if (D && D.IsCompletion) {
-        if (D.IsAbruptCompletion) {
-          error = D.value;
+      a = stack.slice(sp, sp + ops[ip][0]);
+      b = stack[--sp];
+      c = stack[--sp];
+      d = EvaluateCall(c, b, a);
+      if (d && d.IsCompletion) {
+        if (d.IsAbruptCompletion) {
+          error = d.value;
           return ƒ;
         } else {
-          D = D.value;
+          d = d.value;
         }
       }
-      stack[sp++] = D;
+      stack[sp++] = d;
       return cmds[++ip];
     }
 
     function CASE(){
-      A = stack[--sp];
-      B = stack[sp - 1];
-      C = StrictEqual(A, B);
-      if (C && C.IsCompletion) {
-        if (C.IsAbruptCompletion) {
-          error = C.value;
+      a = STRICT_EQUAL(stack[--sp], stack[sp - 1]);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          C = C.value;
+          a = a.value;
         }
       }
-      if (C) {
+      if (a) {
         sp--;
         ip = ops[ip][0];
       }
@@ -2494,37 +2795,35 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function CLASS_DECL(){
-      A = ops[ip][1] ? stack[--sp] : undefined;
-      B = ClassDefinitionEvaluation(ops[ip][0], A);
-      if (B && B.IsCompletion) {
-        if (B.IsAbruptCompletion) {
-          error = B.value;
+      a = ClassDefinitionEvaluation(ops[ip][0], ops[ip][1] ? stack[--sp] : undefined);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          B = B.value;
+          a = a.value;
         }
       }
 
-      C = BindingInitialisation(ops[ip][0], B, context.LexicalEnvironment);
-      if (C && C.IsAbruptCompletion) {
-        error = C.value;
+      a = BindingInitialisation(ops[ip][0], a, context.LexicalEnvironment);
+      if (a && a.IsAbruptCompletion) {
+        error = a.value;
         return ƒ;
       }
       return cmds[++ip];
     }
 
     function CLASS_EXPR(){
-      A = ops[ip][1] ? stack[--sp] : undefined;
-      B = ClassDefinitionEvaluation(ops[ip], A);
-      if (B && B.IsCompletion) {
-        if (B.IsAbruptCompletion) {
-          error = B.value;
+      a = ClassDefinitionEvaluation(ops[ip], ops[ip][1] ? stack[--sp] : undefinedA);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          B = B.value;
+          a = a.value;
         }
       }
-      stack[sp++] = B;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2535,18 +2834,17 @@ var continuum = (function(GLOBAL, exports){
 
     function CONSTRUCT(){
       sp -= ops[ip][0];
-      A = stack.slice(sp, sp + ops[ip][0]);
-      B = stack[--sp];
-      C = EvaluateConstruct(B, A);
-      if (C && C.IsCompletion) {
-        if (C.IsAbruptCompletion) {
-          error = C.value;
+      a = stack.slice(sp, sp + ops[ip][0]);
+      a = EvaluateConstruct(stack[--sp], a);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          C = C.value;
+          a = a.value;
         }
       }
-      stack[sp++] = C;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2562,45 +2860,44 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function DUP(){
-      A = stack[sp - 1];
-      stack[sp++] = A;
+      a = stack[sp - 1];
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
     function ELEMENT(){
-      A = Element(stack[--sp], stack[--sp]);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = Element(stack[--sp], stack[--sp]);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
     function FUNCTION(){
-      A = NewDeclarativeEnvironment(context.LexicalEnvironment),
-      B = ops[ip][1];
-      C = new $Function(B.Type, ops[ip][0], B.params, B, A, B.Strict);
-      MakeConstructor(C);
-      stack[sp++] = C;
+      a = ops[ip][1];
+      b = new $Function(a.Type, ops[ip][0], a.params, a, NewDeclarativeEnvironment(context.LexicalEnvironment), a.Strict);
+      MakeConstructor(b);
+      stack[sp++] = b;
       return cmds[++ip];
     }
 
     function GET(){
-      A = GetValue(stack[--sp]);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = GetValue(stack[--sp]);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2624,19 +2921,18 @@ var continuum = (function(GLOBAL, exports){
       if (ops[ip][0]) {
         stack[sp]++;
       } else {
-        A = stack[--sp];
-        B = stack[--sp];
-        C = GetValue(A);
-        if (C && C.IsCompletion) {
-          if (C.IsAbruptCompletion) {
-            error = C.value;
+        a = GetValue(stack[--sp]);
+        if (a && a.IsCompletion) {
+          if (a.IsAbruptCompletion) {
+            error = a.value;
             return ƒ;
           } else {
-            C = C.value;
+            a = a.value;
           }
         }
-        stack[sp - 1].DefineOwnProperty(B, new NormalDescriptor(C));
-        stack[sp++] = B;
+        b = stack[--sp];
+        stack[sp - 1].DefineOwnProperty(b, new NormalDescriptor(a));
+        stack[sp++] = b + 1;
       }
       return cmds[++ip];
     }
@@ -2661,16 +2957,16 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function MEMBER(){
-      A = Element(ops[ip][0], stack[--sp]);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = Element(ops[ip][0], stack[--sp]);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2680,10 +2976,10 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function PROPERTY(){
-      A = stack[--sp];
-      B = DefineProperty(stack[sp - 1], ops[ip][0], A);
-      if (A && A.IsAbruptCompletion) {
-        error = A.value;
+      a = stack[--sp];
+      b = DefineProperty(stack[sp - 1], ops[ip][0], a);
+      if (a && a.IsAbruptCompletion) {
+        error = a.value;
         return ƒ;
       }
       return cmds[++ip];
@@ -2705,14 +3001,13 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function PUT(){
-      A = stack[--sp];
-      B = stack[--sp];
-      C = PutValue(B, A);
-      if (C && C.IsAbruptCompletion) {
-        error = C.value;
+      a = stack[--sp];
+      b = PutValue(stack[--sp], a);
+      if (b && b.IsAbruptCompletion) {
+        error = b.value;
         return ƒ;
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2741,86 +3036,84 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function ROTATE(){
-      A = [];
-      B = stack[--sp];
-      for (C = 0; C < ops[ip][0]; C++) {
-        A[C] = stack[--sp];
+      a = [];
+      b = stack[--sp];
+      for (c = 0; c < ops[ip][0]; c++) {
+        a[c] = stack[--sp];
       }
-      A[C++] = B;
-      while (C--) {
-        stack[sp++] = A[C];
+      a[c++] = b;
+      while (c--) {
+        stack[sp++] = a[c];
       }
       return cmds[++ip];
     }
 
     function RUN(){
-      ExecutionContext.push(new ExecutionContext(context, realm.globalEnv, realm, code));
-      TopLevelDeclarationInstantiation(code);
-      return cmds[++ip];
+      throw 'wtf'
     }
 
     function SUPER_CALL(){
-      A = CallSuperSetup();
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = CallSuperSetup();
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
     function SUPER_ELEMENT(){
-      A = ElementSuper(stack[--sp]);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = ElementSuper(stack[--sp]);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
     function SUPER_GUARD(){
-      A = SuperGuard();
-      if (A && A.IsAbruptCompletion) {
-        error = A.value;
+      a = SuperGuard();
+      if (a && a.IsAbruptCompletion) {
+        error = a.value;
         return ƒ;
       }
       return cmds[++ip];
     }
 
     function SUPER_MEMBER(){
-      A = ElementSuper(ops[ip][0]);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = ElementSuper(ops[ip][0]);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
     function THIS(){
-      A = ThisResolution();
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = ThisResolution();
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2830,17 +3123,16 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function UNARY(){
-      A = stack[--sp];
-      B = UnaryOperation(ops[ip][0], A);
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = UnaryOp(ops[ip][0], stack[--sp]);
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2851,20 +3143,20 @@ var continuum = (function(GLOBAL, exports){
 
     function UPDATE(){
       switch (ops[ip][0]) {
-        case 0: A = PostfixDecrement(stack[--sp]); break;
-        case 1: A = PrefixDecrement(stack[--sp]); break;
-        case 2: A = PostfixIncrement(stack[--sp]); break;
-        case 3: A = PrefixIncrement(stack[--sp]); break;
+        case 0: a = POST_DEC(stack[--sp]); break;
+        case 1: a = PRE_DEC(stack[--sp]); break;
+        case 2: a = POST_INC(stack[--sp]); break;
+        case 3: a = PRE_INC(stack[--sp]); break;
       }
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      stack[sp++] = A;
+      stack[sp++] = a;
       return cmds[++ip];
     }
 
@@ -2874,29 +3166,29 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function WITH(){
-      A = ToObject(GetValue(stack[--sp]));
-      if (A && A.IsCompletion) {
-        if (A.IsAbruptCompletion) {
-          error = A.value;
+      a = ToObject(GetValue(stack[--sp]));
+      if (a && a.IsCompletion) {
+        if (a.IsAbruptCompletion) {
+          error = a.value;
           return ƒ;
         } else {
-          A = A.value;
+          a = a.value;
         }
       }
-      B = context.LexicalEnvironment;
-      C = context.LexicalEnvironment = NewObjectEnvironment(A, B);
-      C.withEnvironment = true;
-      C.outer = B;
+      b = context.LexicalEnvironment;
+      c = context.LexicalEnvironment = NewObjectEnvironment(a, b);
+      c.withEnvironment = true;
+      c.outer = b;
       return cmds[++ip];
     }
 
     function ƒ(){
       for (var i = 0, handler; handler = code.handlers[i]; i++) {
         if (handler.begin < ip && ip <= handler.end) {
-          if (handler.type === ENV) {
+          if (handler.type === 'ENV') {
             context.LexicalEnvironment = context.LexicalEnvironment.outer;
           } else {
-            sp = handler.unwindStack(this);
+            //sp = handler.unwindStack(this);
             if (handler.type === FINALLY) {
               stack[sp++] = Empty;
               stack[sp++] = error;
@@ -2917,12 +3209,12 @@ var continuum = (function(GLOBAL, exports){
       stack = [];
       ip = 0;
       sp = 0;
-      completion = error = A = B = C = D = undefined;
+      completion = error = a = b = c = d = undefined;
     }
 
     function normalExecute(){
-      var F = cmds[ip];
-      while (F) F = F();
+      var f = cmds[ip];
+      while (f) f = f();
     }
 
     function normalCleanup(){
@@ -2932,10 +3224,10 @@ var continuum = (function(GLOBAL, exports){
     }
 
     function instrumentedExecute(){
-      var F = cmds[ip];
-      while (F) {
+      var f = cmds[ip];
+      while (f) {
         thunk.emit('op', ops[ip]);
-        F = F();
+        f = f();
       }
     }
 
@@ -2958,7 +3250,7 @@ var continuum = (function(GLOBAL, exports){
       return PauseSigil;
     }
 
-    var completion, stack, ip, sp, error, A, B, C, D, ctx;
+    var completion, stack, ip, sp, error, a, b, c, d, ctx;
 
     var prepare = normalPrepare,
         execute = normalExecute,
@@ -3088,7 +3380,9 @@ var continuum = (function(GLOBAL, exports){
       script.thunk.on('op', function(op){
         self.emit('op', op);
       });
-      this.run(script.thunk);
+      ExecutionContext.push(new ExecutionContext(null, this.realm.globalEnv, this.realm, script.code));
+      TopLevelDeclarationInstantiation(script.code);
+      return this.run(script.thunk);
     }
   ]);
 
@@ -3100,6 +3394,12 @@ var continuum = (function(GLOBAL, exports){
   }
 
   exports.Continuum = Continuum;
+  exports.create = function createContinuum(listener){
+    return new Continuum(listener);
+  }
+
+  // var x = new Continuum;
+  // inspect(x.eval('[]'));
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
