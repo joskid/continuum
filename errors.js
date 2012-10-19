@@ -16,16 +16,16 @@ var errors = module.exports = (function(errors, messages){
     this.type = type;
     return new Function('e', 'return '+
       'function '+name+'('+argNames.join(', ')+') {\n'+
-      '  Ω(e.instantiate(context, '+src+'));\n'+
+      '  return e.instantiate('+src+');\n'+
       '}'
     )(this);
   }
 
-  Exception.prototype.instantiate = function instantiate(context, message){
+  Exception.prototype.instantiate = function instantiate(message){
     //var e = context.realm.createIntrinsic(this.type);
     var e = new Intrinsic(this.type);
-    e.setDirect('name', this.name);
-    e.setDirect('message', message);
+    e.name = this.name;
+    e.message = message;
     return e;
   };
 
@@ -111,6 +111,7 @@ var errors = module.exports = (function(errors, messages){
     called_on_null_or_undefined    : ["$0", " called on null or undefined"],
     array_indexof_not_defined      : ["Array.getIndexOf: Argument undefined"],
     strict_delete_property         : ["Cannot delete property '", "$0", "' of ", "$1"],
+    super_delete_property          : ["Cannot delete property '", "$0", "' from super"],
     strict_read_only_property      : ["Cannot assign to read only property '", "$0", "' of ", "$1"],
     strict_cannot_assign           : ["Cannot assign to read only '", "$0", "' in strict mode"],
     strict_poison_pill             : ["'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them"],
