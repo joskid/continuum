@@ -760,7 +760,7 @@ define(Compiler.prototype, [
 
       }
 
-      this.record(METHOD, kind, code, node.key.name);
+      this.record(METHOD, node.kind, code, node.key.name);
     }
   },
   function ReturnStatement(node){

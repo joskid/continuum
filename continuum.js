@@ -654,7 +654,7 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ## EvaluateConstruct
 
   function EvaluateConstruct(func, args) {
-    if (typeof func !== 'object') {
+    if (typeof func !== OBJECT) {
       throw TypeError('11.2.2-6');
     }
 
@@ -670,7 +670,7 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ## EvaluateCall
 
   function EvaluateCall(ref, func, args) {
-    if (typeof func !== 'object' || !IsCallable(func)) {
+    if (typeof func !== OBJECT || !IsCallable(func)) {
       return ThrowException('called_non_callable', ref.name);
     }
 
@@ -979,7 +979,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     NOT = createUnaryOp(ToBoolean, function(n){ return !n });
   }(function(convert, finalize){
     return function(ref){
-      if (!ref || typeof ref !== 'object') {
+      if (!ref || typeof ref !== OBJECT) {
         return finalize(ref);
       }
       var val = convert(GetValue(ref));
@@ -1234,7 +1234,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
 
   function INSTANCE_OF(lval, rval) {
-    if (lval === null || typeof lval !== 'object' || !('HasInstance' in lval)) {
+    if (lval === null || typeof lval !== OBJECT || !('HasInstance' in lval)) {
       return ThrowException('instanceof_function_expected', lval);
     }
 
@@ -1242,7 +1242,7 @@ var continuum = (function(GLOBAL, exports, undefined){
   }
 
   function IN(lval, rval) {
-    if (lval === null || typeof lval !== 'object') {
+    if (lval === null || typeof lval !== OBJECT) {
       return ThrowException('invalid_in_operator_use', [rval, lval]);
     }
 
@@ -1589,6 +1589,10 @@ var continuum = (function(GLOBAL, exports, undefined){
     Set: undefined
   });
 
+  function Value(value){
+    this.Value = value;
+  }
+
 
   // #########################
   // ### EnvironmentRecord ###
@@ -1740,7 +1744,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       return this.thisValue;
     },
     function GetSuperBase(){
-      return this.HomeObject ? this.HomeObject.Prototype : undefined;
+      return this.HomeObject ? this.HomeObject.GetPrototype() : undefined;
     },
     function GetMethodName() {
       return this.MethodName;
@@ -1843,6 +1847,15 @@ var continuum = (function(GLOBAL, exports, undefined){
   });
 
   define($Object.prototype, [
+    function GetPrototype(){
+      return this.Prototype;
+    },
+    function SetPrototype(value){
+      this.Prototype = value;
+    },
+    function GetExtensible(){
+      return this.Extensible;
+    },
     function GetOwnProperty(key){
       if (this.keys.has(key)) {
         var attrs = this.attributes[key];
@@ -1852,10 +1865,14 @@ var continuum = (function(GLOBAL, exports, undefined){
     },
     function GetProperty(key){
       var desc = this.GetOwnProperty(key);
-      if (desc)
+      if (desc) {
         return desc
-      else if (this.Prototype)
-        return proto.GetProperty(key);
+      } else {
+        var proto = this.GetPrototype();
+        if (proto) {
+          return proto.GetProperty(key);
+        }
+      }
     },
     function Get(key){
       if (key === '__proto__') {
@@ -1871,21 +1888,16 @@ var continuum = (function(GLOBAL, exports, undefined){
         return ThrowException('strict_cannot_assign', [key]);
       }
     },
-    function GetPrototype(){
-      return this.Prototype;
-    },
-    function SetPrototype(value){
-      this.Prototype = value;
-    },
     function GetP(receiver, key){
       if (!this.keys.has(key)) {
-        if (this.Prototype) {
-          return this.Prototype.GetP(receiver, key);
+        var proto = this.GetPrototype();
+        if (proto) {
+          return proto.GetP(receiver, key);
         }
       } else {
         var attrs = this.attributes[key];
         if (attrs & A) {
-          var getter = this.properties[key].get;
+          var getter = this.properties[key].Get;
           if (IsCallable(getter))
             return getter.Call(receiver, []);
         } else {
@@ -1897,7 +1909,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       if (this.keys.has(key)) {
         var attrs = this.attributes[key];
         if (attrs & A) {
-          var setter = this.properties[key].set;
+          var setter = this.properties[key].Set;
           if (IsCallable(setter)) {
             setter.Call(receiver, [value]);
             return true;
@@ -1906,8 +1918,8 @@ var continuum = (function(GLOBAL, exports, undefined){
           }
         } else if (attrs & W) {
           if (this === receiver) {
-            return this.DefineOwnProperty(key, { Value: value }, false);
-          } else if (!receiver.Extensible) {
+            return this.DefineOwnProperty(key, new Value(value), false);
+          } else if (!receiver.GetExtensible()) {
             return false;
           } else {
             return receiver.DefineOwnProperty(key, new DataDescriptor(value, ECW), false);
@@ -1916,14 +1928,15 @@ var continuum = (function(GLOBAL, exports, undefined){
           return false;
         }
       } else {
-        if (!this.Prototype) {
-          if (!receiver.Extensible) {
+        var proto = this.GetPrototype();
+        if (!proto) {
+          if (!receiver.GetExtensible()) {
             return false;
           } else {
             return receiver.DefineOwnProperty(key, new DataDescriptor(value, ECW), false);
           }
         } else {
-          return this.Prototype.SetP(receiver, key, value);
+          return proto.SetP(receiver, key, value);
         }
       }
     },
@@ -1935,7 +1948,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       var current = this.GetOwnProperty(key);
 
       if (current === undefined) {
-        if (!this.Extensible) {
+        if (!this.GetExtensible()) {
           return reject('define_disallowed', []);
         } else {
           if (IsGenericDescriptor(desc) || IsDataDescriptor(desc)) {
@@ -2005,10 +2018,13 @@ var continuum = (function(GLOBAL, exports, undefined){
     function HasProperty(key){
       if (this.keys.has(key) || key === '__proto__') {
         return true;
-      } else if (this.Prototype) {
-        return this.Prototype.HasProperty(key);
       } else {
-        return false;
+        var proto = this.GetPrototype();
+        if (proto) {
+          return proto.HasProperty(key);
+        } else {
+          return false;
+        }
       }
     },
     function Delete(key, strict){
@@ -2032,8 +2048,9 @@ var continuum = (function(GLOBAL, exports, undefined){
         return this.attributes[key] & E;
       }, this);
 
-      if (this.Prototype) {
-        props.add(this.Prototype.Enumerate());
+      var proto = this.GetPrototype();
+      if (proto) {
+        props.add(proto.Enumerate());
       }
 
       return props.toArray();
@@ -2044,8 +2061,9 @@ var continuum = (function(GLOBAL, exports, undefined){
     function GetPropertyNames(){
       var props = this.keys.clone();
 
-      if (this.Prototype) {
-        props.add(this.Prototype.GetPropertyNames());
+      var proto = this.GetPrototype();
+      if (proto) {
+        props.add(proto.GetPropertyNames());
       }
 
       return props.toArray();
@@ -2134,7 +2152,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         if (this.ThisMode !== 'strict') {
           if (receiver == null) {
             receiver = this.Realm.global;
-          } else if (typeof receiver !== 'object') {
+          } else if (typeof receiver !== OBJECT) {
             receiver = ToObject(receiver);
             if (receiver.IsCompletion) {
               if (receiver.IsAbruptCompletion) {
@@ -2175,7 +2193,7 @@ var continuum = (function(GLOBAL, exports, undefined){
           prototype = prototype.value;
         }
       }
-      var instance = typeof prototype === 'object' ? new $Object(prototype) : new $Object;
+      var instance = typeof prototype === OBJECT ? new $Object(prototype) : new $Object;
       var result = this.Call(obj, argumentsList);
       if (result.IsCompletion) {
         if (result.IsAbruptCompletion) {
@@ -2187,7 +2205,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       return typeof result === OBJECT ? result : instance;
     },
     function HasInstance(arg){
-      if (typeof arg !== 'object' || arg === null) {
+      if (typeof arg !== OBJECT || arg === null) {
         return false;
       }
 
@@ -2200,12 +2218,12 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
       }
 
-      if (typeof prototype !== 'object') {
+      if (typeof prototype !== OBJECT) {
         return ThrowException('instanceof_nonobject_proto');
       }
 
-      arg = arg.Prototype;
       while (arg) {
+        arg = arg.GetPrototype();
         if (prototype === arg) {
           return true;
         }
@@ -2386,7 +2404,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
 
         var newLen = desc.Value >> 0,
-            newDesc = { Value: newLen };
+            newDesc = new Value(newLen);
 
         if (desc.Value !== newDesc.Value) {
           return ThrowException('invalid_array_length', [], ƒ);
@@ -2971,7 +2989,11 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function METHOD(){
-
+      a = PropertyDefinitionEvaluation(ops[ip][0], stack[sp - 1], ops[ip][2], ops[ip][1]);
+      if (a && a.IsAbruptCompletion) {
+        error = a.value;
+        return ƒ;
+      }
       return cmds[++ip];
     }
 
@@ -3398,8 +3420,8 @@ var continuum = (function(GLOBAL, exports, undefined){
     return new Continuum(listener);
   }
 
-  // var x = new Continuum;
-  // inspect(x.eval('[]'));
+  var x = new Continuum;
+  inspect(x.eval('var x = { _y: "hi", get y(){ return this._y }, set y(v){ this._y = v } }; x._y = 100; x'));
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
