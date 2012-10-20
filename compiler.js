@@ -11,9 +11,16 @@ var Visitor = utility.Visitor,
     parse = utility.parse,
     decompile = utility.decompile,
     inherit = utility.inherit,
+    ownKeys = utility.keys,
     isObject = utility.isObject,
     quotes = utility.quotes;
 
+var constants = require('./constants'),
+    BINARYOPS = constants.BINARYOPS,
+    UNARYOPS = constants.UNARYOPS,
+    ENTRY = constants.ENTRY,
+    AST = constants.AST,
+    FUNCTYPE = constants.FUNCTYPE;
 
 
 function parenter(node, parent){
@@ -138,11 +145,49 @@ function Operations(){
   this.length = 0;
 }
 
-inherit(Operations, Array);
+inherit(Operations, Array, [
+  function toJSON(){
+    return this.map(function(op){
+      return op.toJSON();
+    });
+  }
+]);
 
+function Params(params, names){
+  this.length = 0;
+  if (params) {
+    [].push.apply(this, params);
+  }
+  this.BoundNames = names;
+  this.ExpectedArgumentCount = ExpectedArgumentCount(this);
+}
+
+function recurse(o){
+  var out = o instanceof Array ? [] : {};
+  if (o.type === 'Identifier') {
+    return o.name;
+  }
+  ownKeys(o).forEach(function(key){
+    if (key === 'type' && o.type in types) {
+      out.type = types[o.type];
+    } else if (o[key] && typeof o[key] === 'object') {
+      out[key] = recurse(o[key]);
+    } else {
+      out[key] = o[key];
+    }
+  });
+  return out;
+}
+
+define(Params.prototype, [
+  function toJSON(){
+    return [recurse([].slice.call(this)),  this.BoundNames];
+  }
+]);
 
 function Code(node, source, type, isGlobal, strict){
-  var body = node.type === 'Program' ? node : node.body;
+  this.topLevel = node.type === 'Program';
+  var body = this.topLevel ? node : node.body;
   define(this, {
     body: body,
     source: source,
@@ -150,17 +195,88 @@ function Code(node, source, type, isGlobal, strict){
   });
   this.isGlobal = isGlobal;
   this.entrances = [];
-  this.Type = type || 'Normal';
+  this.Type = type || FUNCTYPE.hash.NORMAL;
   this.VarDeclaredNames = [];
   this.NeedsSuperBinding = ReferencesSuper(this.body);
   this.Strict = strict || isStrict(this.body);
-  this.params = node.params || [];
-  this.params.BoundNames = BoundNames(node);
-  this.params.ExpectedArgumentCount = ExpectedArgumentCount(this.params);
+  this.params = new Params(node.params, BoundNames(node));
   this.ops = new Operations;
   this.children = [];
 }
+var identifiersPrinted = false;
 
+define(Code.prototype, [
+  function inherit(code){
+    if (code) {
+      this.identifiers = code.identifiers;
+      this.hash = code.hash;
+      this.natives = code.natives;
+    }
+  },
+  function intern(name){
+    //return name;
+    if (name in this.hash) {
+      return this.hash[name];
+    } else {
+      var index = this.hash[name] = this.identifiers.length;
+      this.identifiers[index] = name;
+      return index;
+    }
+  },
+  function lookup(id){
+    //return id;
+    if (typeof id === 'number') {
+      return this.identifiers[id];
+    } else {
+      return id;
+    }
+  },
+  function toJSON(){
+    var out = {}
+
+    out.type = this.Type;
+    out.params = this.params.toJSON();
+    out.ops = this.ops.toJSON()
+    out.params[0] = out.params[0].map(this.intern.bind(this));
+    out.params[1] = out.params[1].map(function(param){
+      if (typeof param === 'string') {
+        return this.intern(param);
+      } else {
+        return param;
+      }
+    }, this);
+    if (this.VarDeclaredNames.length) {
+      out.vars = this.VarDeclaredNames.map(this.intern.bind(this));
+    }
+    if (this.LexicalDeclarations.length) {
+      out.decls = this.LexicalDeclarations;
+    }
+    if (this.topLevel) {
+      if (this.natives) {
+        out.natives = true;
+      }
+    }
+    if (this.eval) {
+      out.eval = true;
+    }
+    if (this.isGlobal) {
+      out.isGlobal = true;
+    }
+    if (this.entrances.length) {
+      out.entrances = this.entrances.map(function(entrance){
+        return entrance.toJSON();
+      });
+    }
+    if (this.NeedsSuperBinding) {
+      out.needsSuper = true;
+    }
+
+    if (this.topLevel) {
+      out.identifiers = this.identifiers;
+    }
+    return out;
+  }
+]);
 
 
 function OpCode(id, params, name){
@@ -237,7 +353,8 @@ var ARRAY          = new OpCode( 0, 0, 'ARRAY'),
     WITH           = new OpCode(48, 0, 'WITH'),
     NATIVE_RESOLVE = new OpCode(49, 1, 'NATIVE_RESOLVE'),
     ENUM           = new OpCode(50, 0, 'ENUM'),
-    NEXT           = new OpCode(51, 1, 'NEXT');
+    NEXT           = new OpCode(51, 1, 'NEXT'),
+    STRING         = new OpCode(52, 1, 'STRING');
 
 
 
@@ -257,6 +374,23 @@ define(Operation.prototype, [
     }
 
     return util.inspect(this.op)+'('+out.join(', ')+')';
+  },
+  function toJSON(){
+    if (this.op.params) {
+      var out = [this.op.toJSON()];
+      for (var i=0; i < this.op.params; i++) {
+        if (this[i] && this[i].toJSON) {
+          out[i+1] = this[i].toJSON();
+        } else if (typeof this[i] === 'boolean') {
+          out[i+1] = +this[i];
+        } else if (typeof this[i] !== 'object' || this[i] == null) {
+          out[i+1] = this[i];
+        }
+      }
+      return out;
+    } else {
+      return this.op.toJSON()
+    }
   }
 ]);
 
@@ -268,18 +402,19 @@ function Handler(type, begin, end){
   this.end = end;
 }
 
-var ENV = 'ENV',
-    FINALLY = 'FINALLY',
-    TRYCATCH = 'TRYCATCH';
-
+define(Handler.prototype, [
+  function toJSON(){
+    return [this.type, this.begin, this.end];
+  }
+]);
 
 
 
 function Entry(labels, level){
   this.labels = labels;
-  this.breaks = [];
   this.level = level;
-  this.continues = null;
+  this.breaks = [];
+  this.continues = [];
 }
 
 define(Entry.prototype, {
@@ -289,9 +424,16 @@ define(Entry.prototype, {
   level: null
 })
 
-
-
-
+define(Entry.prototype, [
+  function updateContinues(address){
+    for (var i=0, item; item = this.breaks[i]; i++)
+      item.position = breakAddress;
+  },
+  function updateBreaks(address){
+    for (var i=0, item; item = this.continues[i]; i++)
+      item.position = continueAddress;
+  }
+]);
 
 
 function CompilerOptions(o){
@@ -304,9 +446,8 @@ CompilerOptions.prototype = {
   eval: false,
   function: true,
   scoped: false,
-  allowNatives: false
+  natives: false
 };
-
 
 
 function Compiler(options){
@@ -337,14 +478,22 @@ define(Compiler.prototype, [
 
     var type = this.options.eval ? 'eval' : this.options.function ? 'function' : 'global';
     var code = new Code(node, source, type, !this.options.scoped);
+    code.identifiers = [];
+    code.hash = create(null);
+    code.topLevel = true;
+    if (this.options.natives) {
+      code.natives = true;
+    }
 
     this.queue(code);
     parenter(node);
 
+
     while (this.pending.length) {
+      var lastCode = this.code;
       this.code = this.pending.pop();
-      if (this.options.allowNatives) {
-        this.code.allowNatives = true;
+      if (lastCode) {
+        this.code.inherit(lastCode);
       }
       this.visit(this.code.body);
       if (this.code.eval || this.code.isGlobal){
@@ -384,45 +533,28 @@ define(Compiler.prototype, [
     return op[0] = this.code.ops.length;
   },
 
-  function withBreakBlock(func){
+  function withBlock(func){
     if (this.labels){
       var entry = new Entry(this.labels, this.levels.length);
       this.jumps.push(entry);
       this.labels = create(null);
-      func.call(this, function(b){
-        for (var i=0, item; item = entry.breaks[i]; i++)
-          item.position = b;
+      func.call(this, function(b, c){
+        entry.updateBreaks(b);
       });
       this.jumps.pop();
     } else {
       func.call(this, function(){});
     }
   },
-  function withBreak(func){
+  function withEntry(func){
+    var entry = new Entry(this.labels, this.levels.length);
     this.jumps.push(entry);
     this.labels = create(null);
     func.call(this, function (b, c){
-      for (var i=0, item; item = entry.breaks[i]; i++)
-        item.position = b;
-    });
-    this.jumps.pop();
-  },
-
-  function withContinue(func){
-    var entry = {
-      labels: this.labels,
-      breaks: [],
-      continues: [],
-      level: this.levels.length
-    };
-    this.jumps.push(entry);
-    this.labels = create(null);
-    func.call(this, function(b, c){
-      for (var i=0, item; item = entry.breaks[i]; i++)
-        item.position = b;
-
-      for (var i=0, item; item = entry.continues[i]; i++)
-        item.position = c;
+      entry.updateBreaks(b);
+      if (c !== undefined) {
+        entry.updateContinues(c);
+      }
     });
     this.jumps.pop();
   },
@@ -481,7 +613,7 @@ define(Compiler.prototype, [
       this.record(GET);
       this.visit(node.right);
       this.record(GET);
-      this.record(BINARY, node.operator.slice(0, -1));
+      this.record(BINARY, BINARYOPS.getIndex(node.operator.slice(0, -1)));
       this.record(PUT);
     }
   },
@@ -507,7 +639,7 @@ define(Compiler.prototype, [
     this.record(ARRAY_DONE);
   },
   function ArrowFunctionExpression(node){
-    var code = new Code(node, this.code.source, 'Arrow', false, this.code.strict);
+    var code = new Code(node, this.code.source, FUNCTYPE.hash.ARROW, false, this.code.strict);
     this.queue(code);
     this.record(FUNCTION, null, code);
   },
@@ -516,7 +648,7 @@ define(Compiler.prototype, [
     this.record(GET);
     this.visit(node.right);
     this.record(GET);
-    this.record(BINARY, node.operator);
+    this.record(BINARY, BINARYOPS.getIndex(node.operator));
   },
   function BreakStatement(node){
     var entry = this.move(node);
@@ -525,8 +657,8 @@ define(Compiler.prototype, [
     }
   },
   function BlockStatement(node){
-    this.withBreakBlock(function(patch){
-      this.recordEntrypoint(ENV, function(){
+    this.withBlock(function(patch){
+      this.recordEntrypoint(ENTRY.hash.ENV, function(){
         this.record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.body) });
 
         for (var i=0, item; item = node.body[i]; i++)
@@ -538,29 +670,25 @@ define(Compiler.prototype, [
     });
   },
   function CallExpression(node){
-    if (0&&isResetExpression(node)) {
-      this.ResetExpression(makeResetExpression(node));
+    if (isSuperReference(node.callee)) {
+      if (this.code.Type === 'global' || this.code.Type === 'eval' && this.code.isGlobal)
+        throw new Error('Illegal super reference');
+      this.record(SUPER_CALL);
     } else {
-      if (isSuperReference(node.callee)) {
-        if (this.code.Type === 'global' || this.code.Type === 'eval' && this.code.isGlobal)
-          throw new Error('Illegal super reference');
-        this.record(SUPER_CALL);
-      } else {
-        this.visit(node.callee);
-      }
-      this.record(DUP);
-      this.record(GET);
-
-      for (var i=0, item; item = node.arguments[i]; i++) {
-        this.visit(item);
-        this.record(GET);
-      }
-
-      this.record(CALL, node.arguments.length);
+      this.visit(node.callee);
     }
+    this.record(DUP);
+    this.record(GET);
+
+    for (var i=0, item; item = node.arguments[i]; i++) {
+      this.visit(item);
+      this.record(GET);
+    }
+
+    this.record(CALL, node.arguments.length);
   },
   function CatchClause(node){
-    this.recordEntrypoint(ENV, function(){
+    this.recordEntrypoint(ENTRY.hash.ENV, function(){
       var decls = LexicalDeclarations(node.body);
       decls.push({
         type: 'VariableDeclaration',
@@ -589,7 +717,7 @@ define(Compiler.prototype, [
         ctor;
 
     for (var i=0, method; method = node.body.body[i]; i++) {
-      var code = new Code(method.value, this.source, 'Method', false, this.code.strict);
+      var code = new Code(method.value, this.source, FUNCTYPE.hash.METHOD, false, this.code.strict);
       code.name = method.key.name;
       this.pending.push(code);
 
@@ -639,7 +767,7 @@ define(Compiler.prototype, [
       entry.continues.push(this.record(JUMP, 0));
   },
   function DoWhileStatement(node){
-    this.withContinue(function(patch){
+    this.withEntry(function(patch){
       var start = this.current();
       this.visit(node.body);
       var cond = this.current();
@@ -666,7 +794,7 @@ define(Compiler.prototype, [
     }
   },
   function ForStatement(node){
-    this.withContinue(function(patch){
+    this.withEntry(function(patch){
       if (node.init){
         this.visit(node.init);
         if (node.init.type !== 'VariableDeclaration') {
@@ -679,7 +807,7 @@ define(Compiler.prototype, [
       if (node.test) {
         this.visit(node.test);
         this.record(GET);
-        var op = this.record(IFEQ, 0, false);
+        var op = this.record(IFEQ, 0, true);
       }
 
       this.visit(node.body);
@@ -692,11 +820,11 @@ define(Compiler.prototype, [
 
       this.record(JUMP, cond);
       this.adjust(op);
-      patch(this.current(), update);
+      patch(this.current(), cond);
     });
   },
   function ForInStatement(node){
-    this.withContinue(function(patch){
+    this.withEntry(function(patch){
       this.visit(node.left);
       this.record(RESOLVE, this.last()[0].name);
       this.visit(node.right);
@@ -712,16 +840,16 @@ define(Compiler.prototype, [
     });
   },
   function ForOfStatement(node){
-    this.withContinue(function(patch){
+    this.withEntry(function(patch){
       this.visit(node.right);
       this.record(GET);
-      this.record(MEMBER, 'iterator');
+      this.record(MEMBER, this.code.intern('iterator'));
       this.record(GET);
       this.record(CALL, 0);
       this.record(ROTATE, 4);
       this.record(POPN, 3);
       var update = this.current();
-      this.record(MEMBER, 'next');
+      this.record(MEMBER, this.code.intern('next'));
       this.record(GET);
       this.record(CALL, 0);
       this.visit(node.left);
@@ -733,17 +861,17 @@ define(Compiler.prototype, [
     });
   },
   function FunctionDeclaration(node){
-    node.Code = new Code(node, this.code.source, 'Normal', false, this.code.strict);
+    node.Code = new Code(node, this.code.source, FUNCTYPE.hash.NORMAL, false, this.code.strict);
     this.queue(node.Code);
   },
   function FunctionExpression(node){
-    var code = new Code(node, this.code.source, 'Normal', false, this.code.strict);
+    var code = new Code(node, this.code.source, FUNCTYPE.hash.NORMAL, false, this.code.strict);
     this.queue(code);
     var name = node.id ? node.id.name : '';
-    this.record(FUNCTION, name, code);
+    this.record(FUNCTION, this.code.intern(name), code);
   },
   function Identifier(node){
-    this.record(RESOLVE, node.name);
+    this.record(RESOLVE, this.code.intern(node.name));
   },
   function IfStatement(node){
     this.visit(node.test);
@@ -761,8 +889,13 @@ define(Compiler.prototype, [
   function ImportDeclaration(node){},
   function ImportSpecifier(spec){},
   function Literal(node){
-    var type = node.value instanceof RegExp ? REGEXP : LITERAL;
-    this.record(type, node.value);
+    if (node.value instanceof RegExp) {
+      this.record(REGEXP, node.value);
+    } else if (typeof node.value === 'string') {
+      this.record(STRING, this.code.intern(node.value));
+    } else {
+      this.record(LITERAL, node.value);
+    }
   },
   function LabeledStatement(node){
     if (!this.labels){
@@ -798,12 +931,12 @@ define(Compiler.prototype, [
       this.record(GET);
       this.record(isSuper ? SUPER_ELEMENT : ELEMENT);
     } else {
-      this.record(isSuper ? SUPER_MEMBER : MEMBER, node.property.name);
+      this.record(isSuper ? SUPER_MEMBER : MEMBER, this.code.intern(node.property.name));
     }
   },
   function ModuleDeclaration(node){ },
   function NativeIdentifier(node){
-    this.record(NATIVE_RESOLVE, node.name);
+    this.record(NATIVE_RESOLVE, this.code.intern(node.name));
   },
   function NewExpression(node){
     this.visit(node.callee);
@@ -828,16 +961,16 @@ define(Compiler.prototype, [
     if (node.kind === 'init'){
       this.visit(node.value);
       this.record(GET);
-      this.record(PROPERTY, node.key.name);
+      this.record(PROPERTY, this.code.intern(node.key.name));
     } else {
-      var code = new Code(node.value, this.source, 'Method', false, this.code.strict);
+      var code = new Code(node.value, this.source, FUNCTYPE.hash.METHOD, false, this.code.strict);
       this.queue(code);
 
       if (code.NeedsSuperBinding) {
 
       }
 
-      this.record(METHOD, node.kind, code, node.key.name);
+      this.record(METHOD, node.kind, code, this.code.intern(node.key.name));
     }
   },
   function ReturnStatement(node){
@@ -882,11 +1015,11 @@ define(Compiler.prototype, [
     this.record(GET);
   },
   function SwitchStatement(node){
-    this.withBreak(function(patch){
+    this.withEntry(function(patch){
       this.visit(node.discriminant);
       this.record(GET);
 
-      this.recordEntrypoint(ENV, function(){
+      this.recordEntrypoint(ENTRY.hash.ENV, function(){
         this.record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.cases) });
 
         if (node.cases){
@@ -961,7 +1094,7 @@ define(Compiler.prototype, [
   },
   function UnaryExpression(node){
     this.visit(node.argument);
-    this.record(UNARY, node.operator);
+    this.record(UNARY, UNARYOPS.getIndex(node.operator));
   },
   function UpdateExpression(node){
     this.visit(node.argument);
@@ -990,7 +1123,7 @@ define(Compiler.prototype, [
   },
   function VariableDeclarator(node){},
   function WhileStatement(node){
-    this.withContinue(function(patch){
+    this.withEntry(function(patch){
       var start = this.current();
       this.visit(node.test);
       this.record(GET);
@@ -1002,7 +1135,7 @@ define(Compiler.prototype, [
   },
   function WithStatement(node){
     this.visit(node.object)
-    this.recordEntrypoint(ENV, function(){
+    this.recordEntrypoint(ENTRY.hash.ENV, function(){
       this.record(WITH);
       this.visit(node.body);
       this.record(BLOCK_EXIT);
