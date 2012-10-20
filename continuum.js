@@ -959,8 +959,8 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ## ObjectBindingInitialization
 
   function ObjectBindingInitialization(pattern, object, env){
-    for (var i=0, property; property = pattern.properties[i]; i++) {
-      var value = object.HasProperty(i) ? object.Get(i) : undefined;
+    for (var i=0; property = pattern.properties[i]; i++) {
+      var value = object.HasProperty(property.key.name) ? object.Get(property.key.name) : undefined;
       if (value && value.IsCompletion) {
         if (value.IsAbruptCompletion) {
           return value;
@@ -968,7 +968,7 @@ var continuum = (function(GLOBAL, exports, undefined){
           value = value.value;
         }
       }
-      BindingInitialization(property, value, env);
+      BindingInitialization(property.value, value, env);
     }
   }
 
@@ -3405,6 +3405,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     function instrumentedExecute(){
       var f = cmds[ip];
+
       while (f) {
         thunk.emit('op', ops[ip]);
         f = f();
