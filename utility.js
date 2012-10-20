@@ -643,3 +643,24 @@ define(Stack.prototype, [
     return out;
   }
 ]);
+
+
+
+var cache = [];
+
+function numbers(start, end){
+  if (!isFinite(end)) {
+    end = start;
+    start = 0;
+  }
+  var length = end - start,
+      curr;
+
+  if (end > cache.length) {
+    while (length--)
+      cache[curr = length + start] = '' + curr;
+  }
+  return cache.slice(start, end);
+}
+
+exports.numbers = numbers;
