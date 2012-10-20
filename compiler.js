@@ -149,7 +149,7 @@ function Code(node, source, type, isGlobal, strict){
     LexicalDeclarations: LexicalDeclarations(node)
   });
   this.isGlobal = isGlobal;
-  this.handlers = [];
+  this.entrances = [];
   this.Type = type || 'Normal';
   this.VarDeclaredNames = [];
   this.NeedsSuperBinding = ReferencesSuper(this.body);
@@ -252,7 +252,8 @@ define(Operation.prototype, [
   function inspect(){
     var out = [];
     for (var i=0; i < this.op.params; i++) {
-      out[i] = util.inspect(this[i]);
+      if (typeof this[i] !== 'object')
+        out.push(util.inspect(this[i]));
     }
 
     return util.inspect(this.op)+'('+out.join(', ')+')';
@@ -269,7 +270,7 @@ function Handler(type, begin, end){
 
 var ENV = 'ENV',
     FINALLY = 'FINALLY',
-    CATCH = 'CATCH';
+    TRYCATCH = 'TRYCATCH';
 
 
 
@@ -425,10 +426,10 @@ define(Compiler.prototype, [
     });
     this.jumps.pop();
   },
-  function addEnvironmentHandler(func){
+  function recordEntrypoint(type, func){
     var begin = this.current();
     func.call(this);
-    this.code.handlers.push(new Handler(ENV, begin, this.current()));
+    this.code.entrances.push(new Handler(type, begin, this.current()));
   },
   function move(node){
     if (node.label) {
@@ -525,7 +526,7 @@ define(Compiler.prototype, [
   },
   function BlockStatement(node){
     this.withBreakBlock(function(patch){
-      this.addEnvironmentHandler(function(){
+      this.recordEntrypoint(ENV, function(){
         this.record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.body) });
 
         for (var i=0, item; item = node.body[i]; i++)
@@ -558,7 +559,30 @@ define(Compiler.prototype, [
       this.record(CALL, node.arguments.length);
     }
   },
-  function CatchClause(node){},
+  function CatchClause(node){
+    this.recordEntrypoint(ENV, function(){
+      var decls = LexicalDeclarations(node.body);
+      decls.push({
+        type: 'VariableDeclaration',
+        kind: 'var',
+        IsConstantDeclaration: false,
+        BoundNames: [node.param.name],
+        declarations: [{
+          type: 'VariableDeclarator',
+          id: node.param,
+          init: undefined
+        }]
+      });
+      this.record(BLOCK, { LexicalDeclarations: decls });
+      this.visit(node.param);
+      this.record(GET);
+      this.record(PUT);
+      for (var i=0, item; item = node.body.body[i]; i++)
+        this.visit(item);
+
+      this.record(BLOCK_EXIT);
+    });
+  },
   function ClassDeclaration(node){
     var name = node.id ? node.id.name : null,
         methods = [],
@@ -687,7 +711,27 @@ define(Compiler.prototype, [
       patch(this.current(), update);
     });
   },
-  function ForOfStatement(node){},
+  function ForOfStatement(node){
+    this.withContinue(function(patch){
+      this.visit(node.right);
+      this.record(GET);
+      this.record(MEMBER, 'iterator');
+      this.record(GET);
+      this.record(CALL, 0);
+      this.record(ROTATE, 4);
+      this.record(POPN, 3);
+      var update = this.current();
+      this.record(MEMBER, 'next');
+      this.record(GET);
+      this.record(CALL, 0);
+      this.visit(node.left);
+      this.visit(node.body);
+      this.adjust(op);
+      this.record(JUMP, update);
+      this.record(POPN, 2);
+      patch(this.current(), update);
+    });
+  },
   function FunctionDeclaration(node){
     node.Code = new Code(node, this.code.source, 'Normal', false, this.code.strict);
     this.queue(node.Code);
@@ -704,7 +748,7 @@ define(Compiler.prototype, [
   function IfStatement(node){
     this.visit(node.test);
     this.record(GET);
-    var op = this.record(IFEQ, 0, false);
+    var op = this.record(IFEQ, 0, true);
     this.visit(node.consequent);
     this.adjust(op);
 
@@ -842,7 +886,7 @@ define(Compiler.prototype, [
       this.visit(node.discriminant);
       this.record(GET);
 
-      this.addEnvironmentHandler(function(){
+      this.recordEntrypoint(ENV, function(){
         this.record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.cases) });
 
         if (node.cases){
@@ -893,6 +937,27 @@ define(Compiler.prototype, [
     this.record(THROW);
   },
   function TryStatement(node){
+    this.recordEntrypoint(TRYCATCH, function(){
+      this.visit(node.block);
+    });
+    var count = node.handlers.length,
+        tryer = this.record(JUMP, 0),
+        handlers = [tryer];
+
+    for (var i=0; i < count; i++) {
+      this.visit(node.handlers[i]);
+      if (i < count - 1) {
+        handlers.push(this.record(JUMP, 0));
+      }
+    }
+
+    while (i--) {
+      this.adjust(handlers[i]);
+    }
+
+    if (node.finalizer) {
+      this.visit(node.finalizer);
+    }
   },
   function UnaryExpression(node){
     this.visit(node.argument);
@@ -937,7 +1002,7 @@ define(Compiler.prototype, [
   },
   function WithStatement(node){
     this.visit(node.object)
-    this.addEnvironmentHandler(function(){
+    this.recordEntrypoint(ENV, function(){
       this.record(WITH);
       this.visit(node.body);
       this.record(BLOCK_EXIT);
@@ -955,6 +1020,10 @@ function compile(code, options){
 function inspect(o){
   console.log(require('util').inspect(o, null, 10));
 }
+
+// inspect(compile('try { var x = [1,2,3] } catch (e) { x = e } finally { done = x }'))
+
+
 
 
 //inspect(compile('function xy(){ this.hello = true }; global = this'))
