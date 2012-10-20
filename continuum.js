@@ -926,7 +926,7 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ## ArgumentBindingInitialization
 
   function ArgumentBindingInitialization(params, args, env){
-    for (var arg; arg = params[i]; i++) {
+    for (var i = 0, arg; arg = params[i]; i++) {
       var value = args.HasProperty(i) ? args.Get(i) : undefined;
       if (value && value.IsCompletion) {
         if (value.IsAbruptCompletion) {
@@ -3578,6 +3578,7 @@ var continuum = (function(GLOBAL, exports, undefined){
   exports.create = function createContinuum(listener){
     return new Continuum(listener);
   };
+
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
