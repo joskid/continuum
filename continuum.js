@@ -18,6 +18,17 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   var slice = [].slice;
 
+
+  var constants = require('./constants'),
+      BINARYOPS = constants.BINARYOPS.array,
+      UNARYOPS  = constants.UNARYOPS.array,
+      ENTRY     = constants.ENTRY.hash,
+      AST       = constants.AST.array;
+
+  var ARROW  = constants.FUNCTYPE.getIndex('ARROW'),
+      METHOD = constants.FUNCTYPE.getIndex('METHOD'),
+      NORMAL = constants.FUNCTYPE.getIndex('NORMAL');
+
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',
       NUMBER    = 'number',
@@ -87,11 +98,6 @@ var continuum = (function(GLOBAL, exports, undefined){
   var GlobalCode            = 'Global',
       EvalCode              = 'Eval',
       FuntionCode           = 'Function';
-
-  var ArrowFunction         = 'Arrow',
-      NormalFunction        = 'Normal',
-      MethodFunction        = 'Method',
-      GeneratorFunction     = 'Generator';
 
   var UNINITIALIZED = new Symbol('UNINITIALIZED');
 
@@ -880,7 +886,7 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ## InstantiateFunctionDeclaration
 
   function InstantiateFunctionDeclaration(decl){
-    var func = new $Function('Normal', decl.BoundNames[0], decl.Code.params, decl.Code, context.LexicalEnvironment, decl.Code.Strict);
+    var func = new $Function(NORMAL, decl.BoundNames[0], decl.Code.params, decl.Code, context.LexicalEnvironment, decl.Code.Strict);
     MakeConstructor(func);
     return func;
   }
@@ -1109,11 +1115,12 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
   });
 
-  var MUL, DIV, MOD;
+  var MUL, DIV, MOD, SUB;
   void function(makeMultiplier){
     MUL = makeMultiplier(function(l, r){ return l * r });
     DIV = makeMultiplier(function(l, r){ return l / r });
     MOD = makeMultiplier(function(l, r){ return l % r });
+    SUB = makeMultiplier(function(l, r){ return l - r });
   }(function(finalize){
     return function(lval, rval) {
       lval = ToNumber(lval);
@@ -1147,7 +1154,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     rval = ToPrimitive(rval);
-    if (rval.IsCompletion) {
+    if (rval && rval.IsCompletion) {
       if (rval && rval.IsAbruptCompletion) {
         return rval;
       } else {
@@ -1515,7 +1522,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       return function(obj, key, code) {
         var sup = code.NeedsSuperBinding,
             home = sup ? obj : undefined,
-            func = new $Function('Method', key, code.params, code, context.LexicalEnvironment, code.Strict, undefined, home, sup);
+            func = new $Function(METHOD, key, code.params, code, context.LexicalEnvironment, code.Strict, undefined, home, sup);
 
         constructs && MakeConstructor(func);
         desc[field] = func;
@@ -2188,7 +2195,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     $Object.call(this, proto);
     this.FormalParameters = params;
-    this.ThisMode = kind === 'Arrow' ? 'lexical' : strict ? 'strict' : 'global';
+    this.ThisMode = kind === ARROW ? 'lexical' : strict ? 'strict' : 'global';
     this.Strict = !!strict;
     this.Realm = realm;
     this.Scope = scope;
@@ -2202,7 +2209,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     defineDirect(this, 'length', params.ExpectedArgumentCount, ___);
-    if (kind === 'Normal' && strict) {
+    if (kind === NORMAL && strict) {
       defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
       defineDirect(this, ARGUMENTS, intrinsics.ThrowTypeError, __A);
     } else {
@@ -2869,7 +2876,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       MEMBER, METHOD, OBJECT, POP, SAVE, POPN, PROPERTY, PUT,
       REGEXP, RESOLVE, RETURN, COMPLETE, ROTATE, RUN, SUPER_CALL, SUPER_ELEMENT,
       SUPER_GUARD, SUPER_MEMBER, THIS, THROW, UNARY, UNDEFINED, UPDATE, VAR, WITH,
-      NATIVE_RESOLVE, ENUM, NEXT
+      NATIVE_RESOLVE, ENUM, NEXT, STRING
     ];
 
     var ops = code.ops,
@@ -2888,7 +2895,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function BINARY(){
-      a = BinaryOp(ops[ip][0], stack[--sp], stack[--sp]);
+      a = BinaryOp(BINARYOPS[ops[ip][0]], stack[--sp], stack[--sp]);
       if (a && a.IsCompletion) {
         if (a.IsAbruptCompletion) {
           error = a.value;
@@ -3045,9 +3052,9 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function FUNCTION(){
-      a = ops[ip][1];
+      a = ops[ip][1] || '';
       b = NewDeclarativeEnvironment(context.LexicalEnvironment);
-      c = new $Function(a.Type, ops[ip][0], a.params, a, b, a.Strict);
+      c = new $Function(a.Type, code.lookup(ops[ip][0]), a.params, a, b, a.Strict);
       b.func = c;
       MakeConstructor(c);
       stack[sp++] = c;
@@ -3071,6 +3078,8 @@ var continuum = (function(GLOBAL, exports, undefined){
     function IFEQ(){
       if (ops[ip][1] !== !!stack[sp - 1]) {
         ip = ops[ip][0];
+       } else {
+        sp--;
       }
       return cmds[++ip];
     }
@@ -3124,7 +3133,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function MEMBER(){
-      a = Element(ops[ip][0], stack[--sp]);
+      a = Element(code.lookup(ops[ip][0]), stack[--sp]);
       if (a && a.IsCompletion) {
         if (a.IsAbruptCompletion) {
           error = a.value;
@@ -3138,7 +3147,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function METHOD(){
-      a = PropertyDefinitionEvaluation(ops[ip][0], stack[sp - 1], ops[ip][2], ops[ip][1]);
+      a = PropertyDefinitionEvaluation(ops[ip][0], stack[sp - 1], code.lookup(ops[ip][2]), ops[ip][1]);
       if (a && a.IsAbruptCompletion) {
         error = a.value;
         return ƒ;
@@ -3147,11 +3156,11 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function NATIVE_RESOLVE(){
-      if (!code.allowNatives) {
+      if (!code.natives) {
         error = 'invalid native reference';
         return ƒ;
       }
-      stack[sp++] = new Reference(realm.natives, ops[ip][0], false);
+      stack[sp++] = new Reference(realm.natives, code.lookup(ops[ip][0]), false);
       return cmds[++ip];
     }
 
@@ -3169,7 +3178,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     function PROPERTY(){
       a = stack[--sp];
-      b = DefineProperty(stack[sp - 1], ops[ip][0], a);
+      b = DefineProperty(stack[sp - 1], code.lookup(ops[ip][0]), a);
       if (b && b.IsAbruptCompletion) {
         error = b.value;
         return ƒ;
@@ -3210,7 +3219,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function RESOLVE(){
-      stack[sp++] = IdentifierResolution(ops[ip][0]);
+      stack[sp++] = IdentifierResolution(code.lookup(ops[ip][0]));
       return cmds[++ip];
     }
 
@@ -3238,6 +3247,11 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     function SAVE(){
       completion = stack[--sp];
+      return cmds[++ip];
+    }
+
+    function STRING(){
+      stack[sp++] = code.lookup(ops[ip][0]);
       return cmds[++ip];
     }
 
@@ -3279,7 +3293,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function SUPER_MEMBER(){
-      a = ElementSuper(ops[ip][0]);
+      a = ElementSuper(code.lookup(ops[ip][0]));
       if (a && a.IsCompletion) {
         if (a.IsAbruptCompletion) {
           error = a.value;
@@ -3312,7 +3326,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function UNARY(){
-      a = UnaryOp(ops[ip][0], stack[--sp]);
+      a = UnaryOp(UNARYOPS[ops[ip][0]], stack[--sp]);
       if (a && a.IsCompletion) {
         if (a.IsAbruptCompletion) {
           error = a.value;
@@ -3374,14 +3388,14 @@ var continuum = (function(GLOBAL, exports, undefined){
     function ƒ(){
       for (var i = 0, entrypoint; entrypoint = code.entrances[i]; i++) {
         if (entrypoint.begin < ip && ip <= entrypoint.end) {
-          if (entrypoint.type === 'ENV') {
+          if (entrypoint.type === ENTRY.ENV) {
             context.LexicalEnvironment = context.LexicalEnvironment.outer;
           } else {
             //sp = entrypoint.unwindStack(this);
-            if (entrypoint.type === FINALLY) {
+            if (entrypoint.type === ENTRY.FINALLY) {
               stack[sp++] = Empty;
               stack[sp++] = error;
-              stack[sp++] = FINALLY;
+              stack[sp++] = ENTRY.FINALLY;
             } else {
               stack[sp++] = error;
             }
@@ -3597,6 +3611,12 @@ var continuum = (function(GLOBAL, exports, undefined){
       return this.Call(receiver, toInternalArray(args));
     },
     ToObject: ToObject,
+    ToString: ToString,
+    ToNumber: ToNumber,
+    ToBoolean: ToBoolean,
+    ToInteger: ToInteger,
+    ToInt32: ToInt32,
+    ToUint32: ToUint32,
     DefineOwnProperty: function(object, key, desc){
       object.DefineOwnProperty(key, desc);
     },
@@ -3610,7 +3630,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       args = toInternalArray(args);
       var body = args.pop();
       body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
-      var code = compile(body, { allowNatives: false, eval: true });
+      var code = compile(body, { natives: false, eval: true });
       return createThunk(code).run();
     },
     NumberCreate: function(number){
@@ -3703,7 +3723,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       code = decompile(ast);
     }
 
-    this.code = compile(code, { allowNatives: true });
+    this.code = compile(code, { natives: true });
     this.thunk = createThunk(this.code);
     define(this, {
       source: code,
@@ -3792,10 +3812,12 @@ var continuum = (function(GLOBAL, exports, undefined){
     return new Continuum(listener);
   };
 
-  var x = exports.create();
-  //x.on('op', console.log)
-  inspect(x.eval(new ScriptFile('./runtime.js')));
-  inspect(x.realm.global);
+  // var x = exports.create();
+  // //x.on('op', console.log)
+  // var natives = new ScriptFile('./runtime.js');
+  // //require('fs').writeFileSync('./bytecode.json', JSON.stringify(natives.code))
+  // inspect(x.eval(natives));
+  // inspect(x.realm.global);
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
