@@ -949,6 +949,18 @@ var continuum = (function(GLOBAL, exports, undefined){
       }
       BindingInitialization(arg, value, env);
     }
+    if (params.Rest) {
+      var len = getDirect(args, 'length') - params.length;
+          array = new $Array(0);
+
+      if (len > 0) {
+        for (var i=0; i < len; i++) {
+          setDirect(array, i, getDirect(args, params.length + i));
+        }
+        setDirect(array, 'length', len);
+      }
+      BindingInitialization(params.Rest, array, env);
+    }
   }
 
 
@@ -966,6 +978,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       }
       BindingInitialization(element, value, env);
     }
+    return i;
   }
 
   // ## ObjectBindingInitialization
@@ -1321,10 +1334,10 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   var LT, GT, LTE, GTE;
   void function(creatorComparer){
-    LT = creatorComparer(false, false);
-    GT = creatorComparer(true, false);
-    LTE = creatorComparer(false, true);
-    GTE = creatorComparer(true, true);
+    LT = creatorComparer(true, false);
+    GT = creatorComparer(false, false);
+    LTE = creatorComparer(true, true);
+    GTE = creatorComparer(false, true);
   }(function(reverse, left){
     return function(lval, rval){
       if (reverse) {
@@ -3052,9 +3065,9 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function FUNCTION(){
-      a = ops[ip][1] || '';
+      a = ops[ip][1];
       b = NewDeclarativeEnvironment(context.LexicalEnvironment);
-      c = new $Function(a.Type, code.lookup(ops[ip][0]), a.params, a, b, a.Strict);
+      c = new $Function(a.Type, code.lookup(ops[ip][0]) || '', a.params, a, b, a.Strict);
       b.func = c;
       MakeConstructor(c);
       stack[sp++] = c;
@@ -3076,16 +3089,14 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function IFEQ(){
-      if (ops[ip][1] !== !!stack[sp - 1]) {
+      if (ops[ip][1] === !!(stack[--sp])) {
         ip = ops[ip][0];
-       } else {
-        sp--;
       }
       return cmds[++ip];
     }
 
     function IFNE(){
-      if (ops[ip][1] === !!stack[sp - 1]) {
+      if (ops[ip][1] === !!(stack[sp - 1])) {
         ip = ops[ip][0];
       } else {
         sp--;
@@ -3246,7 +3257,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function SAVE(){
-      completion = stack[--sp];
+      completion = stack[sp];
       return cmds[++ip];
     }
 
@@ -3645,8 +3656,32 @@ var continuum = (function(GLOBAL, exports, undefined){
     RegExpCreate: function(regexp){
       return new $RegExp(regexp);
     },
-
+    parseInt: function(value, radix){
+      return parseInt(ToPrimitive(value), ToNumber(radix));
+    },
+    parseFloat: function(value){
+      return parseFloat(ToPrimitive(value));
+    },
+    decodeURI: function(value){
+      return decodeURI(ToString(value));
+    },
+    decodeURIComponent: function(value){
+      return decodeURIComponent(ToString(value));
+    },
+    encodeURI: function(value){
+      return encodeURI(ToString(value));
+    },
+    encodeURIComponent: function(value){
+      return encodeURIComponent(ToString(value));
+    },
+    escape: function(value){
+      return escape(ToString(value));
+    },
+    charCode: function(char){
+      return char.charCodeAt(0);
+    }
   };
+
 
   function Realm(){
     this.natives = new Intrinsics(this);
@@ -3812,12 +3847,6 @@ var continuum = (function(GLOBAL, exports, undefined){
     return new Continuum(listener);
   };
 
-  // var x = exports.create();
-  // //x.on('op', console.log)
-  // var natives = new ScriptFile('./runtime.js');
-  // //require('fs').writeFileSync('./bytecode.json', JSON.stringify(natives.code))
-  // inspect(x.eval(natives));
-  // inspect(x.realm.global);
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
