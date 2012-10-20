@@ -39,24 +39,22 @@
   // ### Array ###
   // #############
 
-  function Array(n){
-    var out = [];
-    if (arguments.length === 1 && typeof n === 'number') {
-      out.length = n;
+  function Array(...args){
+    if (args.length === 1 && typeof n === 'number') {
+      args.length = args[0];
+      delete args[0];
+      return args;
     } else {
-      for (var k in arguments) {
-        out[k] = arguments[k];
-      }
+      return args;
     }
-    return out;
   }
 
   setupConstructor(Array, %ArrayProto);
 
 
   defineMethods(Array, [
-    function isArray(arr){
-      return %getNativeBrand(arr) === 'Array';
+    function isArray(array){
+      return %getNativeBrand(array) === 'Array';
     }
   ]);
 
@@ -65,9 +63,19 @@
       context = context || this;
       for (var i=0; i < this.length; i++) {
         if (%hasOwnDirect(this, i)) {
-
+          callback.call(context, this[i], i, this);
         }
       }
+    },
+    function map(callback, context){
+      var out = [];
+      context = context || this;
+      for (var i=0; i < this.length; i++) {
+        if (%hasOwnDirect(this, i)) {
+          out.push(callback.call(context, this[i], i, this));
+        }
+      }
+      return out;
     },
     function join(joiner){
       var out = '', len = this.length;
@@ -89,10 +97,10 @@
 
       return out + this[i];
     },
-    function push(){
+    function push(...args){
       var len = this.length;
-      for (var k in arguments) {
-        this[len++] = arguments[k];
+      for (var i=0; i < args.length; i++) {
+        this[len++] = args[i];
       }
       return len;
     },
@@ -199,8 +207,8 @@
   // ### Function ###
   // ################
 
-  function Function(){
-    return %FunctionCreate(arguments);
+  function Function(...args){
+    return %FunctionCreate(args);
   }
 
   %defineDirect(%FunctionProto, 'name', 'Empty', ___);
@@ -287,6 +295,9 @@
     %keys,
     %getOwnPropertyNames,
     %getOwnPropertyDescriptor,
+    function is(a, b){
+      return a is b;
+    }
   ]);
 
   defineMethods(Object.prototype, [
@@ -327,10 +338,11 @@
   // ##############
 
   function String(arg){
+    arg = arguments.length ? %ToString(arg) : '';
     if (%isConstructCall()) {
-      return %StringCreate(''+arg);
+      return %StringCreate(arg);
     } else {
-      return %ToString(arg);
+      return arg;
     }
   }
 
@@ -350,7 +362,36 @@
       } else {
         // throw
       }
+    },
+    function charAt(pos){
+      pos = pos | 0;
+      if (pos < 0 || pos >= this.length) {
+        return '';
+      } else {
+        return this[pos];
+      }
+    },
+    function charCodeAt(pos){
+      pos = pos | 0;
+      if (pos < 0 || pos >= this.length) {
+        return NaN;
+      } else {
+        return %charCode(this[pos]);
+      }
+    },
+    function concat(...args){
+
     }
+  ]);
+
+  defineMethods(global, [
+    %parseInt,
+    %parseFloat,
+    %decodeURI,
+    %encodeURI,
+    %decodeURIComponent,
+    %encodeURIComponent,
+    %escape,
   ]);
 
 })(this);
