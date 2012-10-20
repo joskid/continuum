@@ -848,6 +848,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
 
+
     if (!env.HasBinding(ARGUMENTS)) {
       if (func.Strict) {
         env.CreateImmutableBinding(ARGUMENTS);
@@ -871,7 +872,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     for (var i=0; i < decls.length; i++) {
       if (decls[i].type === 'FunctionDeclaration') {
-        decl = decls[i];
+        var decl = decls[i];
         name = decl.BoundNames[0];
 
         if (!(name in funcs)) {
@@ -3089,18 +3090,19 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function IFEQ(){
-      if (ops[ip][1] === !!(stack[--sp])) {
+      if (ops[ip][1] === ToBoolean(stack[--sp])) {
         ip = ops[ip][0];
       }
       return cmds[++ip];
     }
 
     function IFNE(){
-      if (ops[ip][1] === !!(stack[sp - 1])) {
+      if (ops[ip][1] === ToBoolean(stack[sp - 1])) {
         ip = ops[ip][0];
       } else {
         sp--;
       }
+      inspect(stack)
       return cmds[++ip];
     }
 
@@ -3794,6 +3796,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     });
 
     this.state = 'idle';
+    this.eval(new ScriptFile(__dirname+'/runtime.js'))
   }
 
   inherit(Continuum, Emitter, [
@@ -3846,7 +3849,6 @@ var continuum = (function(GLOBAL, exports, undefined){
   exports.create = function createContinuum(listener){
     return new Continuum(listener);
   };
-
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
