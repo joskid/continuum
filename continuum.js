@@ -110,6 +110,11 @@ var continuum = (function(GLOBAL, exports, undefined){
     o.attributes[key] = attrs;
     o.keys.add(key);
   }
+  function deleteDirect(o, key){
+    delete o.properties[key];
+    delete o.attributes[key];
+    o.keys.remove(key);
+  }
   function hasDirect(o, key){
     return key in o.properties;
   }
@@ -145,14 +150,14 @@ var continuum = (function(GLOBAL, exports, undefined){
   function FromPropertyDescriptor(desc){
     var obj = new $Object;
     if (IsDataDescriptor(desc)) {
-      setDirect(obj, 'value', desc.value);
-      setDirect(obj, 'writable', desc.writable);
+      setDirect(obj, 'value', desc.Value);
+      setDirect(obj, 'writable', desc.Writable);
     } else if (IsAccessorDescriptor(desc))  {
-      setDirect(obj, 'get', desc.get);
-      setDirect(obj, 'set', desc.set);
+      setDirect(obj, 'get', desc.Get);
+      setDirect(obj, 'set', desc.Set);
     }
-    setDirect(obj, 'enumerable', desc.enumerable);
-    setDirect(obj, 'configurable', desc.configurable);
+    setDirect(obj, 'enumerable', desc.Enumerable);
+    setDirect(obj, 'configurable', desc.Configurable);
     return obj;
   }
 
@@ -724,15 +729,14 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   function EvaluateConstruct(func, args) {
     if (typeof func !== OBJECT) {
-      throw TypeError('11.2.2-6');
+      return ThrowException('not_constructor', func);
     }
 
     if ('Construct' in func) {
       return func.Construct(args);
     } else {
-      throw TypeError('11.2.2-7');
+      return ThrowException('not_constructor', func);
     }
-
   }
 
 
@@ -896,7 +900,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     for (i=0; i < decls.length; i++) {
       if (decls[i].type === 'FunctionDeclaration') {
-        env.InitializeBinding(decl.BoundNames[0], InstantiateFunctionDeclaration(decls[i]));
+        env.InitializeBinding(decls[i].BoundNames[0], InstantiateFunctionDeclaration(decls[i]));
       }
     }
   }
@@ -1016,7 +1020,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         return ThrowException('super_delete_property', ref.name);
       } else {
         var obj = ToObject(ref.base)
-        if (obj.IsCompletion) {
+        if (obj && obj.IsCompletion) {
           if (obj.IsAbruptCompletion) {
             return obj;
           } else {
@@ -1051,7 +1055,7 @@ var continuum = (function(GLOBAL, exports, undefined){
           return OBJECT;
         }
 
-        if (val.IsCompletion) {
+        if (val && val.IsCompletion) {
           if (val.IsAbruptCompletion) {
             return val;
           } else {
@@ -1091,7 +1095,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       }
       var val = convert(GetValue(ref));
 
-      if (val.IsCompletion) {
+      if (val && val.IsCompletion) {
         if (val.IsAbruptCompletion) {
           return val;
         } else {
@@ -1111,7 +1115,7 @@ var continuum = (function(GLOBAL, exports, undefined){
   }(function(finalize){
     return function(lval, rval) {
       lval = ToNumber(lval);
-      if (lval.IsCompletion) {
+      if (lval && lval.IsCompletion) {
         if (lval.IsAbruptCompletion) {
           return lval;
         } else {
@@ -1119,7 +1123,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
       }
       rval = ToNumber(rval);
-      if (rval.IsCompletion) {
+      if (rval && rval.IsCompletion) {
         if (rval.IsAbruptCompletion) {
           return rval;
         } else {
@@ -1132,7 +1136,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   function ADD(lval, rval) {
     lval = ToPrimitive(lval);
-    if (lval.IsCompletion) {
+    if (lval && lval.IsCompletion) {
       if (lval.IsAbruptCompletion) {
         return lval;
       } else {
@@ -1142,7 +1146,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     rval = ToPrimitive(rval);
     if (rval.IsCompletion) {
-      if (rval.IsAbruptCompletion) {
+      if (rval && rval.IsAbruptCompletion) {
         return rval;
       } else {
         rval = rval.value;
@@ -1155,7 +1159,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     if (ltype === 'string' || rtype === 'string') {
       if (ltype !== 'string') {
         lval = ToString(lval);
-        if (lval.IsCompletion) {
+        if (lval && lval.IsCompletion) {
           if (lval.IsAbruptCompletion) {
             return lval;
           } else {
@@ -1164,7 +1168,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
       } else if (rtype !== 'string') {
         rval = ToString(rval);
-        if (rval.IsCompletion) {
+        if (rval && rval.IsCompletion) {
           if (rval.IsAbruptCompletion) {
             return rval;
           } else {
@@ -1175,7 +1179,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     } else {
       if (ltype !== 'number') {
         lval = ToNumber(lval);
-        if (lval.IsCompletion) {
+        if (lval && lval.IsCompletion) {
           if (lval.IsAbruptCompletion) {
             return lval;
           } else {
@@ -1184,7 +1188,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
       } else if (rtype !== 'number') {
         rval = ToNumber(rval);
-        if (rval.IsCompletion) {
+        if (rval && rval.IsCompletion) {
           if (rval.IsAbruptCompletion) {
             return rval;
           } else {
@@ -1205,7 +1209,7 @@ var continuum = (function(GLOBAL, exports, undefined){
   }(function(finalize){
     return function(lval, rval) {
       lval = ToInt32(lval);
-      if (lval.IsCompletion) {
+      if (lval && lval.IsCompletion) {
         if (lval.IsAbruptCompletion) {
           return lval;
         } else {
@@ -1213,7 +1217,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
       }
       rval = ToUint32(rval);
-      if (rval.IsCompletion) {
+      if (rval && rval.IsCompletion) {
         if (rval.IsAbruptCompletion) {
           return rval;
         } else {
@@ -1236,7 +1240,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     lval = ToPrimitive(lval, 'Number');
-    if (lval.IsCompletion) {
+    if (lval && lval.IsCompletion) {
       if (lval.IsAbruptCompletion) {
         return lval;
       } else {
@@ -1245,7 +1249,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     rval = ToPrimitive(rval, 'Number');
-    if (rval.IsCompletion) {
+    if (rval && rval.IsCompletion) {
       if (rval.IsAbruptCompletion) {
         return rval;
       } else {
@@ -1259,7 +1263,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     if (ltype === 'string' || rtype === 'string') {
       if (ltype !== 'string') {
         lval = ToString(lval);
-        if (lval.IsCompletion) {
+        if (lval && lval.IsCompletion) {
           if (lval.IsAbruptCompletion) {
             return lval;
           } else {
@@ -1268,7 +1272,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
       } else if (rtype !== 'string') {
         rval = ToString(rval);
-        if (rval.IsCompletion) {
+        if (rval && rval.IsCompletion) {
           if (rval.IsAbruptCompletion) {
             return rval;
           } else {
@@ -1282,7 +1286,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     } else {
       if (ltype !== 'number') {
         lval = ToNumber(lval);
-        if (lval.IsCompletion) {
+        if (lval && lval.IsCompletion) {
           if (lval.IsAbruptCompletion) {
             return lval;
           } else {
@@ -1292,7 +1296,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       }
       if (rtype !== 'number') {
         rval = ToNumber(rval);
-        if (rval.IsCompletion) {
+        if (rval && rval.IsCompletion) {
           if (rval.IsAbruptCompletion) {
             return rval;
           } else {
@@ -1321,7 +1325,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       }
 
       var result = COMPARE(lval, rval, left);
-      if (result.IsCompletion) {
+      if (result && result.IsCompletion) {
         if (result.IsAbruptCompletion) {
           return result;
         } else {
@@ -1869,6 +1873,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   function NativeBrand(name){
     this.name = name;
+    this.brand = '[object '+name+']';
   }
 
   define(NativeBrand.prototype, [
@@ -1905,7 +1910,9 @@ var continuum = (function(GLOBAL, exports, undefined){
     this.Prototype = proto;
     this.properties = new Hash;
     this.attributes = new Hash;
-    define(this, 'keys', new PropertyList)
+    define(this, 'keys', new PropertyList);
+    hide(this, 'Prototype');
+    hide(this, 'attributes');
   }
 
   define($Object.prototype, {
@@ -2198,6 +2205,9 @@ var continuum = (function(GLOBAL, exports, undefined){
       defineDirect(this, ARGUMENTS, intrinsics.ThrowTypeError, __A);
     }
     hide(this, 'Realm');
+    hide(this, 'Code');
+    hide(this, 'Scope');
+    hide(this, 'FormalParameters');
   }
 
   inherit($Function, $Object, {
@@ -2212,7 +2222,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     ThisMode: 'global',
     Realm: null,
   }, [
-    function Call(receiver, args){
+    function Call(receiver, args, isConstruct){
       if (this.ThisMode === 'lexical') {
         var local = NewDeclarativeEnvironment(this.Scope);
       } else {
@@ -2233,7 +2243,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         var local = NewMethodEnvironment(this, receiver);
       }
 
-      ExecutionContext.push(new ExecutionContext(context, local, this.Realm, this.Code));
+      ExecutionContext.push(new ExecutionContext(context, local, this.Realm, this.Code, isConstruct));
 
       var status = FunctionDeclarationInstantiation(this, args, local);
       if (status && status.IsAbruptCompletion) {
@@ -2243,6 +2253,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
       if (!this.thunk) {
         this.thunk = createThunk(this.Code);
+        hide(this, 'thunk');
       }
       var result = this.thunk.run();
       ExecutionContext.pop();
@@ -2261,8 +2272,8 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
       }
       var instance = typeof prototype === OBJECT ? new $Object(prototype) : new $Object;
-      var result = this.Call(obj, argumentsList);
-      if (result.IsCompletion) {
+      var result = this.Call(instance, args, true);
+      if (result && result.IsCompletion) {
         if (result.IsAbruptCompletion) {
           return result;
         } else {
@@ -2300,22 +2311,22 @@ var continuum = (function(GLOBAL, exports, undefined){
   ]);
 
 
-  function $NativeFunction(name, length, call, construct, proto){
-    if (proto === undefined)
-      proto = intrinsics.FunctionProto;
-
-    $Object.call(this, proto);
-    defineDirect(this, 'name', name, ___);
-    defineDirect(this, 'length', length, ___);
-    this.call = call;
-    this.construct = construct;
+  function $NativeFunction(options){
+    if (options.proto === undefined)
+      options.proto = intrinsics.FunctionProto;
+    $Object.call(this, options.proto);
+    defineDirect(this, 'name', options.name, ___);
+    defineDirect(this, 'length', options.length, ___);
+    this.call = options.call;
+    this.construct = options.construct;
+    this.Realm = realm;
+    hide(this, 'Realm');
   }
-
   inherit($NativeFunction, $Function, {
     Native: true,
   }, [
     function Call(receiver, args){
-      this.call.apply(receiver, args);
+      return this.call.apply(receiver, args);
     },
     function Construct(args){
       if (this.construct) {
@@ -2324,9 +2335,9 @@ var continuum = (function(GLOBAL, exports, undefined){
         } else {
           var instance = new $Object;
         }
-        this.construct.apply(instance, args);
+        return this.construct.apply(instance, args);
       } else {
-        this.call.apply(undefined, args);
+        return this.call.apply(undefined, args);
       }
     }
   ]);
@@ -2482,8 +2493,11 @@ var continuum = (function(GLOBAL, exports, undefined){
           return DefineOwn.call(this, key, desc, strict);
         }
 
-        var newLen = desc.Value >> 0,
-            newDesc = new Value(newLen);
+        this.attributes.length |= W;
+
+        var newLen = desc.Value >>> 0,
+            newDesc = new DataDescriptor(newLen, _CW);
+
 
         if (desc.Value !== newDesc.Value) {
           return ThrowException('invalid_array_length', [], ƒ);
@@ -2500,7 +2514,7 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
 
         result = DefineOwn.call(this, 'length', newDesc, strict);
-        if (result.IsCompletion) {
+        if (result && result.IsCompletion) {
           if (result.IsAbruptCompletion) {
             return result;
           } else {
@@ -2691,8 +2705,8 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ######################
 
   function $PrimitiveBase(value, proto){
-    this.base = base;
-    var type = typeof base;
+    this.base = value;
+    var type = typeof value;
     if (type === STRING) {
       $Object.call(this, intrinsics.StringProto);
       this.NativeBrand = StringWrapper;
@@ -2732,91 +2746,13 @@ var continuum = (function(GLOBAL, exports, undefined){
 
 
 
-  var $builtins = {
-    Array   : $Array,
-    Boolean : $Boolean,
-    Date    : $Date,
-    Function: $Function,
-    Map     : $Map,
-    Number  : $Number,
-    RegExp  : $RegExp,
-    Set     : $Set,
-    String  : $String,
-    WeakMap : $WeakMap
-  };
-
-  var primitives = {
-    Date: Date.prototype,
-    String: '',
-    Number: 0,
-    Boolean: false
-  };
-
-  var atoms = {
-    NaN: NaN,
-    Infinity: Infinity,
-    undefined: undefined
-  };
-
-  function Realm(){
-    var intrinsics = this.intrinsics = create(null);
-
-    intrinsics.ObjectProto = new $Object(null);
-    this.global = new $Object(intrinsics.ObjectProto);
-    this.globalEnv = new GlobalEnvironmentRecord(this.global);
-    this.natives = new DeclarativeEnvironmentRecord;
-    this.natives.bindings = this.intrinsics;
-
-    for (var k in $builtins) {
-      var prototype = intrinsics[k + 'Proto'] = create($builtins[k].prototype);
-      $Object.call(prototype, intrinsics.ObjectProto);
-      if (k in primitives)
-        prototype.PrimitiveValue = primitives[k];
-    }
-
-    intrinsics.FunctionProto.Realm = this;
-    intrinsics.FunctionProto.Scope = this.globalEnv;
-    intrinsics.FunctionProto.FormalParameters = [];
-    intrinsics.test = 'weeee';
-
-    hide(intrinsics.FunctionProto, 'Realm');
-    hide(intrinsics.FunctionProto, 'Scope');
-    defineDirect(intrinsics.ArrayProto, 'length', 0, __W);
-    for (var k in atoms)
-      defineDirect(this.global, k, atoms[k], ___);
-
-    this.active = false;
-    Emitter.call(this);
-  }
-
-  var realm = null,
-      global = null,
-      context = null,
-      intrinsics = null;
-
-  inherit(Realm, Emitter, [
-    function activate(){
-      if (realm !== this) {
-        if (realm) {
-          realm.active = false;
-          realm.emit('deactivate');
-        }
-        realm = this;
-        global = this.global;
-        intrinsics = this.intrinsics;
-        this.active = true;
-        this.emit('activate');
-      }
-    }
-  ]);
-
-
-  function ExecutionContext(caller, local, realm, code){
+  function ExecutionContext(caller, local, realm, code, isConstruct){
     this.caller = caller;
     this.realm = realm;
     this.Code = code;
     this.LexicalEnvironment = local;
     this.VariableEnvironment = local;
+    this.isConstruct = !!isConstruct;
   }
 
   define(ExecutionContext, [
@@ -2833,8 +2769,9 @@ var continuum = (function(GLOBAL, exports, undefined){
     },
     function reset(){
       var stack = [];
-      while (context)
+      while (context) {
         stack.push(ExecutionContext.pop());
+      }
       return stack;
     }
   ]);
@@ -2844,6 +2781,59 @@ var continuum = (function(GLOBAL, exports, undefined){
     strict: false,
     isEval: false,
   });
+
+
+  function Intrinsics(realm){
+    DeclarativeEnvironmentRecord.call(this);
+    this.realm = realm;
+    var bindings = this.bindings;
+    bindings.ObjectProto = new $Object(null);
+
+    for (var k in $builtins) {
+      var prototype = bindings[k + 'Proto'] = create($builtins[k].prototype);
+      $Object.call(prototype, bindings.ObjectProto);
+      if (k in primitives)
+        prototype.PrimitiveValue = primitives[k];
+    }
+
+    bindings.FunctionProto.FormalParameters = [];
+    defineDirect(bindings.ArrayProto, 'length', 0, __W);
+  }
+
+  inherit(Intrinsics, DeclarativeEnvironmentRecord, [
+    function binding(options){
+      if (typeof options === 'function') {
+        options = {
+          call: options,
+          name: options.name,
+          length: options.length,
+        }
+      }
+
+      if (!options.name) {
+        if (!options.call.name) {
+          options.name = arguments[1];
+        } else {
+          options.name = options.call.name;
+        }
+      }
+
+      if (typeof options.length !== 'number') {
+        options.length = options.call.length;
+      }
+
+      if (realm !== this.realm) {
+        var activeRealm = realm;
+        this.realm.activate();
+      }
+
+      this.bindings[options.name] = new $NativeFunction(options);
+
+      if (activeRealm) {
+        activeRealm.activate();
+      }
+    }
+  ]);
 
 
   function instructions(ops, opcodes){
@@ -3059,17 +3049,17 @@ var continuum = (function(GLOBAL, exports, undefined){
       return cmds[++ip];
     }
 
-    function IFEQ(){
-      if (ops[ip][1] === !!stack[sp - 1]) {
+    function IFEQ(){//popjump
+      if (ops[ip][1] === !!stack[--sp]) {
         ip = ops[ip][0];
-        sp--;
       }
       return cmds[++ip];
     }
 
-    function IFNE(){
-      if (ops[ip][1] !== !!stack[sp - 1]) {
+    function IFNE(){//jumppop
+      if (ops[ip][1] === !!stack[sp - 1]) {
         ip = ops[ip][0];
+      } else {
         sp--;
       }
       return cmds[++ip];
@@ -3463,6 +3453,154 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   inherit(Thunk, Emitter, []);
 
+
+  function convertInternalArray(array){
+    var out = new $Array;
+    for (var i=0; i < array.length; i++) {
+      defineDirect(out, i, array[i], ECW);
+    }
+    defineDirect(out, 'length', array.length, __W);
+    return out;
+  }
+
+  var $builtins = {
+    Array   : $Array,
+    Boolean : $Boolean,
+    Date    : $Date,
+    Function: $Function,
+    Map     : $Map,
+    Number  : $Number,
+    RegExp  : $RegExp,
+    Set     : $Set,
+    String  : $String,
+    WeakMap : $WeakMap
+  };
+
+  var primitives = {
+    Date: Date.prototype,
+    String: '',
+    Number: 0,
+    Boolean: false
+  };
+
+  var atoms = {
+    NaN: NaN,
+    Infinity: Infinity,
+    undefined: undefined
+  };
+
+  var natives = {
+    writeln: function(){
+      console.log.apply(console, arguments);
+    },
+    defineDirect: defineDirect,
+    deleteDirect: deleteDirect,
+    isConstructCall: function(){
+      return context.isConstruct;
+    },
+    getNativeBrand: function(object){
+      return object.NativeBrand.brand;
+    },
+    isPrototypeOf: function(object){
+      while (object) {
+        object = object.GetPrototype();
+        if (object === this) {
+          return true;
+        }
+      }
+      return false;
+    },
+    propertyIsEnumerable: function(key){
+      return (this.attributes[key] & E) > 0;
+    },
+    hasOwnProperty: function(key){
+      return this.HasOwnProperty(key);
+    },
+    isExtensible: function(object){
+      return object.GetExtensible();
+    },
+    keys: function(object){
+      var names = object.GetOwnPropertyNames(),
+          out = [],
+          count = 0;
+
+      for (var i=0; i < names.length; i++) {
+        if (object.attributes[names[i]] & E) {
+          out.push(names[i]);
+        }
+      }
+
+      return convertInternalArray(out);
+    },
+    getOwnPropertyNames: function(object){
+      return convertInternalArray(object.GetOwnPropertyNames());
+    },
+    getOwnPropertyDescriptor: function(object, key){
+      var desc = object.GetOwnProperty(key);
+      if (desc) {
+        return FromPropertyDescriptor(desc);
+      }
+    },
+    ToObject: ToObject,
+    DefineOwnProperty: function(object, key, desc){
+      object.DefineOwnProperty(key, desc);
+    },
+    ObjectCreate: function(proto){
+      return new $Object(proto);
+    },
+    Call: function(func, args){
+      return func.Call(args[0], args.slice(1));
+    }
+  };
+
+  function Realm(){
+    this.natives = new Intrinsics(this);
+    this.intrinsics = this.natives.bindings;
+    this.global = new $Object(this.intrinsics.ObjectProto);
+    this.globalEnv = new GlobalEnvironmentRecord(this.global);
+
+    this.intrinsics.FunctionProto.Realm = this;
+    this.intrinsics.FunctionProto.Scope = this.globalEnv;
+
+
+    this.active = false;
+    Emitter.call(this);
+    hide(this.intrinsics.FunctionProto, 'Realm');
+    hide(this.intrinsics.FunctionProto, 'Scope');
+    hide(this.natives, 'realm');
+
+    for (var k in atoms) {
+      defineDirect(this.global, k, atoms[k], ___);
+    }
+    for (var k in natives) {
+      this.natives.binding({ name: k, call: natives[k] });
+    }
+  }
+
+  var realm = null,
+      global = null,
+      context = null,
+      intrinsics = null;
+
+  inherit(Realm, Emitter, [
+    function activate(){
+      if (realm !== this) {
+        if (realm) {
+          realm.active = false;
+          realm.emit('deactivate');
+        }
+        realm = this;
+        global = this.global;
+        intrinsics = this.intrinsics;
+        this.active = true;
+        this.emit('activate');
+      }
+    }
+  ]);
+
+
+
+
   function Script(ast, code, name){
     if (ast instanceof Script)
       return ast;
@@ -3579,6 +3717,13 @@ var continuum = (function(GLOBAL, exports, undefined){
     return new Continuum(listener);
   };
 
+  //var { a: { x, y }, b } = function(){ return { a: { x: 15, y: 20 }, b: 10 } }();
+  //'function Object(){} Object.prototype = %ObjectProto; Object.prototype.constructor = Object; new Object'
+  var x = exports.create();
+  var runtime = new ScriptFile('./runtime.js');
+  inspect(x.eval(runtime));
+  inspect(x.realm.global);
+  //inspect(x.eval('global = this; function Test(){ global.x = %isConstructCall(); } Test(); this'));
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);

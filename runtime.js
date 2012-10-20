@@ -1,179 +1,116 @@
-void function(){
-  function define(o, v){
-    Object.defineProperty(o, v.name, { configurable: true, writable: true, value: v });
+(function(global){
+  var ___ =  0,
+      E__ =  1,
+      _C_ =  2,
+      EC_ =  3,
+      __W =  4,
+      E_W =  5,
+      _CW =  6,
+      ECW =  7,
+      __A =  8,
+      E_A =  9,
+      _CA = 10,
+      ECA = 11;
+
+
+  %defineDirect(global, 'console', {
+    log: function log(v){
+      %writeln(v);
+    }
+  }, _CW);
+
+
+
+  function defineMethods(obj, props){
+    for (var i=0; i < props.length; i++) {
+      %defineDirect(obj, props[i].name, props[i], _CW);
+      %deleteDirect(props[i], 'prototype');
+    }
   }
 
-  define(Array.prototype, function forEach(callback, context){
-    context = context || this;
+  function setupConstructor(ctor, proto){
+    %defineDirect(ctor, 'prototype', proto, ___);
+    %defineDirect(ctor.prototype, 'constructor', ctor, ___);
+    %defineDirect(global, ctor.name, ctor, _CW);
+  }
 
-    for (var i=0; i < this.length; i++) {
-      callback.call(context, this[i], i, this);
-    }
-  });
 
-  define(Array.prototype, function map(callback, context){
-    var out = [];
 
-    context = context || this;
-    for (var i=0; i < this.length; i++) {
-      out.push(callback.call(context, this[i], i, this));
-    }
-
-    return out;
-  });
-
-  define(Array.prototype, function reduce(callback, start){
-    if (arguments.length < 2) {
-      var index = 1;
-      start = this[0];
+  function Object(obj){
+    if (%isConstructCall() || obj == null) {
+      return this;
     } else {
-      var index = 0;
+      return %ToObject(obj);
     }
-    for (; index < this.length; index++) {
-      start = callback.call(this, start, this[index], index, this);
-    }
-    return start;
-  });
+  }
 
-  define(Array.prototype, function map(callback, context){
+  setupConstructor(Object, %ObjectProto);
+
+
+  defineMethods(Object, [
+    function defineProperty(object, key, desc){
+      if (!(object instanceof Object)) {
+      }
+      %DefineOwnProperty(object, key, desc);
+      return object;
+    },
+    function defineProperties(object, descs){
+      for (var key in descs) {
+        %DefineOwnProperty(object, key, descs[key]);
+      }
+      return object;
+    },
+    function create(proto, descs){
+      var object = %ObjectCreate(proto);
+      if (descs) {
+        for (var key in descs) {
+          %DefineOwnProperty(object, key, descs[key]);
+        }
+      }
+      return object;
+    },
+    %isExtensible,
+    %keys,
+    %getOwnPropertyNames,
+    %getOwnPropertyDescriptor,
+  ]);
+
+  defineMethods(Object.prototype, [
+    function toString(){
+      if (this === undefined) {
+        return '[object Undefined]';
+      } else if (this === null) {
+        return '[object Null]';
+      } else {
+        return %getNativeBrand(this);
+      }
+    },
+    function toLocaleString(){
+      return this.toString();
+    },
+    function valueOf(){
+      return this;
+    },
+    %hasOwnProperty,
+    %isPrototypeOf,
+    %propertyIsEnumerable
+  ]);
+
+
+  function Array(n){
     var out = [];
-
-    context = context || this;
-    for (var i=0; i < this.length; i++) {
-      out.push(callback.call(context, this[i], i, this));
+    if (arguments.length === 1 && typeof n === 'number') {
+      out.length = n;
+    } else {
+      for (var k in arguments) {
+        out[k] = arguments[k];
+      }
     }
-
     return out;
-  });
-
-
-  define(Array.prototype, function filter(callback){
-    var out = [];
-    for (var i=0; i < this.length; i++) {
-      if (callback.call(this, this[i], i)) {
-        out.push(this[i]);
-      }
-    }
-  });
-
-  function ArrayIterator(array){
-    var index = 0;
-    this.next = () => {
-      if (index < array.length) {
-        return array[index++];
-      } else {
-        throw StopIteration;
-      }
-    };
   }
-  define(Array.prototype, function iterator(){
-    return new ArrayIterator(this);
-  });
 
-}();
-global = this;
-  // define(Array.prototype, function iterator(){
-  //   var index = 0;
-  //   return {
-  //     next: () => {
-  //       if (index < this.length) {
-  //         return this[index++];
-  //       } else {
-  //         throw StopIteration;
-  //       }
-  //     }
-  //   };
-  //['filter', 'every', 'some', 'sort', 'reduceRight']
+  setupConstructor(Array, %ArrayProto);
 
 
-var builtins = {
-  Object: {
-    Call: function(receiver, args, Ω, ƒ){
-      ToObject(args[0], Ω, ƒ);
-    },
-    Construct: function(receiver, args, Ω, ƒ){
-      Ω(new $Object(intrinsics.ObjectPrototype));
-    },
-    defineProperty: function(receiver, args, Ω, ƒ){
-      var object = args[0],
-          key    = args[1],
-          desc   = args[2];
-
-      if (object instanceof $Object) {
-        throwException('called_on_non_object', [], ƒ);
-      } else if (!isObject(desc)) {
-        throwException('property_desc_object', [typeof descs[k]], ƒ);
-      } else {
-        object.DefineOwnProperty(key, desc, false, Ω, ƒ);
-      }
-    },
-    defineProperties: function(receiver, args, Ω, ƒ){
-      var object = args[0],
-          descs  = args[1];
-
-      if (object instanceof $Object) {
-        throwException('called_on_non_object', [], ƒ);
-      } else if (!isObject(desc)) {
-        throwException('property_desc_object', [typeof descs], ƒ);
-      } else {
-        descs = descs.properties;
-        for (var k in descs) {
-          if (!isObject(descs[k]))
-            throwException('property_desc_object', [typeof descs[k]], ƒ);
-          object.DefineOwnProperty(k, descs[k], false, RETURNS(object), ƒ)
-        }
-      }
-    },
-    create: function(receiver, args, Ω, ƒ){
-      var proto = args[0],
-          descs = args[1];
-
-      if (proto !== null && !(proto instanceof $Object)) {
-        throwException('proto_object_or_null', [], ƒ);
-      } else {
-        var object = new $Object(proto);
-        if (descs) {
-          builtins.Object.defineProperties([object], descs, Ω, ƒ);
-        } else {
-          Ω(object);
-        }
-      }
-    },
-    prototype: {
-      toString: function(receiver, args, Ω, ƒ){
-
-      },
-      valueOf: function(receiver, args, Ω, ƒ){
-
-      },
-      hasOwnProperty: function(receiver, args, Ω, ƒ){
-        var key = args[0];
-      },
-      isPrototypeOf: function(receiver, args, Ω, ƒ){
-        var object = args[0];
-      },
-      propertyIsEnumerable: function(receiver, args, Ω, ƒ){
-        var key = args[0];
-      },
-      toLocaleString: function(receiver, args, Ω, ƒ){
-
-      },
-      __defineGetter__: function(receiver, args, Ω, ƒ){
-        var key  = args[0],
-            func = args[1];
-      },
-      __defineSetter__: function(receiver, args, Ω, ƒ){
-        var key  = args[0],
-            func = args[1];
-      },
-      __lookupGetter__: function(receiver, args, Ω, ƒ){
-        var key  = args[0],
-            func = args[1];
-      },
-      __lookupSetter__: function(receiver, args, Ω, ƒ){
-        var key  = args[0],
-            func = args[1];
-      },
-    }
-  }
-};
+  console.log(new Array(5, 10, 20));
+})(this);
