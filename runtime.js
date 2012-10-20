@@ -14,7 +14,7 @@
 
 
   %defineDirect(global, 'console', {
-    log: function log(v){
+    log(v){
       %writeln(v);
     }
   }, _CW);
@@ -22,9 +22,9 @@
 
 
   function defineMethods(obj, props){
-    for (var i=0; i < props.length; i++) {
-      %defineDirect(obj, props[i].name, props[i], _CW);
-      %deleteDirect(props[i], 'prototype');
+    for (var k in props) {
+      %defineDirect(obj, k, props[k], _CW);
+      %deleteDirect(props[k], 'prototype');
     }
   }
 
@@ -52,14 +52,14 @@
   setupConstructor(Array, %ArrayProto);
 
 
-  defineMethods(Array, [
-    function isArray(array){
+  defineMethods(Array, {
+    isArray(array){
       return %getNativeBrand(array) === 'Array';
     }
-  ]);
+  });
 
-  defineMethods(Array.prototype, [
-    function forEach(callback, context){
+  defineMethods(Array.prototype, {
+    forEach(callback, context){
       context = context || this;
       for (var i=0; i < this.length; i++) {
         if (%hasOwnDirect(this, i)) {
@@ -67,7 +67,7 @@
         }
       }
     },
-    function map(callback, context){
+    map(callback, context){
       var out = [];
       context = context || this;
       for (var i=0; i < this.length; i++) {
@@ -77,7 +77,7 @@
       }
       return out;
     },
-    function join(joiner){
+    join(joiner){
       var out = '', len = this.length;
 
       if (len === 0) {
@@ -97,19 +97,19 @@
 
       return out + this[i];
     },
-    function push(...args){
+    push(...args){
       var len = this.length;
       for (var i=0; i < args.length; i++) {
         this[len++] = args[i];
       }
       return len;
     },
-    function pop(){
+    pop(){
       var out = this[this.length - 1];
       this.length--;
       return out;
     },
-    function slice(start, end){
+    slice(start, end){
       var out = [], len;
 
       start = start === undefined ? 0 : +start || 0;
@@ -136,10 +136,10 @@
 
       return out;
     },
-    function toString(){
+    toString(){
       return this.join(',');
     }
-  ]);
+  });
 
 
 
@@ -157,22 +157,22 @@
 
   setupConstructor(Boolean, %BooleanProto);
 
-  defineMethods(Boolean.prototype, [
-    function toString(){
+  defineMethods(Boolean.prototype, {
+    toString(){
       if (%getNativeBrand(this) === 'Boolean') {
         return %getPrimitiveValue(this) ? 'true' : 'false';
       } else {
         // throw
       }
     },
-    function valueOf(){
+    valueOf(){
       if (%getNativeBrand(this) === 'Boolean') {
         return %getPrimitiveValue(this);
       } else {
         // throw
       }
     }
-  ]);
+  });
 
 
   // ############
@@ -185,22 +185,22 @@
 
   setupConstructor(Date, %DateProto);
 
-  defineMethods(Date.prototype, [
-    function toString(){
+  defineMethods(Date.prototype, {
+    toString(){
       if (%getNativeBrand(this) === 'Date') {
         return %dateToString(this);
       } else {
         // throw
       }
     },
-    function valueOf(){
+    valueOf(){
       if (%getNativeBrand(this) === 'Date') {
         return %dateToNumber(this);
       } else {
         // throw
       }
     }
-  ]);
+  });
 
 
   // ################
@@ -215,11 +215,10 @@
 
   setupConstructor(Function, %FunctionProto);
 
-
-  defineMethods(Function.prototype, [
-    %call,
-    %apply
-  ]);
+  defineMethods(Function.prototype, {
+    call: %call,
+    apply: %apply
+  });
 
 
   // ##############
@@ -236,22 +235,22 @@
 
   setupConstructor(Number, %NumberProto);
 
-  defineMethods(Number.prototype, [
-    function toString(radix){
+  defineMethods(Number.prototype, {
+    toString(radix){
       if (%getNativeBrand(this) === 'Number') {
         return %numberToString(this, radix);
       } else {
         // throw
       }
     },
-    function valueOf(){
+    valueOf(){
       if (%getNativeBrand(this) === 'Number') {
         return %getPrimitiveValue(this);
       } else {
         // throw
       }
     }
-  ]);
+  });
 
 
   // ##############
@@ -269,20 +268,20 @@
   setupConstructor(Object, %ObjectProto);
 
 
-  defineMethods(Object, [
-    function defineProperty(object, key, desc){
+  defineMethods(Object, {
+    defineProperty(object, key, desc){
       if (!(object instanceof Object)) {
       }
       %DefineOwnProperty(object, key, desc);
       return object;
     },
-    function defineProperties(object, descs){
+    defineProperties(object, descs){
       for (var key in descs) {
         %DefineOwnProperty(object, key, descs[key]);
       }
       return object;
     },
-    function create(proto, descs){
+    create(proto, descs){
       var object = %ObjectCreate(proto);
       if (descs) {
         for (var key in descs) {
@@ -291,17 +290,17 @@
       }
       return object;
     },
-    %isExtensible,
-    %keys,
-    %getOwnPropertyNames,
-    %getOwnPropertyDescriptor,
-    function is(a, b){
+    is(a, b){
       return a is b;
-    }
-  ]);
+    },
+    isExtensible: %isExtensible,
+    keys: %keys,
+    getOwnPropertyNames: %getOwnPropertyNames,
+    getOwnPropertyDescriptor: %getOwnPropertyDescriptor
+  });
 
-  defineMethods(Object.prototype, [
-    function toString(){
+  defineMethods(Object.prototype, {
+    toString(){
       if (this === undefined) {
         return '[object Undefined]';
       } else if (this === null) {
@@ -310,16 +309,16 @@
         return %objectToString(this);
       }
     },
-    function toLocaleString(){
+    toLocaleString(){
       return this.toString();
     },
-    function valueOf(){
+    valueOf(){
       return this;
     },
-    %hasOwnProperty,
-    %isPrototypeOf,
-    %propertyIsEnumerable
-  ]);
+    hasOwnProperty: %hasOwnProperty,
+    isPrototypeOf: %isPrototypeOf,
+    propertyIsEnumerable: %propertyIsEnumerable
+  });
 
 
   // ##############
@@ -348,22 +347,22 @@
 
   setupConstructor(String, %StringProto);
 
-  defineMethods(String.prototype, [
-    function toString(){
+  defineMethods(String.prototype, {
+    toString(){
       if (%getNativeBrand(this) === 'String') {
         return %getPrimitiveValue(this);
       } else {
         // throw
       }
     },
-    function valueOf(){
+    valueOf(){
       if (%getNativeBrand(this) === 'String') {
         return %getPrimitiveValue(this);
       } else {
         // throw
       }
     },
-    function charAt(pos){
+    charAt(pos){
       pos = pos | 0;
       if (pos < 0 || pos >= this.length) {
         return '';
@@ -371,7 +370,7 @@
         return this[pos];
       }
     },
-    function charCodeAt(pos){
+    charCodeAt(pos){
       pos = pos | 0;
       if (pos < 0 || pos >= this.length) {
         return NaN;
@@ -379,19 +378,17 @@
         return %charCode(this[pos]);
       }
     },
-    function concat(...args){
+    concat(...args){ }
+  });
 
-    }
-  ]);
-
-  defineMethods(global, [
-    %parseInt,
-    %parseFloat,
-    %decodeURI,
-    %encodeURI,
-    %decodeURIComponent,
-    %encodeURIComponent,
-    %escape,
-  ]);
+  defineMethods(global, {
+    parseInt: %parseInt,
+    parseFloat: %parseFloat,
+    decodeURI: %decodeURI,
+    encodeURI: %encodeURI,
+    decodeURIComponent: %decodeURIComponent,
+    encodeURIComponent: %encodeURIComponent,
+    escape: %escape,
+  });
 
 })(this);
