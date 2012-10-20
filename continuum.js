@@ -3696,7 +3696,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       return new $Boolean(boolean);
     },
     DateCreate: function(date){
-      return new $Date(date);
+      return new $Date(date === undefined ? new Date : date);
     },
     FunctionCreate: function(args){
       args = toInternalArray(args);
