@@ -16,6 +16,8 @@ var continuum = (function(GLOBAL, exports, undefined){
       decompile = utility.decompile,
       parse = utility.parse;
 
+  var slice = [].slice;
+
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',
       NUMBER    = 'number',
@@ -2203,11 +2205,15 @@ var continuum = (function(GLOBAL, exports, undefined){
     if (kind === 'Normal' && strict) {
       defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
       defineDirect(this, ARGUMENTS, intrinsics.ThrowTypeError, __A);
+    } else {
+      defineDirect(this, 'caller', null, ___);
     }
     hide(this, 'Realm');
     hide(this, 'Code');
     hide(this, 'Scope');
     hide(this, 'FormalParameters');
+    hide(this, 'Strict');
+    hide(this, 'ThisMode');
   }
 
   inherit($Function, $Object, {
@@ -2243,7 +2249,10 @@ var continuum = (function(GLOBAL, exports, undefined){
         var local = NewMethodEnvironment(this, receiver);
       }
 
-      ExecutionContext.push(new ExecutionContext(context, local, this.Realm, this.Code, isConstruct));
+      if (!this.Strict) {
+        defineDirect(this, 'caller', context.callee, ___);
+      }
+      ExecutionContext.push(new ExecutionContext(context, local, this.Realm, this.Code, this, isConstruct));
 
       var status = FunctionDeclarationInstantiation(this, args, local);
       if (status && status.IsAbruptCompletion) {
@@ -2257,6 +2266,9 @@ var continuum = (function(GLOBAL, exports, undefined){
       }
       var result = this.thunk.run();
       ExecutionContext.pop();
+      if (!this.Strict) {
+        defineDirect(this, 'caller', null, ___);
+      }
       if (result && result.type === ReturnSigil) {
         return result.Value
       }
@@ -2317,10 +2329,14 @@ var continuum = (function(GLOBAL, exports, undefined){
     $Object.call(this, options.proto);
     defineDirect(this, 'name', options.name, ___);
     defineDirect(this, 'length', options.length, ___);
+    defineDirect(this, 'caller', null, ___);
     this.call = options.call;
-    this.construct = options.construct;
+    if (options.construct) {
+      this.construct = options.construct;
+    }
     this.Realm = realm;
     hide(this, 'Realm');
+    hide(this, 'call');
   }
   inherit($NativeFunction, $Function, {
     Native: true,
@@ -2746,13 +2762,14 @@ var continuum = (function(GLOBAL, exports, undefined){
 
 
 
-  function ExecutionContext(caller, local, realm, code, isConstruct){
+  function ExecutionContext(caller, local, realm, code, func, isConstruct){
     this.caller = caller;
     this.realm = realm;
     this.Code = code;
     this.LexicalEnvironment = local;
     this.VariableEnvironment = local;
     this.isConstruct = !!isConstruct;
+    this.callee = func && !func.Native ? func : caller ? caller.callee : null;
   }
 
   define(ExecutionContext, [
@@ -3029,9 +3046,11 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     function FUNCTION(){
       a = ops[ip][1];
-      b = new $Function(a.Type, ops[ip][0], a.params, a, NewDeclarativeEnvironment(context.LexicalEnvironment), a.Strict);
-      MakeConstructor(b);
-      stack[sp++] = b;
+      b = NewDeclarativeEnvironment(context.LexicalEnvironment);
+      c = new $Function(a.Type, ops[ip][0], a.params, a, b, a.Strict);
+      b.func = c;
+      MakeConstructor(c);
+      stack[sp++] = c;
       return cmds[++ip];
     }
 
@@ -3353,20 +3372,20 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function ƒ(){
-      for (var i = 0, handler; handler = code.handlers[i]; i++) {
-        if (handler.begin < ip && ip <= handler.end) {
-          if (handler.type === 'ENV') {
+      for (var i = 0, entrypoint; entrypoint = code.entrances[i]; i++) {
+        if (entrypoint.begin < ip && ip <= entrypoint.end) {
+          if (entrypoint.type === 'ENV') {
             context.LexicalEnvironment = context.LexicalEnvironment.outer;
           } else {
-            //sp = handler.unwindStack(this);
-            if (handler.type === FINALLY) {
+            //sp = entrypoint.unwindStack(this);
+            if (entrypoint.type === FINALLY) {
               stack[sp++] = Empty;
               stack[sp++] = error;
               stack[sp++] = FINALLY;
             } else {
               stack[sp++] = error;
             }
-            ip = handler.end;
+            ip = entrypoint.end;
             return cmds[++ip];
           }
         }
@@ -3454,13 +3473,25 @@ var continuum = (function(GLOBAL, exports, undefined){
   inherit(Thunk, Emitter, []);
 
 
-  function convertInternalArray(array){
-    var out = new $Array;
-    for (var i=0; i < array.length; i++) {
-      defineDirect(out, i, array[i], ECW);
+  function fromInternalArray(array){
+    var $array = new $Array,
+        len = array.length;
+
+    for (var i=0; i < len; i++) {
+      defineDirect($array, i, array[i], ECW);
     }
-    defineDirect(out, 'length', array.length, __W);
-    return out;
+    defineDirect($array, 'length', array.length, __W);
+    return $array;
+  }
+
+  function toInternalArray($array){
+    var array = [],
+        len = getDirect($array, 'length');
+
+    for (var i=0; i < len; i++) {
+      array[i] = getDirect($array, i);
+    }
+    return array;
   }
 
   var $builtins = {
@@ -3495,11 +3526,29 @@ var continuum = (function(GLOBAL, exports, undefined){
     },
     defineDirect: defineDirect,
     deleteDirect: deleteDirect,
+    hasOwnDirect: hasOwnDirect,
+    hasDirect: hasDirect,
+    setDirect: setDirect,
     isConstructCall: function(){
       return context.isConstruct;
     },
     getNativeBrand: function(object){
+      return object.NativeBrand.name;
+    },
+    objectToString: function(object){
       return object.NativeBrand.brand;
+    },
+    getPrimitiveValue: function(object){
+      return object ? object.PrimitiveValue : undefined;
+    },
+    numberToString: function(object, radix){
+      return object.PrimitiveValue.toString(radix);
+    },
+    dateToString: function(object){
+      return ''+object.PrimitiveValue;
+    },
+    dateToNumber: function(object){
+      return +object.PrimitiveValue;
     },
     isPrototypeOf: function(object){
       while (object) {
@@ -3530,10 +3579,10 @@ var continuum = (function(GLOBAL, exports, undefined){
         }
       }
 
-      return convertInternalArray(out);
+      return fromInternalArray(out);
     },
     getOwnPropertyNames: function(object){
-      return convertInternalArray(object.GetOwnPropertyNames());
+      return fromInternalArray(object.GetOwnPropertyNames());
     },
     getOwnPropertyDescriptor: function(object, key){
       var desc = object.GetOwnProperty(key);
@@ -3541,16 +3590,42 @@ var continuum = (function(GLOBAL, exports, undefined){
         return FromPropertyDescriptor(desc);
       }
     },
+    call: function(receiver){
+      return this.Call(receiver, slice.call(arguments, 1));
+    },
+    apply: function(receiver, args){
+      return this.Call(receiver, toInternalArray(args));
+    },
     ToObject: ToObject,
     DefineOwnProperty: function(object, key, desc){
       object.DefineOwnProperty(key, desc);
     },
+    BooleanCreate: function(boolean){
+      return new $Boolean(boolean);
+    },
+    DateCreate: function(date){
+      return new $Date(date);
+    },
+    FunctionCreate: function(args){
+      args = toInternalArray(args);
+      var body = args.pop();
+      body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
+      var code = compile(body, { allowNatives: false, eval: true });
+      return createThunk(code).run();
+    },
+    NumberCreate: function(number){
+      return new $Number(number);
+    },
     ObjectCreate: function(proto){
       return new $Object(proto);
     },
-    Call: function(func, args){
-      return func.Call(args[0], args.slice(1));
-    }
+    StringCreate: function(string){
+      return new $String(string);
+    },
+    RegExpCreate: function(regexp){
+      return new $RegExp(regexp);
+    },
+
   };
 
   function Realm(){
@@ -3717,13 +3792,10 @@ var continuum = (function(GLOBAL, exports, undefined){
     return new Continuum(listener);
   };
 
-  //var { a: { x, y }, b } = function(){ return { a: { x: 15, y: 20 }, b: 10 } }();
-  //'function Object(){} Object.prototype = %ObjectProto; Object.prototype.constructor = Object; new Object'
   var x = exports.create();
-  var runtime = new ScriptFile('./runtime.js');
-  inspect(x.eval(runtime));
+  //x.on('op', console.log)
+  inspect(x.eval(new ScriptFile('./runtime.js')));
   inspect(x.realm.global);
-  //inspect(x.eval('global = this; function Test(){ global.x = %isConstructCall(); } Test(); this'));
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
