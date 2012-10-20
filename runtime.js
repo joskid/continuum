@@ -61,6 +61,34 @@
   ]);
 
   defineMethods(Array.prototype, [
+    function forEach(callback, context){
+      context = context || this;
+      for (var i=0; i < this.length; i++) {
+        if (%hasOwnDirect(this, i)) {
+
+        }
+      }
+    },
+    function join(joiner){
+      var out = '', len = this.length;
+
+      if (len === 0) {
+        return out;
+      }
+
+      if (arguments.length === 0) {
+        joiner = ',';
+      } else {
+        joiner = %ToString(joiner);
+      }
+
+      len--;
+      for (var i=0; i < len; i++) {
+        out += this[i] + joiner;
+      }
+
+      return out + this[i];
+    },
     function push(){
       var len = this.length;
       for (var k in arguments) {
@@ -100,34 +128,8 @@
 
       return out;
     },
-    function forEach(callback, context){
-      context = context || this;
-      for (var i=0; i < this.length; i++) {
-        if (%hasOwnDirect(this, i)) {
-
-        }
-      }
-    },
     function toString(){
       return this.join(',');
-    },
-    function join(joiner){
-      var out = '';
-      if (this.length === 0) {
-        return out;
-      }
-
-      if (arguments.length === 0) {
-        joiner = ', ';
-      } else {
-        joiner = ''+joiner;
-      }
-
-      for (var i=0; i < this.length - 1; i++) {
-        out += this[i] + joiner;
-      }
-
-      return out + this[i];
     }
   ]);
 
@@ -139,9 +141,9 @@
 
   function Boolean(arg){
     if (%isConstructCall()) {
-      return %BooleanCreate(!!arg);
+      return %BooleanCreate(%ToBoolean(arg));
     } else {
-      return !!arg;
+      return %ToBoolean(arg);
     }
   }
 
@@ -150,7 +152,7 @@
   defineMethods(Boolean.prototype, [
     function toString(){
       if (%getNativeBrand(this) === 'Boolean') {
-        return '' + %getPrimitiveValue(this);
+        return %getPrimitiveValue(this) ? 'true' : 'false';
       } else {
         // throw
       }
@@ -220,7 +222,7 @@
     if (%isConstructCall()) {
       return %NumberCreate(+arg);
     } else {
-      return +arg;
+      return %ToNumber(arg);
     }
   }
 
@@ -328,7 +330,7 @@
     if (%isConstructCall()) {
       return %StringCreate(''+arg);
     } else {
-      return ''+arg;
+      return %ToString(arg);
     }
   }
 
@@ -344,13 +346,11 @@
     },
     function valueOf(){
       if (%getNativeBrand(this) === 'String') {
-        return +%getPrimitiveValue(this);
+        return %getPrimitiveValue(this);
       } else {
         // throw
       }
     }
   ]);
 
-  z = +new Number(5);
-  console.log(z);
 })(this);
