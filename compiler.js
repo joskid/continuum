@@ -336,15 +336,15 @@ define(Compiler.prototype, [
 
     var type = this.options.eval ? 'eval' : this.options.function ? 'function' : 'global';
     var code = new Code(node, source, type, !this.options.scoped);
-    if (this.options.allowNatives) {
-      code.allowNatives = true;
-    }
 
     this.queue(code);
     parenter(node);
 
     while (this.pending.length) {
       this.code = this.pending.pop();
+      if (this.options.allowNatives) {
+        this.code.allowNatives = true;
+      }
       this.visit(this.code.body);
       if (this.code.eval || this.code.isGlobal){
         this.record(COMPLETE);
@@ -667,7 +667,8 @@ define(Compiler.prototype, [
       }
 
       this.record(JUMP, cond);
-      patch(this.adjust(op), update);
+      this.adjust(op);
+      patch(this.current(), update);
     });
   },
   function ForInStatement(node){
