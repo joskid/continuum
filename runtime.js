@@ -35,6 +35,218 @@
   }
 
 
+  // #############
+  // ### Array ###
+  // #############
+
+  function Array(n){
+    var out = [];
+    if (arguments.length === 1 && typeof n === 'number') {
+      out.length = n;
+    } else {
+      for (var k in arguments) {
+        out[k] = arguments[k];
+      }
+    }
+    return out;
+  }
+
+  setupConstructor(Array, %ArrayProto);
+
+
+  defineMethods(Array, [
+    function isArray(arr){
+      return %getNativeBrand(arr) === 'Array';
+    }
+  ]);
+
+  defineMethods(Array.prototype, [
+    function push(){
+      var len = this.length;
+      for (var k in arguments) {
+        this[len++] = arguments[k];
+      }
+      return len;
+    },
+    function pop(){
+      var out = this[this.length - 1];
+      this.length--;
+      return out;
+    },
+    function slice(start, end){
+      var out = [], len;
+
+      start = start === undefined ? 0 : +start || 0;
+      end = end === undefined ? this.length - 1 : +end || 0;
+
+      if (start < 0) {
+        start += this.length;
+      }
+
+      if (end < 0) {
+        end += this.length;
+      } else if (end >= this.length) {
+        end = this.length - 1;
+      }
+
+      if (start > end || end < start || start === end) {
+        return [];
+      }
+
+      len = start - end;
+      for (var i=0; i < len; i++) {
+        out[i] = this[i + start];
+      }
+
+      return out;
+    },
+    function forEach(callback, context){
+      context = context || this;
+      for (var i=0; i < this.length; i++) {
+        if (%hasOwnDirect(this, i)) {
+
+        }
+      }
+    },
+    function toString(){
+      return this.join(',');
+    },
+    function join(joiner){
+      var out = '';
+      if (this.length === 0) {
+        return out;
+      }
+
+      if (arguments.length === 0) {
+        joiner = ', ';
+      } else {
+        joiner = ''+joiner;
+      }
+
+      for (var i=0; i < this.length - 1; i++) {
+        out += this[i] + joiner;
+      }
+
+      return out + this[i];
+    }
+  ]);
+
+
+
+  // ###############
+  // ### Boolean ###
+  // ###############
+
+  function Boolean(arg){
+    if (%isConstructCall()) {
+      return %BooleanCreate(!!arg);
+    } else {
+      return !!arg;
+    }
+  }
+
+  setupConstructor(Boolean, %BooleanProto);
+
+  defineMethods(Boolean.prototype, [
+    function toString(){
+      if (%getNativeBrand(this) === 'Boolean') {
+        return '' + %getPrimitiveValue(this);
+      } else {
+        // throw
+      }
+    },
+    function valueOf(){
+      if (%getNativeBrand(this) === 'Boolean') {
+        return %getPrimitiveValue(this);
+      } else {
+        // throw
+      }
+    }
+  ]);
+
+
+  // ############
+  // ### Date ###
+  // ############
+
+  function Date(arg){
+    return %DateCreate(arg);
+  }
+
+  setupConstructor(Date, %DateProto);
+
+  defineMethods(Date.prototype, [
+    function toString(){
+      if (%getNativeBrand(this) === 'Date') {
+        return %dateToString(this);
+      } else {
+        // throw
+      }
+    },
+    function valueOf(){
+      if (%getNativeBrand(this) === 'Date') {
+        return %dateToNumber(this);
+      } else {
+        // throw
+      }
+    }
+  ]);
+
+
+  // ################
+  // ### Function ###
+  // ################
+
+  function Function(){
+    return %FunctionCreate(arguments);
+  }
+
+  %defineDirect(%FunctionProto, 'name', 'Empty', ___);
+
+  setupConstructor(Function, %FunctionProto);
+
+
+  defineMethods(Function.prototype, [
+    %call,
+    %apply
+  ]);
+
+
+  // ##############
+  // ### Number ###
+  // ##############
+
+  function Number(arg){
+    if (%isConstructCall()) {
+      return %NumberCreate(+arg);
+    } else {
+      return +arg;
+    }
+  }
+
+  setupConstructor(Number, %NumberProto);
+
+  defineMethods(Number.prototype, [
+    function toString(radix){
+      if (%getNativeBrand(this) === 'Number') {
+        return %numberToString(this, radix);
+      } else {
+        // throw
+      }
+    },
+    function valueOf(){
+      if (%getNativeBrand(this) === 'Number') {
+        return %getPrimitiveValue(this);
+      } else {
+        // throw
+      }
+    }
+  ]);
+
+
+  // ##############
+  // ### Object ###
+  // ##############
 
   function Object(obj){
     if (%isConstructCall() || obj == null) {
@@ -82,7 +294,7 @@
       } else if (this === null) {
         return '[object Null]';
       } else {
-        return %getNativeBrand(this);
+        return %objectToString(this);
       }
     },
     function toLocaleString(){
@@ -97,18 +309,48 @@
   ]);
 
 
-  function Array(n){
-    var out = [];
-    if (arguments.length === 1 && typeof n === 'number') {
-      out.length = n;
-    } else {
-      for (var k in arguments) {
-        out[k] = arguments[k];
-      }
-    }
-    return out;
+  // ##############
+  // ### RegExp ###
+  // ##############
+
+  function RegExp(arg){
+    return %RegExpCreate(''+arg);
   }
 
-  setupConstructor(Array, %ArrayProto);
+  setupConstructor(RegExp, %RegExpProto);
 
+
+  // ##############
+  // ### String ###
+  // ##############
+
+  function String(arg){
+    if (%isConstructCall()) {
+      return %StringCreate(''+arg);
+    } else {
+      return ''+arg;
+    }
+  }
+
+  setupConstructor(String, %StringProto);
+
+  defineMethods(String.prototype, [
+    function toString(){
+      if (%getNativeBrand(this) === 'String') {
+        return %getPrimitiveValue(this);
+      } else {
+        // throw
+      }
+    },
+    function valueOf(){
+      if (%getNativeBrand(this) === 'String') {
+        return +%getPrimitiveValue(this);
+      } else {
+        // throw
+      }
+    }
+  ]);
+
+  z = +new Number(5);
+  console.log(z);
 })(this);
