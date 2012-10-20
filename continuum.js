@@ -7,6 +7,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       Emitter = utility.Emitter,
       PropertyList = utility.PropertyList,
       create = utility.create,
+      numbers = utility.numbers,
       isObject = utility.isObject,
       nextTick = utility.nextTick,
       enumerate = utility.enumerate,
@@ -872,8 +873,8 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     for (var i=0; i < decls.length; i++) {
       if (decls[i].type === 'FunctionDeclaration') {
-        var decl = decls[i];
-        name = decl.BoundNames[0];
+        var decl = decls[i],
+            name = decl.BoundNames[0];
 
         if (!(name in funcs)) {
           funcs[name] = true;
@@ -2425,7 +2426,65 @@ var continuum = (function(GLOBAL, exports, undefined){
       if (index === +key && this.PrimitiveValue.length > index) {
         return new StringIndice(this.PrimitiveValue[index]);
       }
-    }
+    },
+    HasOwnProperty: function HasOwnProperty(key){
+      key = ToString(key);
+      if (key && key.IsCompletion) {
+        if (key.IsAbruptCompletion) {
+          return key;
+        } else {
+          key = key.value;
+        }
+      }
+      if (typeof key === 'string') {
+        if (key < getDirect(this, 'length') && key > 0 || key === '0') {
+          return true;
+        }
+      }
+      return $Object.prototype.HasOwnProperty.call(this, key);
+    },
+    HasProperty: function HasProperty(key){
+      var ret = this.HasOwnProperty(key);
+      if (ret && ret.IsCompletion) {
+        if (ret.IsAbruptCompletion) {
+          return ret;
+        } else {
+          ret = ret.value;
+        }
+      }
+      if (ret === true) {
+        return true;
+      } else {
+        return $Object.prototype.HasProperty.call(this, key);
+      }
+    },
+    Enumerate: function Enumerate(){
+      var props = this.keys.filter(function(key){
+        return this.attributes[key] & E;
+      }, this)
+      props.add(numbers(this.PrimitiveValue.length));
+
+      var proto = this.GetPrototype();
+      if (proto) {
+        props.add(proto.Enumerate());
+      }
+
+      return props.toArray();
+    },
+    GetOwnPropertyNames: function GetOwnPropertyNames(){
+      return this.keys.toArray().concat(numbers(this.PrimitiveValue.length));
+    },
+    GetPropertyNames: function GetPropertyNames(){
+      var props = this.keys.clone();
+      props.add(numbers(this.PrimitiveValue.length));
+
+      var proto = this.GetPrototype();
+      if (proto) {
+        props.add(proto.GetPropertyNames());
+      }
+
+      return props.toArray();
+    },
   });
 
 
@@ -3259,7 +3318,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     function SAVE(){
-      completion = stack[sp];
+      completion = stack[--sp];
       return cmds[++ip];
     }
 
