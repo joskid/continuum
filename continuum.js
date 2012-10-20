@@ -93,6 +93,8 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   var UNINITIALIZED = new Symbol('UNINITIALIZED');
 
+
+
   // ##################################################
   // ### Internal Utilities not from specification ####
   // ##################################################
@@ -102,6 +104,28 @@ var continuum = (function(GLOBAL, exports, undefined){
   function hide(o, k){
     Object.defineProperty(o, k, { enumerable: false });
   }
+
+  function defineDirect(o, key, value, attrs){
+    o.properties[key] = value;
+    o.attributes[key] = attrs;
+    o.keys.add(key);
+  }
+  function hasDirect(o, key){
+    return key in o.properties;
+  }
+  function hasOwnDirect(o, key){
+    return o.keys.has(key);
+  }
+  function setDirect(o, key, value){
+    o.properties[key] = value;
+    if (!(key in o.attributes))
+      o.attributes[key] = ECW;
+    o.keys.add(key);
+  }
+  function getDirect(o, key){
+    return o.properties[key];
+  }
+
 
   // ###############################
   // ###############################
@@ -249,7 +273,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     if (lex === null) {
       return new Reference(undefined, name, strict);
     } else if (lex.HasBinding(name)) {
-      return new Reference(lex.bindings, name, strict);
+      return new Reference(lex, name, strict);
     } else {
       return GetIdentifierReference(lex.outer, name, strict);
     }
@@ -284,6 +308,13 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ## GetValue
 
   function GetValue(v){
+    if (v && v.IsCompletion) {
+      if (v.IsAbruptCompletion) {
+        return v;
+      } else {
+        v = v.value;
+      }
+    }
     if (!v || !v.IsReference) {
       return v;
     } else if (IsUnresolvableReference(v)) {
@@ -295,16 +326,14 @@ var continuum = (function(GLOBAL, exports, undefined){
         base = new $PrimitiveBase(base);
       }
 
-      if (base instanceof $Object) {
+      if (base.Get) {
         if (IsSuperReference(v)) {
           return base.GetP(GetThisValue(v), v.name);
         } else {
           return base.Get(v.name);
         }
-      } else if (base && base.GetBindingValue) {
+      } else if (base.GetBindingValue) {
         return base.GetBindingValue(v.name, v.strict);
-      } else {
-        return base;
       }
     }
   }
@@ -312,6 +341,20 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ## PutValue
 
   function PutValue(v, w){
+    if (v && v.IsCompletion) {
+      if (v.IsAbruptCompletion) {
+        return v;
+      } else {
+        v = v.value;
+      }
+    }
+    if (w && w.IsCompletion) {
+      if (w.IsAbruptCompletion) {
+        return w;
+      } else {
+        w = w.value;
+      }
+    }
     if (!v || !v.IsReference) {
       return ThrowException('non_object_property_store', [v.name, v.base]);
     } else if (IsUnresolvableReference(v)) {
@@ -327,9 +370,9 @@ var continuum = (function(GLOBAL, exports, undefined){
         base = new $PrimitiveBase(base);
       }
 
-      if (base instanceof $Object) {
+      if (base.Get) {
         if (IsSuperReference(v)) {
-          return base.SetP(GetThisValue(v), v.name, w);
+          return base.SetP(GetThisValue(v), v.name, w, v.strict);
         } else {
           return base.Put(v.name, w, v.strict);
         }
@@ -339,22 +382,28 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
   }
 
-  // ## GetThisValue
-
   function GetThisValue(v){
+    if (v && v.IsCompletion) {
+      if (v.IsAbruptCompletion) {
+        return v;
+      } else {
+        v = v.value;
+      }
+    }
     if (!v || !v.IsReference) {
       return v;
-    } else if (IsUnresolvableReference(v)) {
-      return ThrowException('non_object_property_load', [v.name, v.base]);
-    } else if ('thisValue' in v) {
-      return v.thisValue;
-    } else if (v.bindings === global) {
-      return v.bindings;
-    } else {
-      return v.base;
     }
-  }
 
+    if (IsUnresolvableReference(v)) {
+      return ThrowException('non_object_property_load', [v.name, v.base]);
+    }
+
+    if (IsSuperReference(v)) {
+      return v.thisValue;
+    }
+
+    return v.base;
+  }
 
   // ## GetThisEnvironment
 
@@ -617,37 +666,57 @@ var continuum = (function(GLOBAL, exports, undefined){
   function CreateStrictArgumentsObject(args) {
     var obj = new $Arguments(args.length);
 
-    for (var i=0; i < args.length; i++)
-      defineDirect(obj, i, args[i], ECW);
+    for (var i=0; i < args.length; i++) {
+      defineDirect(obj, i+'', args[i], ECW);
+    }
 
     //defineDirect(obj, 'caller', intrinsics.ThrowTypeError, __A);
     //defineDirect(obj, ARGUMENTS, intrinsics.ThrowTypeError, __A);
     return obj;
   }
 
+
+  function ArgAccessor(name, env){
+    this.name = name;
+    define(this, {
+      env: env
+    });
+  }
+
+  define(ArgAccessor.prototype, {
+    Get: {
+      Call: function(){
+        return this.env.GetBindingValue(this.name);
+      }
+    },
+    Set: {
+      Call: function(v){
+        this.env.SetMutableBinding(this.name, v);
+      }
+    }
+  });
+
+
   // ## CreateMappedArgumentsObject
 
-  function CreateMappedArgumentsObject(func, names, env, args){
+  function CreateMappedArgumentsObject(names, env, args, func) {
     var obj = new $Arguments(args.length),
         map = new $Object,
         mapped = create(null),
-        count = 0;
+        isMapped;
 
     for (var i=0; i < args.length; i++) {
-      defineDirect(obj, i, args[i], ECW);
+      defineDirect(obj, i+'', args[i], ECW);
       var name = names[i];
       if (i < names.length && !(name in mapped)) {
-        count++;
+        isMapped = true;
         mapped[name] = true;
-        defineDirect(map, names[i], new ArgAccessor(name, env), _CA);
+        defineDirect(map, name, new ArgAccessor(name, env), _CA);
       }
     }
 
-    if (count) {
-      obj.ParameterMap = map;
-    }
     defineDirect(obj, 'callee', func, _CW);
-    return obj;
+    return isMapped ? new $MappedArguments(map, obj) : obj;
   }
 
 
@@ -751,11 +820,11 @@ var continuum = (function(GLOBAL, exports, undefined){
     }
 
     if (func.Strict) {
-      var ao = CreateStrictArgumentsObject(args);
-      status = BindingInitialisation(params, ao, env);
+      var argsObject = CreateStrictArgumentsObject(args);
+      status = BindingInitialisation(params, argsObject, env);
     } else {
-      var ao = CreateMappedArgumentsObject(names, env, args, func);
-      status = BindingInitialisation(params, CreateStrictArgumentsObject(args), undefined);
+      var argsObject = CreateMappedArgumentsObject(names, env, args, func)
+      status = BindingInitialisation(params, argsObject);
     }
 
     if (status && status.IsCompletion) {
@@ -773,7 +842,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       } else {
         env.CreateMutableBinding(ARGUMENTS);
       }
-      env.InitializeBinding(ARGUMENTS, ao);
+      env.InitializeBinding(ARGUMENTS, argsObject);
     }
 
     var vardecls = func.Code.VarDeclaredNames;
@@ -841,15 +910,12 @@ var continuum = (function(GLOBAL, exports, undefined){
   // ## BindingInitialisation
 
   function BindingInitialisation(pattern, value, env) {
-    if (typeof pattern === 'string') {
-      if (env !== undefined) {
-        return env.InitializeBinding(pattern, value);
-      } else {
-        return PutValue(IdentifierResolution(pattern), value);
-      }
-    } else if (pattern.type === 'Identifier') {
-      if (env !== undefined) {
-        return env.InitializeBinding(pattern.name, value);
+    if (pattern instanceof Array && value instanceof $Arguments) {
+      pattern = { type: 'ArrayPattern', elements: pattern };
+    }
+    if (pattern.type === 'Identifier') {
+      if (env) {
+        env.InitializeBinding(pattern.name, value);
       } else {
         return PutValue(IdentifierResolution(pattern.name), value);
       }
@@ -861,7 +927,15 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   function IndexedBindingInitialisation(pattern, array, i, env) {
     for (var element; element = pattern.elements[i]; i++) {
-      BindingInitialisation(element, array.Get(i), env);
+      var value = array.HasProperty(i) ? array.Get(i) : undefined;
+      if (value && value.IsCompletion) {
+        if (value.IsAbruptCompletion) {
+          return value;
+        } else {
+          value = value.value;
+        }
+      }
+      BindingInitialisation(element, value, env);
     }
   }
 
@@ -1374,25 +1448,6 @@ var continuum = (function(GLOBAL, exports, undefined){
   }
 
 
-
-  // function ArgumentListEvaluation(args){
-  //   if (!args || args instanceof Array && !args.length) {
-  //     Ω([]);
-  //   } else if (args.type === 'AssignmentExpression') {
-  //     evaluate(args, function(ref){
-  //       GetValue(ref, function(arg){
-  //         Ω([arg]);
-  //       }, ƒ);
-  //     }, ƒ);
-  //   } else if (args instanceof Array) {
-  //     var last = args[args.length - 1];
-  //     if (last && last.type === 'AssignmentExpression')
-  //   }
-  //}
-
-
-
-
   function DefineProperty(obj, key, val) {
     if (val && val.IsCompletion) {
       if (val.IsAbruptCompletion) {
@@ -1774,27 +1829,6 @@ var continuum = (function(GLOBAL, exports, undefined){
   ]);
 
 
-
-  function defineDirect(o, key, value, attrs){
-    o.properties[key] = value;
-    o.attributes[key] = attrs;
-    o.keys.add(key);
-  }
-  function hasDirect(o, key){
-    return key in o.properties;
-  }
-  function hasOwnDirect(o, key){
-    return o.keys.has(key);
-  }
-  function setDirect(o, key, value){
-    o.properties[key] = value;
-    if (!(key in o.attributes))
-      o.attributes[key] = ECW;
-    o.keys.add(key);
-  }
-  function getDirect(o, key){
-    return o.properties[key];
-  }
 
   // ###################
   // ### NativeBrand ###
@@ -2538,25 +2572,71 @@ var continuum = (function(GLOBAL, exports, undefined){
   inherit($Arguments, $Object, {
     NativeBrand: NativeArguments,
     ParameterMap: null,
+  });
+
+  function $MappedArguments(map, args){
+    this.attributes = args.attributes;
+    this.properties = args.properties;
+    this.Prototype = args.Prototype;
+    define(this, 'keys', args.keys);
+    this.ParameterMap = map;
+  }
+
+  inherit($MappedArguments, $Arguments, {
+    ParameterMap: null,
   }, [
     function Get(key){
-      var map = this.ParameterMap;
-      if (map.keys.has(key)) {
-        return map.properties[key];
+      if (hasOwnDirect(this.ParameterMap, key)) {
+        return this.ParameterMap.Get(key);
       } else {
-        return this.GetP(this, key);
+        var val = $Object.prototype.Get.call(this, key);
+        if (key === 'caller' && IsCallable(val) && val.Strict) {
+          return ThrowError('strict_poison_pill');
+        }
+        return val;
       }
     },
     function GetOwnProperty(key){
-      var map = this.ParameterMap;
       var desc = $Object.prototype.GetOwnProperty.call(this, key);
-      if (desc) {
-        if (map.keys.has(key)) {
-          return map.properties[key];
+      if (desc === undefined) {
+        return desc;
+      }
+      if (hasOwnDirect(this.ParameterMap, key)) {
+        desc.Value = this.ParameterMap.Get(key);
+      }
+      return desc;
+    },
+    function DefineOwnProperty(key, desc, strict){
+      if (!DefineOwn.call(this, key, desc, false) && strict) {
+        return ThrowError('strict_lhs_assignment');
+      }
+
+      if (hasOwnDirect(this.ParameterMap, key)) {
+        if (IsAccessorDescriptor(desc)) {
+          this.ParameterMap.Delete(key, false);
         } else {
-          return desc;
+          if ('Value' in desc) {
+            this.ParameterMap.Put(key, desc.Value, strict);
+          }
+          if ('Writable' in desc) {
+            this.ParameterMap.Delete(key, false);
+          }
         }
       }
+
+      return true;
+    },
+    function Delete(key, strict){
+      var result = $Object.prototype.Delete.call(this, key, strict);
+      if (result.IsAbruptCompletion) {
+        return result;
+      }
+
+      if (result && hasOwnDirect(this.ParameterMap, key)) {
+        this.ParameterMap.Delete(key, false);
+      }
+
+      return result;
     }
   ]);
 
@@ -2937,7 +3017,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
     function INDEX(){
       if (ops[ip][0]) {
-        stack[sp]++;
+        stack[sp - 1]++;
       } else {
         a = GetValue(stack[--sp]);
         if (a && a.IsCompletion) {
@@ -3000,8 +3080,8 @@ var continuum = (function(GLOBAL, exports, undefined){
     function PROPERTY(){
       a = stack[--sp];
       b = DefineProperty(stack[sp - 1], ops[ip][0], a);
-      if (a && a.IsAbruptCompletion) {
-        error = a.value;
+      if (b && b.IsAbruptCompletion) {
+        error = b.value;
         return ƒ;
       }
       return cmds[++ip];
@@ -3419,9 +3499,6 @@ var continuum = (function(GLOBAL, exports, undefined){
   exports.create = function createContinuum(listener){
     return new Continuum(listener);
   }
-
-  var x = new Continuum;
-  inspect(x.eval('var x = { _y: "hi", get y(){ return this._y }, set y(v){ this._y = v } }; x._y = 100; x'));
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
