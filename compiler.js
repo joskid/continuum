@@ -788,8 +788,8 @@ define(Compiler.prototype, [
   function ExportDeclaration(node){},
   function ExpressionStatement(node){
     this.visit(node.expression);
-    if (this.code.eval || this.code.isGlobal) {
     this.record(GET);
+    if (this.code.eval || this.code.isGlobal) {
       this.record(SAVE)
     } else {
       this.record(POP);
