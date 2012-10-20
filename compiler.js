@@ -153,11 +153,12 @@ inherit(Operations, Array, [
   }
 ]);
 
-function Params(params, names){
+function Params(params, names, rest){
   this.length = 0;
   if (params) {
     [].push.apply(this, params);
   }
+  this.Rest = rest;
   this.BoundNames = names;
   this.ExpectedArgumentCount = ExpectedArgumentCount(this);
 }
@@ -193,13 +194,14 @@ function Code(node, source, type, isGlobal, strict){
     source: source,
     LexicalDeclarations: LexicalDeclarations(node)
   });
+
   this.isGlobal = isGlobal;
   this.entrances = [];
   this.Type = type || FUNCTYPE.hash.NORMAL;
   this.VarDeclaredNames = [];
   this.NeedsSuperBinding = ReferencesSuper(this.body);
   this.Strict = strict || isStrict(this.body);
-  this.params = new Params(node.params, BoundNames(node));
+  this.params = new Params(node.params, BoundNames(node), node.rest);
   this.ops = new Operations;
   this.children = [];
 }
@@ -214,7 +216,7 @@ define(Code.prototype, [
     }
   },
   function intern(name){
-    //return name;
+    return name;
     if (name in this.hash) {
       return this.hash[name];
     } else {
@@ -224,7 +226,7 @@ define(Code.prototype, [
     }
   },
   function lookup(id){
-    //return id;
+    return id;
     if (typeof id === 'number') {
       return this.identifiers[id];
     } else {
@@ -786,13 +788,14 @@ define(Compiler.prototype, [
   function ExportDeclaration(node){},
   function ExpressionStatement(node){
     this.visit(node.expression);
-    this.record(GET);
     if (this.code.eval || this.code.isGlobal) {
+    this.record(GET);
       this.record(SAVE)
     } else {
       this.record(POP);
     }
   },
+
   function ForStatement(node){
     this.withEntry(function(patch){
       if (node.init){
@@ -807,20 +810,20 @@ define(Compiler.prototype, [
       if (node.test) {
         this.visit(node.test);
         this.record(GET);
-        var op = this.record(IFEQ, 0, true);
+        var op = this.record(IFEQ, 0, false);
       }
 
-      this.visit(node.body);
       var update = this.current();
+      this.visit(node.body);
       if (node.update) {
         this.visit(node.update);
         this.record(GET);
         this.record(POP);
       }
 
-      this.record(JUMP, cond);
+      this.record(JUMP, update);
       this.adjust(op);
-      patch(this.current(), cond);
+      patch(this.current(), update);
     });
   },
   function ForInStatement(node){
@@ -876,7 +879,7 @@ define(Compiler.prototype, [
   function IfStatement(node){
     this.visit(node.test);
     this.record(GET);
-    var op = this.record(IFEQ, 0, true);
+    var op = this.record(IFEQ, 0, false);
     this.visit(node.consequent);
     this.adjust(op);
 
