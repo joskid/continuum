@@ -5,6 +5,7 @@ var Visitor = utility.Visitor,
     Collector = utility.Collector,
     Stack = utility.Stack,
     define = utility.define,
+    assign = utility.assign,
     create = utility.create,
     copy = utility.copy,
     parse = utility.parse,
@@ -133,6 +134,12 @@ function isStrict(node){
 }
 
 
+function Operations(){
+  this.length = 0;
+}
+
+inherit(Operations, Array);
+
 
 function Code(node, source, type, isGlobal, strict){
   var body = node.type === 'Program' ? node : node.body;
@@ -150,7 +157,7 @@ function Code(node, source, type, isGlobal, strict){
   this.params = node.params || [];
   this.params.BoundNames = BoundNames(node);
   this.params.ExpectedArgumentCount = ExpectedArgumentCount(this.params);
-  this.ops = [];
+  this.ops = new Operations;
   this.children = [];
 }
 
@@ -179,55 +186,58 @@ define(OpCode.prototype, [
 
 
 
-var ARRAY         = new OpCode( 0, 0, 'ARRAY'),
-    ARRAY_DONE    = new OpCode( 1, 0, 'ARRAY_DONE'),
-    BINARY        = new OpCode( 2, 1, 'BINARY'),
-    BLOCK         = new OpCode( 3, 1, 'BLOCK'),
-    BLOCK_EXIT    = new OpCode( 4, 0, 'BLOCK_EXIT'),
-    CALL          = new OpCode( 5, 1, 'CALL'),
-    CASE          = new OpCode( 6, 1, 'CASE'),
-    CLASS_DECL    = new OpCode( 7, 4, 'CLASS_DECL'),
-    CLASS_EXPR    = new OpCode( 8, 4, 'CLASS_EXPR'),
-    CONST         = new OpCode( 9, 1, 'CONST'),
-    CONSTRUCT     = new OpCode(10, 1, 'CONSTRUCT'),
-    DEBUGGER      = new OpCode(11, 0, 'DEBUGGER'),
-    DEFAULT       = new OpCode(12, 1, 'DEFAULT'),
-    DUP           = new OpCode(13, 0, 'DUP'),
-    ELEMENT       = new OpCode(14, 0, 'ELEMENT'),
-    FUNCTION      = new OpCode(15, 2, 'FUNCTION'),
-    GET           = new OpCode(16, 0, 'GET'),
-    IFEQ          = new OpCode(17, 2, 'IFEQ'),
-    IFNE          = new OpCode(18, 2, 'IFNE'),
-    INDEX         = new OpCode(19, 1, 'INDEX'),
-    JSR           = new OpCode(20, 2, 'JSR'),
-    JUMP          = new OpCode(21, 1, 'JUMP'),
-    LET           = new OpCode(22, 1, 'LET'),
-    LITERAL       = new OpCode(23, 1, 'LITERAL'),
-    MEMBER        = new OpCode(24, 1, 'MEMBER'),
-    METHOD        = new OpCode(25, 3, 'METHOD'),
-    OBJECT        = new OpCode(26, 0, 'OBJECT'),
-    POP           = new OpCode(27, 0, 'POP'),
-    POP_EVAL      = new OpCode(28, 0, 'POP_EVAL'),
-    POPN          = new OpCode(29, 1, 'POPN'),
-    PROPERTY      = new OpCode(30, 1, 'PROPERTY'),
-    PUT           = new OpCode(31, 0, 'PUT'),
-    REGEXP        = new OpCode(32, 1, 'REGEXP'),
-    RESOLVE       = new OpCode(33, 1, 'RESOLVE'),
-    RETURN        = new OpCode(34, 0, 'RETURN'),
-    RETURN_EVAL   = new OpCode(35, 0, 'RETURN_EVAL'),
-    RUN           = new OpCode(36, 0, 'RUN'),
-    ROTATE        = new OpCode(37, 1, 'ROTATE'),
-    SUPER_CALL    = new OpCode(38, 0, 'SUPER_CALL'),
-    SUPER_ELEMENT = new OpCode(39, 0, 'SUPER_ELEMENT'),
-    SUPER_GUARD   = new OpCode(40, 0, 'SUPER_GUARD'),
-    SUPER_MEMBER  = new OpCode(41, 1, 'SUPER_MEMBER'),
-    THIS          = new OpCode(42, 0, 'THIS'),
-    THROW         = new OpCode(43, 1, 'THROW'),
-    UNARY         = new OpCode(44, 1, 'UNARY'),
-    UNDEFINED     = new OpCode(45, 0, 'UNDEFINED'),
-    UPDATE        = new OpCode(46, 2, 'UPDATE'),
-    VAR           = new OpCode(47, 1, 'VAR'),
-    WITH          = new OpCode(48, 0, 'WITH');
+var ARRAY          = new OpCode( 0, 0, 'ARRAY'),
+    ARRAY_DONE     = new OpCode( 1, 0, 'ARRAY_DONE'),
+    BINARY         = new OpCode( 2, 1, 'BINARY'),
+    BLOCK          = new OpCode( 3, 1, 'BLOCK'),
+    BLOCK_EXIT     = new OpCode( 4, 0, 'BLOCK_EXIT'),
+    CALL           = new OpCode( 5, 1, 'CALL'),
+    CASE           = new OpCode( 6, 1, 'CASE'),
+    CLASS_DECL     = new OpCode( 7, 4, 'CLASS_DECL'),
+    CLASS_EXPR     = new OpCode( 8, 4, 'CLASS_EXPR'),
+    CONST          = new OpCode( 9, 1, 'CONST'),
+    CONSTRUCT      = new OpCode(10, 1, 'CONSTRUCT'),
+    DEBUGGER       = new OpCode(11, 0, 'DEBUGGER'),
+    DEFAULT        = new OpCode(12, 1, 'DEFAULT'),
+    DUP            = new OpCode(13, 0, 'DUP'),
+    ELEMENT        = new OpCode(14, 0, 'ELEMENT'),
+    FUNCTION       = new OpCode(15, 2, 'FUNCTION'),
+    GET            = new OpCode(16, 0, 'GET'),
+    IFEQ           = new OpCode(17, 2, 'IFEQ'),
+    IFNE           = new OpCode(18, 2, 'IFNE'),
+    INDEX          = new OpCode(19, 1, 'INDEX'),
+    JSR            = new OpCode(20, 2, 'JSR'),
+    JUMP           = new OpCode(21, 1, 'JUMP'),
+    LET            = new OpCode(22, 1, 'LET'),
+    LITERAL        = new OpCode(23, 1, 'LITERAL'),
+    MEMBER         = new OpCode(24, 1, 'MEMBER'),
+    METHOD         = new OpCode(25, 3, 'METHOD'),
+    OBJECT         = new OpCode(26, 0, 'OBJECT'),
+    POP            = new OpCode(27, 0, 'POP'),
+    SAVE           = new OpCode(28, 0, 'SAVE'),
+    POPN           = new OpCode(29, 1, 'POPN'),
+    PROPERTY       = new OpCode(30, 1, 'PROPERTY'),
+    PUT            = new OpCode(31, 0, 'PUT'),
+    REGEXP         = new OpCode(32, 1, 'REGEXP'),
+    RESOLVE        = new OpCode(33, 1, 'RESOLVE'),
+    RETURN         = new OpCode(34, 0, 'RETURN'),
+    COMPLETE       = new OpCode(35, 0, 'COMPLETE'),
+    RUN            = new OpCode(36, 0, 'RUN'),
+    ROTATE         = new OpCode(37, 1, 'ROTATE'),
+    SUPER_CALL     = new OpCode(38, 0, 'SUPER_CALL'),
+    SUPER_ELEMENT  = new OpCode(39, 0, 'SUPER_ELEMENT'),
+    SUPER_GUARD    = new OpCode(40, 0, 'SUPER_GUARD'),
+    SUPER_MEMBER   = new OpCode(41, 1, 'SUPER_MEMBER'),
+    THIS           = new OpCode(42, 0, 'THIS'),
+    THROW          = new OpCode(43, 1, 'THROW'),
+    UNARY          = new OpCode(44, 1, 'UNARY'),
+    UNDEFINED      = new OpCode(45, 0, 'UNDEFINED'),
+    UPDATE         = new OpCode(46, 1, 'UPDATE'),
+    VAR            = new OpCode(47, 1, 'VAR'),
+    WITH           = new OpCode(48, 0, 'WITH'),
+    NATIVE_RESOLVE = new OpCode(49, 1, 'NATIVE_RESOLVE'),
+    ENUM           = new OpCode(50, 0, 'ENUM'),
+    NEXT           = new OpCode(51, 1, 'NEXT');
 
 
 
@@ -292,7 +302,8 @@ function CompilerOptions(o){
 CompilerOptions.prototype = {
   eval: false,
   function: true,
-  scoped: false
+  scoped: false,
+  allowNatives: false
 };
 
 
@@ -325,6 +336,9 @@ define(Compiler.prototype, [
 
     var type = this.options.eval ? 'eval' : this.options.function ? 'function' : 'global';
     var code = new Code(node, source, type, !this.options.scoped);
+    if (this.options.allowNatives) {
+      code.allowNatives = true;
+    }
 
     this.queue(code);
     parenter(node);
@@ -332,12 +346,10 @@ define(Compiler.prototype, [
     while (this.pending.length) {
       this.code = this.pending.pop();
       this.visit(this.code.body);
-      if (this.code.eval){
-        this.record(RETURN_EVAL);
+      if (this.code.eval || this.code.isGlobal){
+        this.record(COMPLETE);
       } else {
-        if (!this.code.isGlobal) {
-          this.record(UNDEFINED);
-        }
+        this.record(UNDEFINED);
         this.record(RETURN);
       }
     }
@@ -363,6 +375,9 @@ define(Compiler.prototype, [
   },
   function current(){
     return this.code.ops.length;
+  },
+  function last(){
+    return this.code.ops[this.code.ops.length - 1];
   },
   function adjust(op){
     return op[0] = this.code.ops.length;
@@ -620,10 +635,11 @@ define(Compiler.prototype, [
   function ExpressionStatement(node){
     this.visit(node.expression);
     this.record(GET);
-    if (!this.code.eval && !this.code.isGlobal) {
+    if (this.code.eval || this.code.isGlobal) {
+      this.record(SAVE)
+    } else {
       this.record(POP);
     }
-    //this.code.eval ? this.record(POP_EVAL) : this.record(POP);
   },
   function ForStatement(node){
     this.withContinue(function(patch){
@@ -655,7 +671,20 @@ define(Compiler.prototype, [
     });
   },
   function ForInStatement(node){
-
+    this.withContinue(function(patch){
+      this.visit(node.left);
+      this.record(RESOLVE, this.last()[0].name);
+      this.visit(node.right);
+      this.record(GET);
+      var update = this.current();
+      this.record(ENUM);
+      var op = this.record(NEXT);
+      this.visit(node.body);
+      this.adjust(op);
+      this.record(JUMP, update);
+      this.record(POPN, 2);
+      patch(this.current(), update);
+    });
   },
   function ForOfStatement(node){},
   function FunctionDeclaration(node){
@@ -728,6 +757,9 @@ define(Compiler.prototype, [
     }
   },
   function ModuleDeclaration(node){ },
+  function NativeIdentifier(node){
+    this.record(NATIVE_RESOLVE, node.name);
+  },
   function NewExpression(node){
     this.visit(node.callee);
     this.record(GET);
@@ -809,7 +841,7 @@ define(Compiler.prototype, [
       this.visit(node.discriminant);
       this.record(GET);
 
-      this.addEnvironmentHandler(function (){
+      this.addEnvironmentHandler(function(){
         this.record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.cases) });
 
         if (node.cases){
@@ -914,14 +946,14 @@ define(Compiler.prototype, [
 
 
 
-function compile(code){
-  var compiler = new Compiler({ function: false });
+function compile(code, options){
+  var compiler = new Compiler(assign({ function: false }, options));
   return compiler.compile(code);
 }
 
-  function inspect(o){
-    console.log(require('util').inspect(o, null, 10));
-  }
+function inspect(o){
+  console.log(require('util').inspect(o, null, 10));
+}
 
 
 //inspect(compile('function xy(){ this.hello = true }; global = this'))
