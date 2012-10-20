@@ -1589,6 +1589,76 @@ var continuum = (function(GLOBAL, exports, undefined){
   }
 
 
+  function GetTrap(handler, trap){
+
+  }
+
+  function TrapDefineOwnProperty(proxy, key, descObj, strict){
+    var handler = proxy.Handler,
+        target = proxy.Target,
+        trap = GetTrap(handler, 'defineProperty');
+
+
+    if (trap === undefined) {
+      return target.DefineOwnProperty(key, desc, strict);
+    } else {
+      var normalizedDesc = NormalizePropertyDescriptor(descObj),
+          trapResult = trap.Call(handler, [target, key, normalizedDesc]),
+          success = ToBoolean(trapResult),
+          targetDesc = target.GetOwnProperty(key),
+          extensible = target.GetExtensible();
+
+      if (!extensible && targetDesc === undefined) {
+        return ThrowException('proxy_configurability_non_extensible_inconsistent');
+      } else if (targetDesc !== undefined && !IsCompatibleDescriptor(extensible, targetDesc, ToPropertyDescriptor(normalizedDesc))) {
+        return ThrowException('proxy_incompatible_descriptor');
+      } else if (!normalizedDesc.Configurable) {
+        if (targetDesc === undefined || targetDesc.Configurable) {
+          return ThrowException('proxy_configurability_inconsistent')
+        }
+      } else if (strict) {
+        return ThrowException('strict_property_redefinition');
+      }
+      return false;
+    }
+  }
+
+  function TrapGetOwnProperty(proxy, key){
+    var handler = proxy.Handler,
+        target = proxy.Target,
+        trap = GetTrap(handler, 'getOwnPropertyDescriptor');
+
+    if (trap === undefined) {
+      return target.GetOwnProperty(key);
+    } else {
+      var trapResult = trap.Call(handler, [target, key]),
+          desc = NormalizeAndCompletePropertyDescriptor(trapResult),
+          targetDesc = target.GetOwnProperty(key);
+
+      if (desc === undefined) {
+        if (targetDesc !== undefined) {
+          if (!targetDesc.Configurable) {
+            return ThrowException('proxy_configurability_inconsistent');
+          } else if (!target.GetExtensible()) {
+            return ThrowException('proxy_configurability_non_extensible_inconsistent');
+          }
+          return undefined;
+        }
+      }
+      var extensible = target.GetExtensible();
+      if (!extensible && targetDesc === undefined) {
+        return ThrowException('proxy_configurability_non_extensible_inconsistent');
+      } else if (targetDesc !== undefined && !IsCompatibleDescriptor(extensible, targetDesc, ToPropertyDescriptor(desc))) {
+        return ThrowException('proxy_incompatible_descriptor');
+      } else if (!ToBoolean(desc.Get('configurable'))) {
+        if (targetDesc === undefined || targetDesc.Configurable) {
+          return ThrowException('proxy_configurability_inconsistent')
+        }
+      }
+      return desc;
+    }
+  }
+
   // ###########################
   // ###########################
   // ### Specification Types ###
@@ -2837,6 +2907,125 @@ var continuum = (function(GLOBAL, exports, undefined){
     //   this.SetP(this, key, value, function(desc){
     //   }, ƒ);
     // },
+  ]);
+
+
+  function $Proxy(handler, target){
+    this.Handler = handler;
+    this.Target = target;
+    this.NativeBrand = target.NativeBrand;
+    if ('PrimitiveValue' in target) {
+      this.PrimitiveValue = target.PrimitiveValue;
+    }
+  }
+
+  inherit($Proxy, $Object, [
+    function GetPrototype(){
+      var trap = GetTrap(this.Handler, 'getPrototypeOf');
+      if (trap === undefined) {
+        return this.Target.GetPrototype();
+      } else {
+        var result = trap.Call(this.Handler, [this.Target]),
+            targetProto = this.Target.GetPrototype();
+
+        if (result !== targetProto) {
+          return ThrowException('proxy_prototype_inconsistent');
+        } else {
+          return targetProto;
+        }
+      }
+    },
+    function GetExtensible(){
+      var trap = GetTrap(this.Handler, 'isExtensible');
+      if (trap === undefined) {
+        return this.Target.GetExtensible();
+      } else {
+        var proxyIsExtensible = ToBoolean(trap.Call(this.Handler, [this.Target])),
+            targetIsExtensible  = this.Target.GetExtensible();
+
+        if (proxyIsExtensible !== targetIsExtensible) {
+          return ThrowException('proxy_extensibility_inconsistent');
+        } else {
+          return targetIsExtensible;
+        }
+      }
+    },
+    function GetP(key, receiver){
+
+    },
+    function SetP(key, value, receiver){
+
+    },
+    function GetOwnProperty(key){
+      var descObj = TrapGetOwnProperty(this, key);
+      if (descObj === undefined) {
+        return descObj;
+      } else {
+        return ToCompletePropertyDescriptor(descObj);
+      }
+    },
+    function DefineOwnProperty(key, desc, strict){
+      var descObj = FromGenericPropertyDescriptor(Desc);
+      return TrapDefineOwnProperty(this, key, descObj, strict);
+    },
+    function HasOwnProperty(key){
+
+    },
+    function HasProperty(key){
+      var trap = GetTrap(this.Handler, 'has');
+      if (trap === undefined) {
+        return this.Target.HasProperty(key);
+      }
+      var trapResult = trap.Call(this.Handler, [this.Target, key]),
+          success = ToBoolean(trapResult);
+
+      if (success === false) {
+        var targetDesc = this.Target.GetOwnProperty(key);
+        if (desc !== undefined && targetDesc.Configurable === false) {
+          return ThrowException('proxy_has_inconsistent');
+        } else if (!this.Target.GetExtensible() && targetDesc !== undefined) {
+          return ThrowException('proxy_has_inconsistent');
+        }
+      }
+      return success;
+    },
+    function Delete(key, strict){
+      var trap = GetTrap(this.Handler, 'deleteProperty');
+      if (trap === undefined) {
+        return this.Target.Delete(key, strict);
+      }
+      var trapResult = trap.Call(this.Handler, [this.Target, key]),
+          success = ToBoolean(trapResult);
+
+      if (success === true) {
+        var targetDesc = this.Target.GetOwnProperty(key);
+        if (desc !== undefined && targetDesc.Configurable === false) {
+          return ThrowException('proxy_delete_inconsistent');
+        } else if (!this.Target.GetExtensible() && targetDesc !== undefined) {
+          return ThrowException('proxy_delete_inconsistent');
+        }
+        return true;
+      } else if (strict) {
+        return ThrowException('strict_delete_failure');
+      } else {
+        return false;
+      }
+    }
+  ]);
+
+
+  function $FunctionProxy(handler, target){
+    $Proxy.call(this, handler, target);
+  }
+
+  inherit($FunctionProxy, $Proxy, [
+    function Call(receiver, args){
+
+    },
+    function Construct(args){
+
+    },
+    $Function.prototype.HasInstance
   ]);
 
 
