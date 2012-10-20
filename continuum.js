@@ -3049,14 +3049,14 @@ var continuum = (function(GLOBAL, exports, undefined){
       return cmds[++ip];
     }
 
-    function IFEQ(){//popjump
-      if (ops[ip][1] === !!stack[--sp]) {
+    function IFEQ(){
+      if (ops[ip][1] !== !!stack[sp - 1]) {
         ip = ops[ip][0];
       }
       return cmds[++ip];
     }
 
-    function IFNE(){//jumppop
+    function IFNE(){
       if (ops[ip][1] === !!stack[sp - 1]) {
         ip = ops[ip][0];
       } else {

@@ -111,6 +111,4 @@
 
   setupConstructor(Array, %ArrayProto);
 
-
-  console.log(new Array(5, 10, 20));
 })(this);
