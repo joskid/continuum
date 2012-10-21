@@ -178,11 +178,10 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   function ToPropertyDescriptor(obj) {
     if (obj.IsCompletion) {
-      if (obj.IsAbruptCompletion) {
+      if (obj.IsAbruptCompletion)
         return obj;
-      } else {
+      else
         obj = obj.value;
-      }
     }
 
     if (typeof obj !== OBJECT)
@@ -194,11 +193,10 @@ var continuum = (function(GLOBAL, exports, undefined){
       if (obj.HasProperty(descFields[i])) {
         v = obj.Get(descFields[i]);
         if (v.IsCompletion) {
-          if (v.IsAbruptCompletion) {
+          if (v.IsAbruptCompletion)
             return v;
-          } else {
+          else
             v = v.value;
-          }
         }
         desc[descProps[i]] = v;
       }
@@ -670,7 +668,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       }
     }
 
-    var func = obj.Get(key);
+    var func = func.Get(key);
     if (func && func.IsCompletion) {
       if (func.IsAbruptCompletion) {
         return func;
@@ -975,7 +973,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       BindingInitialization(arg, value, env);
     }
     if (params.Rest) {
-      var len = getDirect(args, 'length') - params.length;
+      var len = getDirect(args, 'length') - params.length,
           array = new $Array(0);
 
       if (len > 0) {
@@ -4194,6 +4192,8 @@ var continuum = (function(GLOBAL, exports, undefined){
   exports.create = function createContinuum(listener){
     return new Continuum(listener);
   };
+
+
 
   return exports;
 })((0,eval)('this'), typeof exports === 'undefined' ? {} : exports);
