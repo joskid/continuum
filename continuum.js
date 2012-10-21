@@ -1,1 +1,1 @@
-module.exports = require('./lib/continuum');
+var continuum = module.exports = require('./lib/runtime');
