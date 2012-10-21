@@ -177,7 +177,13 @@ var continuum = (function(GLOBAL, exports, undefined){
   var descProps = [VALUE, WRITABLE, ENUMERABLE, CONFIGURABLE, GET, SET];
 
   function ToPropertyDescriptor(obj) {
-    if (obj.IsCompletion) { if (obj.IsAbruptCompletion) return obj; else obj = obj.value; }
+    if (obj.IsCompletion) {
+      if (obj.IsAbruptCompletion) {
+        return obj;
+      } else {
+        obj = obj.value;
+      }
+    }
 
     if (typeof obj !== OBJECT)
       return ThrowException('property_desc_object', [typeof obj]);
@@ -187,7 +193,13 @@ var continuum = (function(GLOBAL, exports, undefined){
     for (var i=0, v; i < 6; i++) {
       if (obj.HasProperty(descFields[i])) {
         v = obj.Get(descFields[i]);
-        if (v.IsCompletion) { if (v.IsAbruptCompletion) return v; else v = v.value; }
+        if (v.IsCompletion) {
+          if (v.IsAbruptCompletion) {
+            return v;
+          } else {
+            v = v.value;
+          }
+        }
         desc[descProps[i]] = v;
       }
     }
@@ -650,17 +662,28 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   function Invoke(key, receiver, args){
     var obj = ToObject(receiver);
-    if (obj && obj.IsCompletion) { if (obj.IsAbruptCompletion) return obj; else obj = obj.value; }
+    if (obj && obj.IsCompletion) {
+      if (obj.IsAbruptCompletion) {
+        return obj;
+      } else {
+        obj = obj.value;
+      }
+    }
 
     var func = obj.Get(key);
-    if (func && func.IsCompletion) { if (func.IsAbruptCompletion) return func; else func = func.value; }
+    if (func && func.IsCompletion) {
+      if (func.IsAbruptCompletion) {
+        return func;
+      } else {
+        func = func.value;
+      }
+    }
 
     if (!IsCallable(func))
       return ThrowException('called_non_callable', key);
 
     return func.Call(receiver, args);
   }
-
 
   function MakeConstructor(func, writablePrototype, prototype){
     var install = prototype === undefined;
@@ -753,7 +776,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   function EvaluateCall(ref, func, args) {
     if (typeof func !== OBJECT || !IsCallable(func)) {
-      return ThrowException('called_non_callable', ref.name);
+      return ThrowException('called_non_callable', func);
     }
 
     if (ref instanceof Reference) {
@@ -2171,8 +2194,9 @@ var continuum = (function(GLOBAL, exports, undefined){
           if (IsAccessorDescriptor(current)) {
             current.Writable = true;
           }
-          WRITABLE in desc || (desc.Writable = current.Writable)
-          this.properties[key] = desc.Value;
+          WRITABLE in desc || (desc.Writable = current.Writable);
+          if ('Value' in desc)
+            this.properties[key] = desc.Value;
           this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
         }
 
@@ -3138,7 +3162,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       MEMBER, METHOD, OBJECT, POP, SAVE, POPN, PROPERTY, PUT,
       REGEXP, RESOLVE, RETURN, COMPLETE, ROTATE, RUN, SUPER_CALL, SUPER_ELEMENT,
       SUPER_GUARD, SUPER_MEMBER, THIS, THROW, UNARY, UNDEFINED, UPDATE, VAR, WITH,
-      NATIVE_RESOLVE, ENUM, NEXT, STRING
+      NATIVE_RESOLVE, ENUM, NEXT, STRING, NATIVE_CALL
     ];
 
     var ops = code.ops,
@@ -3333,7 +3357,9 @@ var continuum = (function(GLOBAL, exports, undefined){
           a = a.value;
         }
       }
-      stack[sp++] = a;
+      //if (a !== undefined) {
+        stack[sp++] = a;
+      //}
       return cmds[++ip];
     }
 
@@ -3350,7 +3376,6 @@ var continuum = (function(GLOBAL, exports, undefined){
       } else {
         sp--;
       }
-      inspect(stack)
       return cmds[++ip];
     }
 
@@ -3413,6 +3438,24 @@ var continuum = (function(GLOBAL, exports, undefined){
         error = a.value;
         return ƒ;
       }
+      return cmds[++ip];
+    }
+
+    function NATIVE_CALL(){
+      sp -= ops[ip][0];
+      a = stack.slice(sp, sp + ops[ip][0]);
+      b = stack[--sp];
+      c = stack[--sp];
+      d = EvaluateCall(c, b, a);
+      if (d && d.IsCompletion) {
+        if (d.IsAbruptCompletion) {
+          error = d.value;
+          return ƒ;
+        } else {
+          d = d.value;
+        }
+      }
+      stack[sp++] = d;
       return cmds[++ip];
     }
 
@@ -3804,6 +3847,35 @@ var continuum = (function(GLOBAL, exports, undefined){
     hasOwnDirect: hasOwnDirect,
     hasDirect: hasDirect,
     setDirect: setDirect,
+    ToObject: ToObject,
+    ToString: ToString,
+    ToNumber: ToNumber,
+    ToBoolean: ToBoolean,
+    ToInteger: ToInteger,
+    ToInt32: ToInt32,
+    ToUint32: ToUint32,
+    BooleanCreate: function(boolean){
+      return new $Boolean(boolean);
+    },
+    DateCreate: function(date){
+      return new $Date(date === undefined ? new Date : date);
+    },
+    FunctionCreate: function(args){
+      args = toInternalArray(args);
+      var body = args.pop();
+      body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
+      var code = compile(body, { natives: false, eval: true });
+      return createThunk(code).run();
+    },
+    NumberCreate: function(number){
+      return new $Number(number);
+    },
+    StringCreate: function(string){
+      return new $String(string);
+    },
+    RegExpCreate: function(regexp){
+      return new $RegExp(regexp);
+    },
     isConstructCall: function(){
       return context.isConstruct;
     },
@@ -3840,8 +3912,67 @@ var continuum = (function(GLOBAL, exports, undefined){
     hasOwnProperty: function(key){
       return this.HasOwnProperty(key);
     },
-    isExtensible: function(object){
-      return object.GetExtensible();
+    defineProperty: function(obj, key, desc){
+      if (typeof obj !== OBJECT) {
+        return ThrowException('called_on_non_object', 'defineProperty')
+      }
+      if (typeof desc !==OBJECT) {
+        return ThrowException('property_desc_object')
+      }
+      desc = ToPropertyDescriptor(desc);
+      obj.DefineOwnProperty(key, desc, false);
+      return obj;
+    },
+    defineProperties: function(obj, descs){
+      if (typeof obj !== OBJECT) {
+        return ThrowException('called_on_non_object', 'defineProperties');
+      }
+      if (typeof desc !== OBJECT) {
+        return ThrowException('property_desc_object')
+      }
+      if (descs !== undefined) {
+        if (typeof desc !==OBJECT) {
+          return ThrowException('property_desc_object')
+        }
+        var keys = toInternalArray(descs.Enumerate());
+        for (var i=0; i < keys.length; i++) {
+          natives.defineProperty(obj, keys[i], descs.Get(keys[i]));
+        }
+      }
+    },
+    create: function(proto, descs){
+      if (typeof proto !== OBJECT) {
+        return ThrowException('proto_object_or_null')
+      }
+      var obj = new $Object(proto);
+      if (descs !== undefined) {
+        natives.defineProperties(obj, descs);
+      }
+      return obj;
+    },
+    getPrototypeOf: function(obj){
+      if (typeof desc !== OBJECT) {
+        return ThrowException('called_on_non_object', 'getPrototypeOf');
+      }
+      return obj.GetPrototype();
+    },
+    getPropertyNames: function(object){
+      return fromInternalArray(object.GetPropertyNames());
+    },
+    getOwnPropertyNames: function(object){
+      return fromInternalArray(object.GetOwnPropertyNames());
+    },
+    getOwnPropertyDescriptor: function(object, key){
+      var desc = object.GetOwnProperty(key);
+      if (desc) {
+        return FromPropertyDescriptor(desc);
+      }
+    },
+    getPropertyDescriptor: function(object, key){
+      var desc = object.GetProperty(key);
+      if (desc) {
+        return FromPropertyDescriptor(desc);
+      }
     },
     keys: function(object){
       var names = object.GetOwnPropertyNames(),
@@ -3856,55 +3987,14 @@ var continuum = (function(GLOBAL, exports, undefined){
 
       return fromInternalArray(out);
     },
-    getOwnPropertyNames: function(object){
-      return fromInternalArray(object.GetOwnPropertyNames());
-    },
-    getOwnPropertyDescriptor: function(object, key){
-      var desc = object.GetOwnProperty(key);
-      if (desc) {
-        return FromPropertyDescriptor(desc);
-      }
+    isExtensible: function(object){
+      return object.GetExtensible();
     },
     call: function(receiver){
       return this.Call(receiver, slice.call(arguments, 1));
     },
     apply: function(receiver, args){
       return this.Call(receiver, toInternalArray(args));
-    },
-    ToObject: ToObject,
-    ToString: ToString,
-    ToNumber: ToNumber,
-    ToBoolean: ToBoolean,
-    ToInteger: ToInteger,
-    ToInt32: ToInt32,
-    ToUint32: ToUint32,
-    DefineOwnProperty: function(object, key, desc){
-      object.DefineOwnProperty(key, desc);
-    },
-    BooleanCreate: function(boolean){
-      return new $Boolean(boolean);
-    },
-    DateCreate: function(date){
-      return new $Date(date === undefined ? new Date : date);
-    },
-    FunctionCreate: function(args){
-      args = toInternalArray(args);
-      var body = args.pop();
-      body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
-      var code = compile(body, { natives: false, eval: true });
-      return createThunk(code).run();
-    },
-    NumberCreate: function(number){
-      return new $Number(number);
-    },
-    ObjectCreate: function(proto){
-      return new $Object(proto);
-    },
-    StringCreate: function(string){
-      return new $String(string);
-    },
-    RegExpCreate: function(regexp){
-      return new $RegExp(regexp);
     },
     parseInt: function(value, radix){
       return parseInt(ToPrimitive(value), ToNumber(radix));
@@ -3981,7 +4071,7 @@ var continuum = (function(GLOBAL, exports, undefined){
 
 
 
-  function Script(ast, code, name){
+  function Script(ast, code, name, native){
     if (ast instanceof Script)
       return ast;
 
@@ -4008,7 +4098,7 @@ var continuum = (function(GLOBAL, exports, undefined){
       code = decompile(ast);
     }
 
-    this.code = compile(code, { natives: true });
+    this.code = compile(code, { natives: !!native });
     this.thunk = createThunk(this.code);
     define(this, {
       source: code,
@@ -4028,6 +4118,11 @@ var continuum = (function(GLOBAL, exports, undefined){
 
   inherit(ScriptFile, Script);
 
+  function NativeScript(location){
+    Script.call(this, null, ScriptFile.load(location), location, true);
+  }
+
+  inherit(NativeScript, ScriptFile);
 
   // ###################
   // ### Interpreter ###
@@ -4044,7 +4139,7 @@ var continuum = (function(GLOBAL, exports, undefined){
     });
 
     this.state = 'idle';
-    this.eval(new ScriptFile(__dirname+'/runtime.js'))
+    this.eval(new NativeScript(__dirname+'/runtime.js'), true);
   }
 
   inherit(Continuum, Emitter, [
@@ -4071,15 +4166,17 @@ var continuum = (function(GLOBAL, exports, undefined){
         return result;
       }
     },
-    function eval(subject){
+    function eval(subject, quiet){
       var script = new Script(subject),
           self = this;
 
       this.scripts.push(script);
-      script.thunk.instrument();
-      script.thunk.on('op', function(op){
-        self.emit('op', op);
-      });
+      if (!quiet) {
+        script.thunk.instrument();
+        script.thunk.on('op', function(op){
+          self.emit('op', op);
+        });
+      }
       ExecutionContext.push(new ExecutionContext(null, this.realm.globalEnv, this.realm, script.code));
       TopLevelDeclarationInstantiation(script.code);
       return this.run(script.thunk);
