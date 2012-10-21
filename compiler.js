@@ -839,14 +839,14 @@ define(Compiler.prototype, [
         }
       }
 
-      var cond = this.current();
+      var test = this.current();
       if (node.test) {
         this.visit(node.test);
         this.record(GET);
         var op = this.record(IFEQ, 0, false);
       }
-
       var update = this.current();
+
       this.visit(node.body);
       if (node.update) {
         this.visit(node.update);
@@ -854,7 +854,7 @@ define(Compiler.prototype, [
         this.record(POP);
       }
 
-      this.record(JUMP, update);
+      this.record(JUMP, test - 1);
       this.adjust(op);
       patch(this.current(), update);
     });
