@@ -116,6 +116,12 @@ var errors = module.exports = (function(errors, messages){
     strict_cannot_assign           : ["Cannot assign to read only '", "$0", "' in strict mode"],
     strict_poison_pill             : ["'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them"],
     object_not_extensible          : ["Can't add property ", "$0", ", object is not extensible"],
+
+
+    proxy_prototype_inconsistent        : ["cannot report a prototype value that is inconsistent with target prototype value"],
+    proxy_extensibility_inconsistent    : ["(cannot report a non-extensible object as extensible or vice versa"],
+    proxy_configurability_inconsistent  : ["cannot report innacurate configurability for property '", "$0"],
+    proxy_enumerate_properties          : ["enumerate trap failed to include non-configurable enumerable property '", "$0", "'"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],
