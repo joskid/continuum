@@ -187,12 +187,26 @@ define(Params.prototype, [
 ]);
 
 function Code(node, source, type, isGlobal, strict){
+
+  function HomedOperation(args){
+    Operation.apply(this, args);
+  }
+
+  inherit(HomedOperation, Operation, {
+    code: this
+  });
+
   this.topLevel = node.type === 'Program';
   var body = this.topLevel ? node : node.body;
   define(this, {
     body: body,
     source: source,
-    LexicalDeclarations: LexicalDeclarations(node)
+    LexicalDeclarations: LexicalDeclarations(node),
+    createOperation: function(args){
+      var op =  new HomedOperation(args);
+      this.ops.push(op);
+      return op;
+    }
   });
 
   this.isGlobal = isGlobal;
@@ -204,6 +218,7 @@ function Code(node, source, type, isGlobal, strict){
   this.params = new Params(node.params, BoundNames(node), node.rest);
   this.ops = new Operations;
   this.children = [];
+
 }
 var identifiersPrinted = false;
 
@@ -356,7 +371,8 @@ var ARRAY          = new OpCode( 0, 0, 'ARRAY'),
     NATIVE_RESOLVE = new OpCode(49, 1, 'NATIVE_RESOLVE'),
     ENUM           = new OpCode(50, 0, 'ENUM'),
     NEXT           = new OpCode(51, 1, 'NEXT'),
-    STRING         = new OpCode(52, 1, 'STRING');
+    STRING         = new OpCode(52, 1, 'STRING'),
+    NATIVE_CALL    = new OpCode(53, 1, 'NATIVE_CALL');
 
 
 
@@ -367,12 +383,31 @@ function Operation(op, a, b, c, d){
   }
 }
 
+var seen;
+
 define(Operation.prototype, [
   function inspect(){
     var out = [];
     for (var i=0; i < this.op.params; i++) {
-      if (typeof this[i] !== 'object')
+      if (typeof this[i] === 'number') {
+        var interned = this.code.lookup(this[i]);
+        if (typeof interned === 'string') {
+          out.push(interned)
+        }
+      } else if (this[i] && typeof this[i] === 'object') {
+        if (!seen) {
+          seen = new WeakMap;
+          setTimeout(function(){ seen = null });
+        }
+        if (!seen.has(this[i])) {
+          seen.set(this[i], true);
+          out.push(util.inspect(this[i]));
+        } else {
+          out.push('...');
+        }
+      } else {
         out.push(util.inspect(this[i]));
+      }
     }
 
     return util.inspect(this.op)+'('+out.join(', ')+')';
@@ -520,10 +555,8 @@ define(Compiler.prototype, [
     }
     return this;
   },
-  function record(code, a, b, c, d){
-    var op = new Operation(code, a, b, c, d);
-    this.code.ops.push(op);
-    return op;
+  function record(){
+    return this.code.createOperation(arguments);
   },
   function current(){
     return this.code.ops.length;
@@ -687,7 +720,7 @@ define(Compiler.prototype, [
       this.record(GET);
     }
 
-    this.record(CALL, node.arguments.length);
+    this.record(node.callee.type === 'NativeIdentifier' ? NATIVE_CALL : CALL, node.arguments.length);
   },
   function CatchClause(node){
     this.recordEntrypoint(ENTRY.hash.ENV, function(){
@@ -838,7 +871,6 @@ define(Compiler.prototype, [
       this.visit(node.body);
       this.adjust(op);
       this.record(JUMP, update);
-      this.record(POPN, 2);
       patch(this.current(), update);
     });
   },
@@ -857,8 +889,8 @@ define(Compiler.prototype, [
       this.record(CALL, 0);
       this.visit(node.left);
       this.visit(node.body);
-      this.adjust(op);
       this.record(JUMP, update);
+      this.adjust(op);
       this.record(POPN, 2);
       patch(this.current(), update);
     });
@@ -956,7 +988,6 @@ define(Compiler.prototype, [
       this.visit(item);
   },
   function Program(node){
-    this.record(RUN);
     for (var i=0, item; item = node.body[i]; i++)
       this.visit(item);
   },
