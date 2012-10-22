@@ -6331,6 +6331,9 @@ exports.bytecode = (function(exports){
     return false;
   }
 
+  function isPattern(node){
+    return !!node && node.type === 'ObjectPattern' || node.type === 'ArrayPattern';
+  }
 
   function Operations(){
     this.length = 0;
@@ -6520,8 +6523,8 @@ exports.bytecode = (function(exports){
       BLOCK_EXIT     = new OpCode( 4, 0, 'BLOCK_EXIT'),
       CALL           = new OpCode( 5, 1, 'CALL'),
       CASE           = new OpCode( 6, 1, 'CASE'),
-      CLASS_DECL     = new OpCode( 7, 4, 'CLASS_DECL'),
-      CLASS_EXPR     = new OpCode( 8, 4, 'CLASS_EXPR'),
+      CLASS_DECL     = new OpCode( 7, 1, 'CLASS_DECL'),
+      CLASS_EXPR     = new OpCode( 8, 1, 'CLASS_EXPR'),
       CONST          = new OpCode( 9, 1, 'CONST'),
       CONSTRUCT      = new OpCode(10, 1, 'CONSTRUCT'),
       DEBUGGER       = new OpCode(11, 0, 'DEBUGGER'),
@@ -6549,8 +6552,8 @@ exports.bytecode = (function(exports){
       RESOLVE        = new OpCode(33, 1, 'RESOLVE'),
       RETURN         = new OpCode(34, 0, 'RETURN'),
       COMPLETE       = new OpCode(35, 0, 'COMPLETE'),
-      RUN            = new OpCode(36, 0, 'RUN'),
-      ROTATE         = new OpCode(37, 1, 'ROTATE'),
+      ROTATE         = new OpCode(36, 1, 'ROTATE'),
+      RUN            = new OpCode(37, 0, 'RUN'),
       SUPER_CALL     = new OpCode(38, 0, 'SUPER_CALL'),
       SUPER_ELEMENT  = new OpCode(39, 0, 'SUPER_ELEMENT'),
       SUPER_GUARD    = new OpCode(40, 0, 'SUPER_GUARD'),
@@ -6566,7 +6569,8 @@ exports.bytecode = (function(exports){
       ENUM           = new OpCode(50, 0, 'ENUM'),
       NEXT           = new OpCode(51, 1, 'NEXT'),
       STRING         = new OpCode(52, 1, 'STRING'),
-      NATIVE_CALL    = new OpCode(53, 1, 'NATIVE_CALL');
+      NATIVE_CALL    = new OpCode(53, 1, 'NATIVE_CALL'),
+      TO_OBJECT      = new OpCode(54, 0, 'TO_OBJECT');
 
 
 
@@ -6597,7 +6601,7 @@ exports.bytecode = (function(exports){
             seen.set(this[i], true);
             out.push(util.inspect(this[i]));
           } else {
-            out.push('...');
+          out.push('...');
           }
         } else {
           out.push(util.inspect(this[i]));
@@ -6685,6 +6689,16 @@ exports.bytecode = (function(exports){
     scoped: false,
     natives: false
   };
+
+  var destructureNode = {
+    elements: function(node, index){
+      return node.elements[index];
+    },
+    properties: function(node, index){
+      return node.properties[index].value;
+    }
+  };
+
 
 
   function Compiler(options){
@@ -6832,18 +6846,50 @@ exports.bytecode = (function(exports){
         var level = this.levels[len - 1];
         levels[level.type].call(this, level);
       }
-
       return entry;
+    },
+    function destructure(a, b){
+      var key = a.type === 'ArrayPattern' ? 'elements' : 'properties';
+
+      for (var i=0; i < a[key].length; i++) {
+        var left = destructureNode[key](a, i);
+        if (b[key] && b[key][i]) {
+          right = destructureNode[key](b, i);
+        } else {
+          right = destructureNode[key](a, i);
+        }
+
+        if (left.type === 'SpreadElement') {
+
+        } else if (isPattern(left)){
+          this.destructure(left, right);
+        } else {
+          this.visit(left);
+          this.visit(b);
+          this.record(GET);
+          if (a.type === 'ArrayPattern') {
+            this.record(LITERAL, i);
+            this.record(ELEMENT, i);
+          } else {
+            this.record(MEMBER, a[key][i].key.name)
+          }
+          this.record(GET);
+          this.record(PUT);
+        }
+      }
+    },
+    function assign(left, right){
+      this.visit(left)
+      this.visit(right)
+      this.record(GET);
+      this.record(PUT);
     },
     function AssignmentExpression(node){
       if (node.operator === '='){
-        if (node.left.type === 'ObjectPattern' || node.left.type === 'ArrayPattern'){
-          this.destructure(node);
+        if (isPattern(node.left)){
+          this.destructure(node.left, node.right);
         } else {
-          this.visit(node.left)
-          this.visit(node.right);
-          this.record(GET);
-          this.record(PUT);
+          this.assign(node.left, node.right);
         }
       } else {
         this.visit(node.left);
@@ -7431,6 +7477,8 @@ exports.operators = (function(exports){
       UNDEFINED = 'undefined';
 
 
+
+
   function HasPrimitiveBase(v){
     var type = typeof v.base;
     return type === STRING || type === NUMBER || type === BOOLEAN;
@@ -7455,7 +7503,7 @@ exports.operators = (function(exports){
       var base = v.base;
 
       if (HasPrimitiveBase(v)) {
-        base = new $PrimitiveBase(base);
+        base = ToObject(base);
       }
 
       if (base.Get) {
@@ -7495,13 +7543,13 @@ exports.operators = (function(exports){
       if (v.strict) {
         return ThrowException('not_defined', [v.name, v.base]);
       } else {
-        return global.Put(v.name, w, false);
+        return exports.global.Put(v.name, w, false);
       }
     } else {
       var base = v.base;
 
       if (HasPrimitiveBase(v)) {
-        base = new $PrimitiveBase(base);
+        base = ToObject(base);
       }
 
       if (base.Get) {
@@ -8829,7 +8877,7 @@ exports.thunk = (function(exports){
       var f = cmds[ip];
 
       while (f) {
-        thunk.emit('op', ops[ip]);
+        thunk.emit('op', [ops[ip], stack, sp]);
         f = f();
       }
     }
@@ -8892,8 +8940,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       utility   = require('./utility'),
       compile   = require('./bytecode').compile,
       constants = require('./constants'),
-      operators = require('./operators'),
-      Thunk     = require('./thunk').Thunk;
+      operators = require('./operators');
+
+  operators.ToObject = ToObject;
+  var Thunk = require('./thunk').Thunk;
 
   var Hash             = utility.Hash,
       Emitter          = utility.Emitter,
@@ -9620,6 +9670,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
 
     context.LexicalEnvironment = lex;
+    var _name = name.name ? name.name : name;
+    context.LexicalEnvironment.CreateMutableBinding(_name);
+    context.LexicalEnvironment.InitializeBinding(_name, ctor);
     return ctor;
   }
 
@@ -11282,7 +11335,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       return BlockDeclarationInstantiation(code, env);
     },
     function pushClass(def, superclass){
-      return ClassDefinitionEvaluation(def.patttern, superclass, def.ctor, def.methods);
+      return ClassDefinitionEvaluation(def.pattern, superclass, def.ctor, def.methods);
     },
     function pushWith(obj){
       this.LexicalEnvironment = NewObjectEnvironment(obj, this.LexicalEnvironment);
@@ -11503,43 +11556,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   var nativeCode = ['function ', '() { [native code] }'];
 
   var natives = {
-    writeln: function(){
-      console.log.apply(console, arguments);
-    },
-    defineDirect: defineDirect,
-    deleteDirect: deleteDirect,
-    hasOwnDirect: hasOwnDirect,
-    hasDirect: hasDirect,
-    setDirect: setDirect,
-    ToObject: ToObject,
-    ToString: ToString,
-    ToNumber: ToNumber,
-    ToBoolean: ToBoolean,
-    ToInteger: ToInteger,
-    ToInt32: ToInt32,
-    ToUint32: ToUint32,
-    BooleanCreate: function(boolean){
-      return new $Boolean(boolean);
-    },
-    DateCreate: function(date){
-      return new $Date(date === undefined ? new Date : date);
-    },
-    FunctionCreate: function(args){
-      args = toInternalArray(args);
-      var body = args.pop();
-      body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
-      var code = compile(body, { natives: false, eval: true });
-      return new Thunk(code).run(context);
-    },
-    NumberCreate: function(number){
-      return new $Number(number);
-    },
-    StringCreate: function(string){
-      return new $String(string);
-    },
-    RegExpCreate: function(regexp){
-      return new $RegExp(regexp);
-    },
     callFunction: function(func, receiver, args){
       return func.Call(receiver, toInternalArray(args))
     },
@@ -11556,15 +11572,67 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     getPrimitiveValue: function(object){
       return object ? object.PrimitiveValue : undefined;
     },
-    objectToString: function(object){
-      return object.NativeBrand.brand;
+    write: function(text, color){
+      if (color === undefined) {
+        color = 'white';
+      }
+      realm.emit('write', text, color);
     },
-    numberToString: function(object, radix){
-      return object.PrimitiveValue.toString(radix);
+    clear: function(){
+      realm.emit('clear');
     },
-    dateToString: function(object){
-      return ''+object.PrimitiveValue;
+    backspace: function(count){
+      realm.emit('backspace', count);
     },
+    wrapDateMethods: function(target){
+      Object.getOwnPropertyNames(Date.prototype).forEach(function(key){
+        if (typeof Date.prototype[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
+          var func = new $NativeFunction({
+            name: key,
+            length: Date.prototype[key].length,
+            call: function(a, b, c){
+              return this.PrimitiveValue[key](a, b, c);
+            }
+          })
+          defineDirect(target, key, func, 6);
+        }
+      });
+    },
+    wrapStringMethods: function(target){
+      Object.getOwnPropertyNames(String.prototype).forEach(function(key){
+        if (typeof String.prototype[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
+          var func = new $NativeFunction({
+            name: key,
+            length: String.prototype[key].length,
+            call: function(a, b, c){
+              return this.PrimitiveValue[key](a, b, c);
+            }
+          })
+          defineDirect(target, key, func, 6);
+        }
+      });
+    },
+    defineDirect: defineDirect,
+    deleteDirect: deleteDirect,
+    hasOwnDirect: hasOwnDirect,
+    hasDirect: hasDirect,
+    setDirect: setDirect,
+    ToObject: ToObject,
+    ToString: ToString,
+    ToNumber: ToNumber,
+    ToBoolean: ToBoolean,
+    ToInteger: ToInteger,
+    ToInt32: ToInt32,
+    ToUint32: ToUint32,
+    // FUNCTION
+    FunctionCreate: function(args){
+      args = toInternalArray(args);
+      var body = args.pop();
+      body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
+      var code = compile(body, { natives: false, eval: true });
+      return new Thunk(code).run(context);
+    },
+    // FUNCTION PROTOTYPE
     functionToString: function(fn){
       if (fn.Native || !fn.Code) {
         return nativeCode[0] + fn.properties.name + nativeCode[1];
@@ -11573,24 +11641,65 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         return code.source.slice(code.range[0], code.range[1]);
       }
     },
+    call: function(receiver){
+      return this.Call(receiver, slice.call(arguments, 1));
+    },
+    apply: function(receiver, args){
+      return this.Call(receiver, toInternalArray(args));
+    },
+    bind: function(receiver){
+      return new $BoundFunction(this, receiver, slice.call(arguments, 1));
+    },
+
+    // BOOLEAN
+    BooleanCreate: function(boolean){
+      return new $Boolean(boolean);
+    },
+
+    // DATE
+    DateCreate: function(date){
+      return new $Date(date === undefined ? new Date : date);
+    },
+    dateToString: function(object){
+      return ''+object.PrimitiveValue;
+    },
     dateToNumber: function(object){
       return +object.PrimitiveValue;
     },
-    isPrototypeOf: function(object){
-      while (object) {
-        object = object.GetPrototype();
-        if (object === this) {
-          return true;
-        }
+
+    // NUMBER
+    NumberCreate: function(number){
+      return new $Number(number);
+    },
+    numberToString: function(object, radix){
+      return object.PrimitiveValue.toString(radix);
+    },
+
+    // STRING
+    StringCreate: function(string){
+      return new $String(string);
+    },
+    // STRING PROTOTYPE
+    charCode: function(char){
+      return char.charCodeAt(0);
+    },
+    replace: function(match, replacer){
+      if (typeof match === 'string') {
+        return this.PrimitiveValue.replace(match, replacer);
+      } else if (match instanceof $RegExp) {
+        match = match.PrimitiveValue;
+        return this.PrimitiveValue.replace(match.PrimitiveValue, replacer);
       }
-      return false;
     },
-    propertyIsEnumerable: function(key){
-      return (this.attributes[key] & E) > 0;
+    RegExpCreate: function(regexp){
+      return new $RegExp(regexp);
     },
-    hasOwnProperty: function(key){
-      return this.HasOwnProperty(key);
+    // REGEXP PROTOTYPE
+    test: function(str){
+      return this.PrimitiveValue.test(str);
     },
+
+    // OBJECT
     defineProperty: function(obj, key, desc){
       if (typeof obj !== OBJECT) {
         return ThrowException('called_on_non_object', 'defineProperty')
@@ -11669,15 +11778,27 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     isExtensible: function(object){
       return object.GetExtensible();
     },
-    call: function(receiver){
-      return this.Call(receiver, slice.call(arguments, 1));
+
+    // OBJECT PROTOTYPE
+    objectToString: function(object){
+      return object.NativeBrand.brand;
     },
-    apply: function(receiver, args){
-      return this.Call(receiver, toInternalArray(args));
+    isPrototypeOf: function(object){
+      while (object) {
+        object = object.GetPrototype();
+        if (object === this) {
+          return true;
+        }
+      }
+      return false;
     },
-    bind: function(receiver){
-      return new $BoundFunction(this, receiver, slice.call(arguments, 1));
+    propertyIsEnumerable: function(key){
+      return (this.attributes[key] & E) > 0;
     },
+    hasOwnProperty: function(key){
+      return this.HasOwnProperty(key);
+    },
+
     parseInt: function(value, radix){
       return parseInt(ToPrimitive(value), ToNumber(radix));
     },
@@ -11699,9 +11820,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     escape: function(value){
       return escape(ToString(value));
     },
-    charCode: function(char){
-      return char.charCodeAt(0);
-    }
   };
 
 
@@ -11743,7 +11861,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           realm.emit('deactivate');
         }
         realm = this;
-        global = this.global;
+        global = operators.global = this.global;
         intrinsics = this.intrinsics;
         this.active = true;
         this.emit('activate');
@@ -11887,11 +12005,12 @@ exports.builtins = (function(exports){
     return exports.source = '(function(global){\n'+(closure+'').split('\n').slice(4).join('\n') + ')(this)';
   }
 
-  $__defineDirect(global, 'console', {
-    log: function log(v){
-      $__writeln(v);
-    }
+  $__defineDirect(global, 'stdout', {
+    write: $__write,
+    backspace: $__backspace,
+    clear: $__clear
   }, 6);
+
 
 
 
@@ -11949,7 +12068,6 @@ exports.builtins = (function(exports){
       var array = $__ToObject(this),
           length = $__ToUint32(this.length);
 
-
       if (receiver == null) {
         receiver = this;
       } else if (typeof receiver !== 'object') {
@@ -11987,6 +12105,19 @@ exports.builtins = (function(exports){
         }
       }
       return out;
+    },
+    function reduce(callback, initial){
+      var index = 0;
+      if (initial === undefined) {
+        initial = this[0];
+        index++;
+      }
+      for (; index < this.length; i++) {
+        if (i in this) {
+          initial = callback.call(this, initial, this[o], this);
+        }
+      }
+      return initial;
     },
     function join(joiner){
       var out = '', len = this.length;
@@ -12112,6 +12243,8 @@ exports.builtins = (function(exports){
       }
     }
   ]);
+
+  $__wrapDateMethods(Date.prototype);
 
 
   // ################
@@ -12281,23 +12414,11 @@ exports.builtins = (function(exports){
         // throw
       }
     },
-    function charAt(pos){
-      pos = pos | 0;
-      if (pos < 0 || pos >= this.length) {
-        return '';
-      } else {
-        return this[pos];
-      }
-    },
-    function charCodeAt(pos){
-      pos = pos | 0;
-      if (pos < 0 || pos >= this.length) {
-        return NaN;
-      } else {
-        return $__charCode(this[pos]);
-      }
-    }
   ]);
+
+
+  $__wrapStringMethods(String.prototype);
+
 
   defineMethods(global, [
     $__parseInt,
@@ -12316,6 +12437,8 @@ exports.builtins = (function(exports){
       return number === number && number !== Infinity && number !== -Infinity;
     }
   ]);
+
+
 })(this)
 
 return exports;
