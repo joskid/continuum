@@ -785,6 +785,7 @@ var renderer = new debug.Renderer({
   Array: Branch.create,
   Boolean: Branch.create,
   Date: Branch.create,
+  Error: Branch.create,
   Function: FunctionBranch.create,
   Map: Branch.create,
   Object: Branch.create,
