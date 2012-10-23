@@ -5099,7 +5099,7 @@ exports.utility = (function(exports){
       for (var i=0; i < keys.length; i++)
         delete empty[keys[i]];
 
-      iframe = null = keys = null;
+      iframe = keys = null;
 
       function create(object){
         F.prototype = object === null ? empty : object;
