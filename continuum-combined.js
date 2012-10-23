@@ -5441,19 +5441,20 @@ exports.utility = (function(exports){
           var result = this.callback(item, this.cursor);
 
         switch (result) {
-          case RECURSE: typeof item !== 'string' && this.queue(item);
+          case RECURSE:
+            if (isObject(item) && !hasOwn.call(item, this.seen)) {
+              define(item, this.seen, true);
+              this.queue(item);
+            }
           case CONTINUE:
-            this.cursor && this.next();
+            if (this.cursor)
+              this.next();
           case BREAK:
           default:
         }
         return this;
       },
       function queue(node, parent){
-        if (node && hasOwn.call(node, this.seen))
-          return;
-        define(Object(node), this.seen, true);
-
         if (this.cursor && this.items.length)
           this.stack.push(new Cursor(this.cursor, this.items));
 
