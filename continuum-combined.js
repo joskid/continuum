@@ -5918,14 +5918,19 @@ exports.constants = (function(exports){
     ECA: E | C | A
   };
 
-
-
-  exports.AST = (function(f,b,c,g,d,a){
-    function e(c,b,a){for(a=0,b='';c[a];b+=g[c.charCodeAt(a++)]);return b}
-    d=0,a=c.length;while(a-=4)b[d++] = e(f(c.slice(a,a+4))); return new Constants(b);
-  }(typeof atob==='undefined'?function(a){return Buffer(a,'base64').toString('binary')}:atob,[],
-    'OQE=OAg=Ewg=Njc=Ng4=NQE=NAE=Mwg=Mgg=MQE=LyA=LzA=Li8BLQg=LAE=Kwg=Kg==KQ==KA==JwI=JwE=JgE=JQ4=IyQ=IgE=IQE=IA==Hwg=HhY=Hg4=HQg=HA==Gw==BAE=BA4=GAg=GBoIGBkIAQg=FRYXFRY=FQ4=FAg=EhMIEQg=EAE=DA8=DAE=DA4=DA0=Cgs=CQg=Bwg=BgE=BQE=AwQBAAI=AAE=',
-    'ArrayExpressionPatternArrowFunctionAssignmentBinaryBlockStatementBreakCatchClauseClassBodyDeclarationHeritageConditionalDebuggerDoWhileEmptyExportSpecifierSetForInOfGlobIdentifierIfImportLabeledLiteralLogicalMemberMethodDefinitionModuleNewObjectPathProgramPropertyReturnSequenceSwitchTaggedTemplateElementThisThrowTryUnaryUpdateVariableDeclaratorWithYield'.split(/(?!=\w)(?=[A-Z])/)))
+  exports.AST = new Constants(['ArrayExpression', 'ArrayPattern', 'ArrowFunctionExpression',
+    'AssignmentExpression', 'BinaryExpression', 'BlockStatement', 'BreakStatement',
+    'CatchClause', 'ClassBody', 'ClassDeclaration', 'ClassExpression', 'ClassHeritage',
+    'ConditionalExpression', 'DebuggerStatement', 'DoWhileStatement', 'EmptyStatement',
+    'ExportDeclaration', 'ExportSpecifier', 'ExportSpecifierSet', 'ExpressionStatement',
+    'ForInStatement', 'ForOfStatement', 'ForStatement', 'FunctionDeclaration',
+    'FunctionExpression', 'Glob', 'Identifier', 'IfStatement', 'ImportDeclaration',
+    'ImportSpecifier', 'LabeledStatement', 'Literal', 'LogicalExpression', 'MemberExpression',
+    'MethodDefinition', 'ModuleDeclaration', 'NewExpression', 'ObjectExpression', 'ObjectPattern',
+    'Path', 'Program', 'Property', 'ReturnStatement', 'SequenceExpression', 'SwitchStatement',
+    'TaggedTemplateExpression', 'TemplateElement', 'TemplateLiteral', 'ThisExpression',
+    'ThrowStatement', 'TryStatement', 'UnaryExpression', 'UpdateExpression', 'VariableDeclaration',
+    'VariableDeclarator', 'WhileStatement', 'WithStatement', 'YieldExpression']);
 
   return exports;
 })(typeof module !== 'undefined' ? module.exports : {});
@@ -6680,7 +6685,7 @@ exports.bytecode = (function(exports){
 
   CompilerOptions.prototype = {
     eval: false,
-    function: true,
+    normal: true,
     scoped: false,
     natives: false
   };
@@ -6718,11 +6723,11 @@ exports.bytecode = (function(exports){
       this.labels = null;
 
       var node = parse(source);
-      if (this.options.function)
+      if (this.options.normal)
         node = node.body[0].expression;
 
 
-      var type = this.options.eval ? 'eval' : this.options.function ? 'function' : 'global';
+      var type = this.options.eval ? 'eval' : this.options.normal ? 'function' : 'global';
       var code = new Code(node, source, type, !this.options.scoped);
       code.identifiers = [];
       code.hash = create(null);
@@ -7438,7 +7443,7 @@ exports.bytecode = (function(exports){
 
 
   function compile(code, options){
-    var compiler = new Compiler(assign({ function: false }, options));
+    var compiler = new Compiler(assign({ normal: false }, options));
     return compiler.compile(code);
   }
 
