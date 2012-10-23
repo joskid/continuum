@@ -5050,7 +5050,8 @@ exports.utility = (function(exports){
       UNDEFINED = 'undefined';
 
   var toBrand = {}.toString,
-      slice = [].slice;
+      slice = [].slice,
+      hasOwn = {}.hasOwnProperty;
 
   var hasDunderProto = { __proto__: [] } instanceof Array;
 
@@ -5413,7 +5414,7 @@ exports.utility = (function(exports){
           this.root = root;
         this.stack = [];
         this.items = [];
-        this.seen = new Set;
+        this.seen = Math.random().toString(36).slice(2);
         this.queue(this.root);
         this.items.unshift(this.root);
         return this;
@@ -5435,9 +5436,9 @@ exports.utility = (function(exports){
         return this;
       },
       function queue(node, parent){
-        if (this.seen.has(node))
+        if (node && hasOwn.call(node, this.seen))
           return;
-        this.seen.add(node);
+        define(Object(node), this.seen, true);
 
         if (this.cursor && this.items.length)
           this.stack.push(new Cursor(this.cursor, this.items));
