@@ -1,0 +1,82 @@
+html, body
+{ width: 100%; height: 100%; margin: 0; }
+
+#container
+{ font: 14px monospace; }
+
+.ƒconsole
+{  background: #111; white-space: pre; color: #fff; padding: 6px; overflow: hidden; height: 100% }
+
+#input
+{ border-top: 1px solid #000; background: #333; }
+#input textarea
+{ display: block; border: 0; background: none; position: absolute; top: 6px; right: 6px; bottom: 6px; left: 6px;
+  resize: none; font: inherit; color: #fff; margin: 0; overflow: hidden; }
+
+#input textarea:focus
+{ outline: 0; }
+
+.root
+{ background: #000; color: #fff; width: 100%; height: 100%; overflow-y: auto }
+
+.ƒpanel
+{ position: absolute; min-height: 100px; min-width: 100px; }
+.ƒpanel > *
+{ box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box }
+.ƒroot { top: 0; left: 0; right: 0; bottom: 0; }
+.ƒvertical > .ƒtop    { left: 0; right: 0; top: 0; }
+.ƒvertical > .ƒleft   { left: 0 }
+.ƒvertical > .ƒbottom { left: 0; right: 0; bottom: 0; }
+.ƒvertical > .ƒright  { right: 0 }
+
+.ƒhorizontal > .ƒtop    { top: 0 }
+.ƒhorizontal > .ƒleft   { top: 0; bottom: 0; left: 0; }
+.ƒhorizontal > .ƒbottom { bottom: 0 }
+.ƒhorizontal > .ƒright  { top: 0; bottom: 0; right: 0; }
+
+.ƒtree
+{ margin: 0; padding: 0 0 0 10px; list-style: none; display: none; }
+.ƒtree.ƒexpanded
+{ display: block; }
+  .ƒproperty
+  {}
+    .ƒkey
+    { display: inline-block; margin-right: 15px; vertical-align: top }
+    .ƒbranch
+    { display: inline-block; }
+    .ƒleaf
+    { display: inline-block; }
+      .ƒbranch > .ƒlabel:hover
+      { text-decoration: underline; cursor: pointer; }
+
+.Circular               { color: #af8700 }
+.More                   { color: #d78700 }
+
+.Accessor               { color: #ffd700 }
+.BooleanValue           { color: #ffff87 }
+.Constructor            { color: #00afff }
+.Curly                  { color: #ffd700 }
+.Date                   { color: #00af00 }
+.Error                  { color: #ff005f }
+.Function               { color: #005faf }
+.ƒkey.ECW               { color: #d7d7d7 }
+.ƒkey.E_W               { color: #d7d7ff }
+.ƒkey.__W               { color: #8787af }
+.ƒkey._CW               { color: #5f5f5f }
+.ƒkey.EC_               { color: #ffff87 }
+.ƒkey.E__               { color: #00ffd7 }
+.ƒkey._C_               { color: #5f5f00 }
+.ƒkey.___               { color: #008787 }
+.ƒkey.__A               { color: #885f00 }
+.ƒkey.E_A               { color: #ffd787 }
+.ƒkey._CA               { color: #885f87 }
+.ƒkey.ECA               { color: #ffd700 }
+.Node                   { color: #d7ff00 }
+.NullValue              { color: #5f5f87 }
+.NumberValue            { color: #af00ff }
+.Proto                  { color: #ff00af }
+.RegExp                 { color: #5fd700 }
+.Square                 { color: #ff00af }
+.StringValue            { color: #00d75f }
+.StringValue.hidden     { color: #00af00 }
+.UndefinedValue         { color: #5f875f }
