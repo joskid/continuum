@@ -11806,13 +11806,172 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     escape: function(value){
       return escape(ToString(value));
     },
-    MathCreate: function(){
-      return new $Math;
-    },
     JSONCreate: function(){
       return new $JSON;
     },
+    MathCreate: (function(Math){
+      var consts = ['E', 'LN2', 'LN10', 'LOG2E', 'LOG10E', 'PI', 'SQRT1_2', 'SQRT2'],
+          sqrt = Math.sqrt,
+          log = Math.log,
+          pow = Math.pow,
+          exp = Math.exp,
+          LN2 = Math.LN2,
+          LN10 = Math.LN10;
+
+
+      function wrapMathFunction(fn, args){
+        if (args === 0) {
+          return fn;
+        }
+        if (args === 1) {
+          return function(x){
+            x = ToNumber(x);
+            if (x && x.Completion) {
+              if (x.Abrupt) {
+                return x;
+              } else {
+                x = x.value;
+              }
+            }
+            return fn(x);
+          }
+        } else if (args === 2) {
+          return function(x, y){
+            x = ToNumber(x);
+            if (x && x.Completion) {
+              if (x.Abrupt) {
+                return x;
+              } else {
+                x = x.value;
+              }
+            }
+            y = ToNumber(y);
+            if (y && y.Completion) {
+              if (y.Abrupt) {
+                return y;
+              } else {
+                y = y.value;
+              }
+            }
+            return fn(x, y);
+          }
+        }
+      }
+
+      var funcs = {
+        abs: wrapMathFunction(Math.abs, 1),
+        acos: wrapMathFunction(Math.acos, 1),
+        acosh: wrapMathFunction(function(x){
+          return Math.log(x + Math.sqrt(x * x - 1));
+        }, 1),
+        asinh: wrapMathFunction(function(x){
+          return Math.log(x + Math.sqrt(x * x + 1));
+        }, 1),
+        asin: wrapMathFunction(Math.asin, 1),
+        atan: wrapMathFunction(Math.atan, 1),
+        atanh: wrapMathFunction(function(x) {
+          return .5 * log((1 + x) / (1 - x));
+        }, 1),
+        atan2: wrapMathFunction(Math.atan2, 2),
+        ceil: wrapMathFunction(Math.ceil, 1),
+        cos: wrapMathFunction(Math.acos, 1),
+        cosh: wrapMathFunction(function(x) {
+          if (x < 0) {
+            x = -x;
+          }
+          if (x > 21) {
+            return exp(x) / 2;
+          } else {
+            return (exp(x) + exp(-x)) / 2;
+          }
+        }, 1),
+        exp: wrapMathFunction(Math.exp, 1),
+        expm1: wrapMathFunction(function(x) {
+          function factorial(x){
+            for (var i = 2, o = 1; i <= x; i++) {
+              o *= i;
+            }
+            return o;
+          }
+
+          var o = 0,
+              n = 50;
+
+          for (var i = 1; i < n; i++) {
+            o += pow(x, i) / factorial(i);
+          }
+          return o;
+        }, 1),
+        floor: wrapMathFunction(Math.floor, 1),
+        hypot: wrapMathFunction(function(x, y) {
+          return sqrt(x * x + y * y) || 0;
+        }, 2),
+        log: wrapMathFunction(Math.log, 1),
+        log2: wrapMathFunction(function(x){
+          return log(x) * (1 / LN2);
+        }, 1),
+        log10: wrapMathFunction(function(x){
+          return log(x) * (1 / LN10);
+        }, 1),
+        log1p: wrapMathFunction(function(x){
+          var o = 0,
+              n = 50;
+
+          if (x <= -1) {
+            return -Infinity;
+          } else if (x < 0 || value > 1) {
+            return log(1 + x);
+          } else {
+            for (var i = 1; i < n; i++) {
+              if ((i % 2) === 0) {
+                o -= pow(x, i) / i;
+              } else {
+                o += pow(x, i) / i;
+              }
+            }
+            return o;
+          }
+        }, 1),
+        pow: wrapMathFunction(Math.pow, 1),
+        random: wrapMathFunction(Math.random, 0),
+        round: wrapMathFunction(Math.round, 1),
+        sign: wrapMathFunction(function(x){
+          x = +x;
+          return x === 0 || x !== x ? x : x < 0 ? -1 : 1;
+        }, 1),
+        sinh: wrapMathFunction(function(x){
+          return (exp(x) - exp(-x)) / 2;
+        }, 1),
+        sin: wrapMathFunction(Math.sin, 1),
+        sqrt: wrapMathFunction(Math.sqrt, 1),
+        tan: wrapMathFunction(Math.tan, 1),
+        tanh: wrapMathFunction(function(x) {
+          return (exp(x) - exp(-x)) / (exp(x) + exp(-x));
+        }, 1),
+        trunc: wrapMathFunction(function(x){
+          return ~~x;
+        }, 1)
+      };
+
+      return function(){
+        var math = new $Math;
+        for (var i=0; i < consts.length; i++) {
+          defineDirect(math, consts[i], Math[consts[i]], ___);
+        }
+        for (var k in funcs) {
+          defineDirect(math, k, new $NativeFunction({
+            call: funcs[k],
+            name: k,
+            length: funcs[k].length
+          }), _CW);
+        }
+        return math;
+      };
+    })(Math)
   };
+
+
+
 
   function Realm(){
     this.natives = new Intrinsics(this);
@@ -11823,7 +11982,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
     this.intrinsics.FunctionProto.Realm = this;
     this.intrinsics.FunctionProto.Scope = this.globalEnv;
-
 
     this.active = false;
     Emitter.call(this);
@@ -12760,6 +12918,16 @@ exports.debug = (function(exports){
   ]);
 
 
+  function MirrorError(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorError, MirrorObject, {
+    kind: 'Error'
+  }, [
+  ]);
+
+
   function MirrorFunction(subject){
     MirrorObject.call(this, subject);
   }
@@ -12961,6 +13129,7 @@ exports.debug = (function(exports){
     Array   : MirrorArray,
     Boolean : MirrorBoolean,
     Date    : MirrorDate,
+    Error   : MirrorError,
     Function: MirrorFunction,
     Map     : MirrorMap,
     Number  : MirrorNumber,
@@ -13083,6 +13252,9 @@ exports.debug = (function(exports){
     },
     Date: function(mirror){
       return mirror.label();
+    },
+    Error: function(mirror){
+      return mirror.getValue('name') + ': ' + mirror.getValue('message');
     },
     Function: function(mirror){
       return mirror.label();
