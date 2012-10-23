@@ -5051,7 +5051,8 @@ exports.utility = (function(exports){
 
   var toBrand = {}.toString,
       slice = [].slice,
-      hasOwn = {}.hasOwnProperty;
+      hasOwn = {}.hasOwnProperty,
+      toSource = Function.toString;
 
   var hasDunderProto = { __proto__: [] } instanceof Array;
 
@@ -5067,7 +5068,15 @@ exports.utility = (function(exports){
   }
 
 
+  function fname(func){
+    if (typeof func !== 'function') {
+      return '';
+    } else if ('name' in func) {
+      return func.name;
+    }
 
+    return toSource.call(func).match(/^\n?function\s?(\w*)?_?\(/)[1];
+  }
 
   function isObject(v){
     return typeof v === OBJECT ? v !== null : typeof v === FUNCTION;
@@ -5229,15 +5238,15 @@ exports.utility = (function(exports){
         defineProperty(o, p, new Hidden(v));
         break;
       case FUNCTION:
-        defineProperty(o, p.name, new Hidden(p));
+        defineProperty(o, fname(p), new Hidden(p));
         break;
       case OBJECT:
         if (p instanceof Array) {
           for (var i=0; i < p.length; i++) {
             var f = p[i];
-            if (typeof f === FUNCTION && f.name) {
-              var name = f.name;
-            } else if (typeof f === STRING && typeof p[i+1] !== FUNCTION || !p[i+1].name) {
+            if (typeof f === FUNCTION) {
+              var name = fname(f);
+            } else if (typeof f === STRING && typeof p[i+1] !== FUNCTION || !fname(p[i+1])) {
               var name = f;
               f = p[i+1];
             }
@@ -5273,15 +5282,15 @@ exports.utility = (function(exports){
         o[p] = v;
         break;
       case FUNCTION:
-        o[p.name] = p;
+        o[fname(p)] = p;
         break;
       case OBJECT:
         if (p instanceof Array) {
           for (var i=0; i < p.length; i++) {
             var f = p[i];
-            if (typeof f === FUNCTION && f.name) {
-              var name = f.name;
-            } else if (typeof f === STRING && typeof p[i+1] !== FUNCTION || !p[i+1].name) {
+            if (typeof f === FUNCTION && fname(f)) {
+              var name = fname(f);
+            } else if (typeof f === STRING && typeof p[i+1] !== FUNCTION || !fname(p[i+1])) {
               var name = f;
               f = p[i+1];
             }
@@ -5376,131 +5385,46 @@ exports.utility = (function(exports){
 
   exports.unique = unique;
 
-  var Visitor = exports.Visitor = (function(){
-    function Cursor(parent, items){
-      this.parent = parent || null;
-      this.items = items;
+  function visit(root, callback){
+    var stack = [root], branded = [],
+        seen = Math.random().toString(36).slice(2);
+
+    while (stack.length) {
+      recurse(stack.pop());
     }
 
-    function Visitor(node, callback, filter){
-      if (typeof node === 'function') {
-        this.callback = node;
-        if (callback)
-          this.filter = callback;
-      } else {
-        this.callback = callback;
-        if (filter)
-          this.filter = filter;
-        this.reset(node);
-      }
+    for (var i=0; i < branded.length; i++) {
+      delete branded[i][seen];
     }
 
+    function recurse(node){
+      var keys = ownKeys(node);
+      for (var i=0; i < keys.length; i++) {
+        var key = keys[i],
+            item = node[key];
 
-    Visitor.visit = function visit(node, callback){
-      if (!(node instanceof Array))
-        node = [node];
-
-      var visitor = new Visitor({}, function(node){
-        if (!node) {
-          return CONTINUE;
-        } else if (node instanceof Array) {
-          return RECURSE;
-        } else {
-          if (node.type) {
-            callback(node);
+        if (isObject(item) && !hasOwn.call(item, seen)) {
+          item[seen] = true;
+          branded.push(item);
+          var result = callback(item, node);
+          if (result === visit.RECURSE) {
+            stack.push(item);
+          } else if (result === visit.BREAK) {
+            return stack = [];
           }
-          return RECURSE;
         }
-      });
-
-      for (var i=0; i < node.length; i++) {
-        visitor.reset(node[i]);
-        visitor.next();
       }
-    };
+    }
+  }
 
-    define(Visitor.prototype, [
-      function filter(){
-        return true;
-      },
-      function reset(root){
-        if (root !== undefined)
-          this.root = root;
-        this.stack = [];
-        this.items = [];
-        this.seen = Math.random().toString(36).slice(2);
-        this.queue(this.root);
-        this.items.unshift(this.root);
-        return this;
-      },
-      function next(){
-        this.items.length || this.pop();
-        var item = this.items.pop();
-
-        if (item !== undefined)
-          var result = this.callback(item, this.cursor);
-
-        switch (result) {
-          case RECURSE:
-            if (isObject(item) && !hasOwn.call(item, this.seen)) {
-              define(item, this.seen, true);
-              this.queue(item);
-            }
-          case CONTINUE:
-            if (this.cursor)
-              this.next();
-          case BREAK:
-          default:
-        }
-        return this;
-      },
-      function queue(node, parent){
-        if (this.cursor && this.items.length)
-          this.stack.push(new Cursor(this.cursor, this.items));
-
-        this.cursor = node;
-        this.items = [];
-
-        var items = [],
-            index = 0;
-
-        if (!node)
-          return;
-
-        for (var k in node)
-          if (this.filter(node[k]))
-            items[index++] = node[k];
-
-        while (index--)
-          this.items.push(items[index]);
-
-        return this;
-      },
-      function pop(){
-        var current = this.stack.pop();
-        if (current) {
-          this.cursor = current.parent;
-          this.items = current.items;
-          if (!this.items.length)
-            this.pop();
-        } else {
-          this.cursor = null;
-          this.items = [];
-          this.depleted = true;
-        }
-        return this;
-      }
-    ]);
-
-    return Visitor;
-  })();
+  exports.visit = visit;
 
 
-  var BREAK    = Visitor.BREAK    = new Number(1),
-      CONTINUE = Visitor.CONTINUE = new Number(2),
-      RECURSE  = Visitor.RECURSE  = new Number(3);
+  var BREAK    = visit.BREAK    = new Number(1),
+      CONTINUE = visit.CONTINUE = new Number(2),
+      RECURSE  = visit.RECURSE  = new Number(3);
 
-  exports.Collector = (function(){
+  exports.collector = (function(){
     function path(){
       var parts = [].slice.call(arguments);
       for (var i=0; i < parts.length; i++) {
@@ -5526,47 +5450,38 @@ exports.utility = (function(exports){
 
 
 
-    function Collector(handlers){
-      this.handlers = Object.create(null);
-      for (var k in handlers) {
-        if (handlers[k] instanceof Array)
-          this.handlers[k] = path(handlers[k])
+    function collector(o){
+      var handlers = Object.create(null);
+      for (var k in o) {
+        if (o[k] instanceof Array)
+          handlers[k] = path(o[k])
         else
-          this.handlers[k] = handlers[k];
+          handlers[k] = o[k];
       }
-      var self = this;
+
       return function(node){
-        return self.collect(node);
-      };
+        var items  = [];
+        visit(node, function(node, parent){
+          if (!node) return CONTINUE;
+          var handler = handlers[node.type];
+          if (handler) {
+            if (handler === RECURSE || handler === CONTINUE) {
+              return handler;
+            } else {
+              var item = handler(node);
+              if (item !== undefined)
+                items.push(item);
+            }
+          } else if (node instanceof Array) {
+            return RECURSE;
+          }
+          return CONTINUE;
+        });
+        return items;
+      }
     }
 
-    inherit(Collector, Visitor, [
-      function collect(node, parent){
-        var items = this.collected = [];
-        this.reset(node);
-        this.next();
-        this.collected = null;
-        return items;
-      },
-      function callback(node, parent){
-        if (!node) return CONTINUE;
-        var handler = this.handlers[node.type];
-        if (handler) {
-          if (handler === RECURSE || handler === CONTINUE) {
-            return handler;
-          } else {
-            var item = handler(node);
-            if (item !== undefined)
-              this.collected.push(item);
-          }
-        } else if (node instanceof Array) {
-          return RECURSE;
-        }
-        return CONTINUE;
-      },
-    ]);
-
-    return Collector;
+    return collector;
   })();
 
 
@@ -5822,7 +5737,7 @@ exports.utility = (function(exports){
     }
 
     function visit(callback){
-      Visitor.visit(this.subject, callback);
+      visit.visit(this.subject, callback);
       return this;
     }
 
@@ -6223,8 +6138,8 @@ exports.bytecode = (function(exports){
   var utility   = require('./utility'),
       util      = require('util');
 
-  var Visitor   = utility.Visitor,
-      Collector = utility.Collector,
+  var visit     = utility.visit,
+      collector = utility.collector,
       Stack     = utility.Stack,
       define    = utility.define,
       assign    = utility.assign,
@@ -6244,30 +6159,42 @@ exports.bytecode = (function(exports){
       AST       = constants.AST,
       FUNCTYPE  = constants.FUNCTYPE;
 
+  var hasOwn = {}.hasOwnProperty;
+
+
+
+
+
 
   function parenter(node, parent){
-    new Visitor(node, function(node){
+    visit(node, function(node){
       if (isObject(node) && parent)
         define(node, 'parent', parent);
-      return Visitor.RECURSE;
-    }).next();
+      return visit.RECURSE;
+    });
   }
 
   function reinterpretNatives(node){
-     Visitor.visit(node, function(node){
-      if (node && node.type === 'Identifier' && /^\$__/.test(node.name)) {
+    visit(node, function(node){
+      if (node.type === 'Identifier' && /^\$__/.test(node.name)) {
         node.type = 'NativeIdentifier';
         node.name = node.name.slice(3);
+      } else {
+        return visit.RECURSE;
       }
-    })
+    });
   }
 
-  var BoundNames = new Collector({
-    ObjectPattern      : Visitor.RECURSE,
-    ArrayPattern       : Visitor.RECURSE,
-    VariableDeclaration: Visitor.RECURSE,
-    VariableDeclarator : Visitor.RECURSE,
-    BlockStatement     : Visitor.RECURSE,
+
+
+
+
+  var BoundNames = collector({
+    ObjectPattern      : visit.RECURSE,
+    ArrayPattern       : visit.RECURSE,
+    VariableDeclaration: visit.RECURSE,
+    VariableDeclarator : visit.RECURSE,
+    BlockStatement     : visit.RECURSE,
     Property           : ['key', 'name'],
     Identifier         : ['name'],
     FunctionDeclaration: ['id', 'name'],
@@ -6275,21 +6202,21 @@ exports.bytecode = (function(exports){
   });
 
 
-  var collectExpectedArguments = new Collector({
+  var collectExpectedArguments = collector({
     Identifier: ['name'],
     ObjectPattern: ['properties'],
     ArrayPattern: ['items'],
-  })
+  });
 
   function ExpectedArgumentCount(args){
     return collectExpectedArguments(args).length;
   }
 
   var LexicalDeclarations = (function(lexical){
-    return new Collector({
+    return collector({
       ClassDeclaration: lexical(true),
       FunctionDeclaration: lexical(false),
-      SwitchCase: Visitor.RECURSE,
+      SwitchCase: visit.RECURSE,
       VariableDeclaration: lexical(function(node){
         return node.kind === 'const';
       }),
@@ -6314,26 +6241,25 @@ exports.bytecode = (function(exports){
 
   function ReferencesSuper(node){
     var found = false;
-    Visitor.visit(node, function(node){
-      if (!node) return Visitor.CONTINUE;
+    visit(node, function(node){
       switch (node.type) {
         case 'MemberExpression':
           if (isSuperReference(node.object)) {
             found = true;
-            return Visitor.BREAK;
+            return visit.BREAK;
           }
         case 'CallExpression':
           if (isSuperReference(node.callee)) {
             found = true;
-            return Visitor.BREAK;
+            return visit.BREAK;
           }
           break;
         case 'FunctionExpression':
         case 'FunctionDeclaration':
         case 'ArrowFunctionExpression':
-          return Visitor.CONTINUE;
+          return visit.CONTINUE;
       }
-      return Visitor.RECURSE;
+      return visit.RECURSE;
     });
     return found;
   }
@@ -11862,11 +11788,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
     if (typeof ast === FUNCTION) {
       this.type = 'recompiled function';
-      if (!ast.name) {
+      if (!utility.fname(ast)) {
         name || (name = 'unnamed');
         code = '('+ast+')()';
       } else {
-        name || (name = ast.name);
+        name || (name = utility.fname(ast));
         code = ast+'';
       }
       ast = null
