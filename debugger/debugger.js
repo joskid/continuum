@@ -6,14 +6,12 @@ function _(s){
   return document.createElement(s);
 }
 
-var sides = { left: 0, top: 1, right: 2, bottom: 3 };
+var sides = { left: 0, top: 1, right: 2, bottom: 3 },
+    vert = { near: 'top', far: 'bottom', size: 'height' },
+    horz = { near: 'left', far: 'right', size: 'width' },
+    eventOptions = { bubbles: true, cancelable: true };
 
-var vert = { near: 'top', far: 'bottom', size: 'height' },
-    horz = { near: 'left', far: 'right', size: 'width' };
 
-
-
-var eventOptions = { bubbles: true, cancelable: true };
 
 function Component(tag){
   this.element = _(tag);
@@ -102,6 +100,7 @@ PanelOptions.prototype = {
 
 
 function Panel(parent, options){
+  var self = this;
   Component.call(this, 'div');
   options = new PanelOptions(options);
 
@@ -123,13 +122,16 @@ function Panel(parent, options){
   this.addClass(options.orient);
   if (!parent) {
     this.addClass('root');
-    if (this.orient === 'vertical') {
-      this.mainCalcSize = document.body.offsetHeight;
-      this.crossCalcSize = document.body.offsetWidth;
-    } else {
-      this.mainCalcSize = document.body.offsetWidth;
-      this.crossCalcSize = document.body.offsetHeight;
-    }
+    var rootResize = function(){
+      if (self.orient === 'vertical') {
+        self.mainCalcSize = document.body.offsetHeight;
+        self.crossCalcSize = document.body.offsetWidth;
+      } else {
+        self.mainCalcSize = document.body.offsetWidth;
+        self.crossCalcSize = document.body.offsetHeight;
+      }
+    };
+    rootResize();
   }
 
 
@@ -149,6 +151,10 @@ function Panel(parent, options){
     parent.mount(this);
   } else {
     document.body.appendChild(this.element);
+    window.addEventListener('resize', function(){
+      rootResize();
+      self.readjust();
+    }, true);
   }
 
   this.forEach(function(_, side){
