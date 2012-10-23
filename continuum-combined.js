@@ -9699,11 +9699,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     ctor.SetPrototype(superctor);
     setDirect(ctor, 'name', name ? name.name || name : '');
     MakeConstructor(ctor, false, proto);
-
-    proto.DefineOwnProperty('constructor', {
-      Writable: false,
-      Configurable: false
-    }, false);
+    defineDirect(proto, 'constructor', ctor, _CW);
 
     for (var i=0, method; method = methods[i]; i++) {
       PropertyDefinitionEvaluation(method.kind, proto, method.name, method.code);
