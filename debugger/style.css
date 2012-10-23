@@ -50,14 +50,14 @@ h2
     .ƒsplitter.ƒright  { border-left: 5px solid #136 }
 
       .ƒpanel-label
-      { position: absolute; color: #9ff; right: 15px; top: 15px; text-shadow: 1px 1px 0 #266, 0 0 0 #0ff; opacity: .1;
+      { position: absolute; color: #9ff; right: 8px; top: 8px; text-shadow: 1px 1px 0 #266, 0 0 0 #0ff; opacity: .1;
         -webkit-transition: .3s; -moz-transition: .3s; transition: .3s }
       .ƒpanel:hover > .ƒpanel-label
       { opacity: 1; text-shadow: 1px 1px 0 #266, 0 0 15px #0ff; }
       .ƒtop > .ƒpanel-label
-      { bottom: 15px; }
+      { bottom: 8px; }
       .ƒbottom > .ƒpanel-label
-      { top: 15px; }
+      { top: 8px; }
 
 .ƒtree
 { margin: 0; padding: 0 0 0 10px; list-style: none; display: none; }
