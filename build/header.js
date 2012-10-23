@@ -1,1 +1,1 @@
-var continuum = (function(exports, require, module){
+continuum = (function(exports, require, module){
