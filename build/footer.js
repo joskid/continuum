@@ -4,6 +4,8 @@ return (function(Continuum){
   }
 
   continuum.debug = exports.debug;
+  continuum.utility = exports.utility;
+  continuum.constants = exports.constants;
   continuum.Continuum = Continuum;
 
   return continuum;
