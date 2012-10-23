@@ -1,5 +1,7 @@
 (function(global, Continuum, constants, utility, debug){
 var inherit = utility.inherit,
+    create = utility.create,
+    assign = utility.assign,
     define = utility.define;
 
 function _(s){
@@ -11,6 +13,7 @@ var sides = { left: 0, top: 1, right: 2, bottom: 3 },
     horz = { near: 'left', far: 'right', size: 'width' },
     eventOptions = { bubbles: true, cancelable: true },
     opposites = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
+
 
 
 
@@ -438,6 +441,37 @@ inherit(Console, Component, [
     }
   }
 ]);
+
+try {
+  new global.Event('test');
+  var Event = global.Event;
+}
+catch (e) {
+  var Event = (function(E){
+    function EventInit(type, o){
+      if (o)
+        for (var k in this)
+          if (k in o)
+            this[k] = o[k];
+      if (type)
+        this.type = type;
+    }
+    EventInit.prototype = assign(create(null), { bubbles: true, cancelable: true, type: '' });
+
+    function Event(type, dict){
+      dict = new EventInit(type, dict);
+      var evt = document.createEvent('Event');
+      evt.initEvent(dict.type, dict.bubbles, dict.cancelable);
+      return evt;
+    }
+
+    Event.prototype = E.prototype;
+    define(Event.prototype, 'constructor', Event);
+
+    return Event;
+  })(global.Event);
+}
+
 
 
 var attributes = ['___', 'E__', '_C_', 'EC_', '__W', 'E_W', '_CW', 'ECW', '__A', 'E_A', '_CA', 'ECA'];
