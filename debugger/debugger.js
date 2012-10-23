@@ -19,7 +19,9 @@ var sides = { left: 0, top: 1, right: 2, bottom: 3 },
 
 function Component(tag){
   this.element = _(tag);
-  this.classes = this.element.classList;
+  if (this.element.classList) {
+    this.classes = this.element.classList;
+  }
 }
 
 define(Component.prototype, {
@@ -27,18 +29,6 @@ define(Component.prototype, {
 });
 
 define(Component.prototype, [
-  function addClass(name){
-    return this.classes.add(this.ns + name);
-  },
-  function removeClass(name){
-    return this.classes.remove(this.ns + name);
-  },
-  function toggleClass(name){
-    return this.classes.toggle(this.ns + name);
-  },
-  function hasClass(name){
-    return this.classes.contains(this.ns + name);
-  },
   function on(event, listener){
     define(listener, 'bound', listener.bind(this));
     this.element.addEventListener(event, listener.bound, false);
@@ -77,6 +67,68 @@ define(Component.prototype, [
     return this;
   }
 ]);
+
+if (document.body.classList) {
+  define(Component.prototype, [
+    function addClass(name, noNS){
+      if (!noNS) name = this.ns+name;
+      return this.classes.add(name);
+    },
+    function removeClass(name, noNS){
+      if (!noNS) name = this.ns+name;
+      return this.classes.remove(name);
+    },
+    function toggleClass(name, noNS){
+      if (!noNS) name = this.ns+name;
+      return this.classes.toggle(name);
+    },
+    function hasClass(name, noNS){
+      if (!noNS) name = this.ns+name;
+      return this.classes.contains(name);
+    }
+  ]);
+} else {
+  void function(cache){
+    function matcher(n){
+      if (!(n in cache)) {
+        cache[n] = new RegExp('(.*)(?:^'+n+'\\s|\\s'+n+'$|\\s'+n+'\\s)(.*)');
+      }
+      return cache[n];
+    }
+
+    define(Component.prototype, [
+      function addClass(name, noNS){
+      if (!noNS) name = this.ns+name;
+        var className = this.element.className;
+        if (!matcher(name).test(className)) {
+          this.element.className = className + ' ' + name;
+        }
+        return this;
+      },
+      function removeClass(name, noNS){
+      if (!noNS) name = this.ns+name;
+        var p = this.element.className.match(matcher(name));
+        if (p) {
+          this.element.className = p[1] ? p[2] ? p[1]+' '+p[2] : p[1] : p[2];
+        }
+        return this;
+      },
+      function toggleClass(name, noNS){
+      if (!noNS) name = this.ns+name;
+        if (this.hasClass(name)) {
+          this.removeClass(name);
+        } else {
+          this.addClass(name);
+        }
+        return this;
+      },
+      function hasClass(name, noNS){
+      if (!noNS) name = this.ns+name;
+        return matcher(name).test(this.element.className);
+      }
+    ]);
+  }(create(null));
+}
 
 
 function PanelOptions(o){
@@ -474,18 +526,32 @@ catch (e) {
 
 
 
+function Key(key){
+  Component.call(this, 'div');
+  this.addClass('key');
+  this.element.textContent = key;
+}
+
+inherit(Key, Component, [
+  function text(value){
+    if (value === undefined) {
+      return this.element.textContent;
+    } else {
+      this.element.textContent = value;
+      return this;
+    }
+  }
+]);
+
 var attributes = ['___', 'E__', '_C_', 'EC_', '__W', 'E_W', '_CW', 'ECW', '__A', 'E_A', '_CA', 'ECA'];
 
 function Property(mirror, key){
   Component.call(this, 'li');
   this.mirror = mirror;
   this.attrs = attributes[mirror.propAttributes(key)];
-  this.key = _('div');
   this.addClass('property');
-  this.key.textContent = key;
-  this.key.classList.add(this.ns + 'key');
-  this.key.classList.add(this.attrs);
-
+  this.key = new Key(key);
+  this.key.addClass(this.attrs);
   this.append(this.key);
   this.property = mirror.get(key);
   this.append(renderer.render(this.property));
@@ -493,10 +559,10 @@ function Property(mirror, key){
 
 inherit(Property, Component, [
   function refresh(){
-    var attrs = attributes[this.mirror.propAttributes(this.key.textContent)];
+    var attrs = attributes[this.mirror.propAttributes(this.key.text())];
     if (attrs !== this.attrs) {
-      this.key.classList.remove(this.attrs);
-      this.key.classList.add(attrs);
+      this.key.removeClass(this.attrs);
+      this.key.addClass(attrs);
     }
   }
 ]);
@@ -506,11 +572,10 @@ inherit(Property, Component, [
 function Proto(mirror){
   Component.call(this, 'li');
   this.mirror = mirror;
-  this.key = _('div');
   this.addClass('property');
-  this.key.textContent = '[[Proto]]';
-  this.key.classList.add(this.ns + 'key');
-  this.key.classList.add('Proto');
+  this.key = new Key('[[Proto]]');
+  this.key.addClass('Proto');
+  this.key.addClass(this.attrs);
   this.append(this.key);
   this.property = mirror.getPrototype();
   this.append(renderer.render(this.property));
@@ -527,14 +592,29 @@ inherit(Proto, Property, [
   }
 ]);
 
+function Label(kind){
+  Component.call(this, 'div');
+  this.addClass('label');
+  this.addClass(kind);
+}
+
+inherit(Label, Component, [
+  function text(value){
+    if (value === undefined) {
+      return this.element.textContent;
+    } else {
+      this.element.textContent = value;
+      return this;
+    }
+  }
+]);
 
 
 function Leaf(mirror){
   Component.call(this, 'div');
   this.mirror = mirror;
   this.addClass('leaf');
-  this.label = _('div');
-  this.label.className = this.ns + 'label '+mirror.kind;
+  this.label = new Label(mirror.kind);
   this.append(this.label);
   this.refresh();
 }
@@ -545,7 +625,7 @@ Leaf.create = function create(mirror){
 
 inherit(Leaf, Component, [
   function refresh(){
-    this.label.textContent = this.mirror.label();
+    this.label.text(this.mirror.label());
     return this;
   }
 ]);
@@ -562,7 +642,7 @@ StringLeaf.create = function create(mirror){
 
 inherit(StringLeaf, Leaf, [
   function refresh(){
-    this.label.textContent = utility.quotes(this.mirror.subject);
+    this.label.text(utility.quotes(this.mirror.subject));
     return this;
   },
 ]);
@@ -579,7 +659,7 @@ NumberLeaf.create = function create(mirror){
 inherit(NumberLeaf, Leaf, [
   function refresh(){
     var label = this.mirror.label();
-    this.label.textContent = label === 'number' ? this.mirror.subject : label;
+    this.label.text(label === 'number' ? this.mirror.subject : label);
     return this;
   },
 ]);
@@ -643,8 +723,7 @@ function Branch(mirror){
       initialized;
   Component.call(this, 'div');
   this.mirror = mirror;
-  this.label = _('div');
-  this.label.className = this.ns + 'label '+mirror.kind;
+  this.label = new Label(mirror.kind);
   this.append(this.label);
   this.addClass('branch');
   this.tree = new Tree;
@@ -664,7 +743,7 @@ function Branch(mirror){
   });
   this.refresh();
 
-  this.label.addEventListener('click', function(e){
+  this.label.on('click', function(e){
     self.tree.toggle();
   });
 }
@@ -675,7 +754,7 @@ Branch.create = function create(mirror){
 
 inherit(Branch, Component, [
   function refresh(){
-    this.label.textContent = this.mirror.label();
+    this.label.text(this.mirror.label());
   }
 ]);
 
@@ -691,7 +770,7 @@ FunctionBranch.create = function create(mirror){
 inherit(FunctionBranch, Branch, [
   function refresh(){
     var name = this.mirror.get('name').subject;
-    this.label.textContent = name;
+    this.label.text(name);
   }
 ])
 
