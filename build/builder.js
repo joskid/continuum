@@ -13,6 +13,7 @@ var files = [
   '../lib/thunk.js',
   '../lib/runtime.js',
   '../lib/builtins.js',
+  '../lib/debug.js',
   './footer.js'
 ].map(function(file, i, a){
   var source = fs.readFileSync(file, 'utf8');
