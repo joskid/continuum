@@ -5943,7 +5943,7 @@ exports.errors = (function(errors, messages, exports){
 
 
   function Exception(name, type, message){
-    var args = {}, argNames = ['context'];
+    var args = {}, argNames = [];
     var src = message.map(function(str){
       if (str[0] === '$') {
         if (!args.hasOwnProperty(str))
@@ -5953,37 +5953,22 @@ exports.errors = (function(errors, messages, exports){
         return '"'+str.replace(/["\\\n]/g, '\\$0')+'"';
       }
     }).join('+');
-
+    var src = 'return '+
+      'function '+name+'('+argNames.join(', ')+') {\n'+
+      '  return '+src+';\n'+
+      '}';
     this.name = name;
     this.type = type;
-    return new Function('e', 'return '+
-      'function '+name+'('+argNames.join(', ')+') {\n'+
-      '  return e.instantiate('+src+');\n'+
-      '}'
-    )(this);
+    return new Function('e', src)(this);
   }
 
-  Exception.prototype.instantiate = function instantiate(message){
-    //var e = context.realm.createIntrinsic(this.type);
-    var e = new Intrinsic(this.type);
-    e.name = this.name;
-    e.message = message;
-    return e;
-  };
 
-  function Intrinsic(type){ this.type = type }
 
-  Intrinsic.prototype.setDirect = function(k, v){
-    this[k] = v;
-  };
-
-  Intrinsic.prototype.toString = function toString(){
-
-  };
-
-  for (var type in messages)
-    for (var name in messages[type])
-      errors[name] = new Exception(type, name, messages[type][name]);
+  for (var name in messages) {
+    for (var type in messages[name]) {
+      errors[type] = new Exception(name, type, messages[name][type]);
+    }
+  }
 
 
 
@@ -6020,11 +6005,13 @@ exports.errors = (function(errors, messages, exports){
 
   exports.AbruptCompletion = AbruptCompletion;
 
-  function ThrowException(error, args){
+  function ThrowException(type, args){
     if (!(args instanceof Array)) {
       args = [args];
     }
-    return new AbruptCompletion(constants.Throw, errors[error].apply(null, args));
+    error = errors[type];
+    var obj = exports.createError(error.name, type, error.apply(null, args));
+    return new AbruptCompletion(constants.Throw, obj);
   }
 
   exports.ThrowException = ThrowException;
@@ -9041,7 +9028,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       CONFIGURABLE = 'Configurable';
 
 
-
+  errors.createError = function(name, type, message){
+    return new $Error(name, type, message);
+  };
 
   AbruptCompletion.prototype.Abrupt = SYMBOLS.Abrupt
   Completion.prototype.Completion   = SYMBOLS.Completion
@@ -10195,7 +10184,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       NativeWeakMap     = new NativeBrand('WeakMap'),
       BooleanWrapper    = new NativeBrand('Boolean'),
       NumberWrapper     = new NativeBrand('Number'),
-      StringWrapper     = new NativeBrand('String');
+      StringWrapper     = new NativeBrand('String'),
+      NativeError       = new NativeBrand('Error'),
+      NativeMath        = new NativeBrand('Math'),
+      NativeJSON        = new NativeBrand('JSON');
 
 
   // ###############
@@ -11117,6 +11109,36 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
   ]);
 
+  function $Math(){
+    $Object.call(this);
+  }
+
+  inherit($Math, $Object, {
+    NativeBrand: NativeMath
+  });
+
+  function $JSON(){
+    $Object.call(this);
+  }
+
+  inherit($JSON, $Object, {
+    NativeBrand: NativeJSON
+  });
+
+  function $Error(name, type, message){
+    $Object.call(this, intrinsics[name+'Proto']);
+    defineDirect(this, 'message', message, _CW);
+    if (type !== undefined) {
+      defineDirect(this, 'type', type, _CW);
+    }
+  }
+
+  inherit($Error, $Object, {
+    NativeBrand: NativeError
+  });
+
+
+
   function $Proxy(handler, target){
     this.Handler = handler;
     this.Target = target;
@@ -11394,6 +11416,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   ]);
 
 
+  var $errors = ['EvalError',  'RangeError',  'ReferenceError',  'SyntaxError',  'TypeError',  'URIError']
 
   function Intrinsics(realm){
     DeclarativeEnvironmentRecord.call(this);
@@ -11408,8 +11431,19 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         prototype.PrimitiveValue = primitives[k];
     }
 
+    for (var i=0; i < 6; i++) {
+      var prototype = bindings[$errors[i] + 'Proto'] = create($Error.prototype);
+      $Object.call(prototype, bindings.ErrorProto);
+      defineDirect(prototype, 'name', $errors[i], _CW);
+      defineDirect(prototype, 'type', undefined, _CW);
+      defineDirect(prototype, 'arguments', undefined, _CW);
+      defineDirect(prototype, 'type', undefined, _CW);
+    }
+
     bindings.FunctionProto.FormalParameters = [];
     defineDirect(bindings.ArrayProto, 'length', 0, __W);
+    defineDirect(bindings.ErrorProto, 'name', 'Error', _CW);
+    defineDirect(bindings.ErrorProto, 'message', '', _CW);
   }
 
   inherit(Intrinsics, DeclarativeEnvironmentRecord, [
@@ -11474,6 +11508,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     Array   : $Array,
     Boolean : $Boolean,
     Date    : $Date,
+    Error   : $Error,
     Function: $Function,
     Map     : $Map,
     Number  : $Number,
@@ -11569,12 +11604,19 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     ToInt32: ToInt32,
     ToUint32: ToUint32,
     // FUNCTION
+    eval: function(code){
+      if (typeof code !== 'string') {
+        return code;
+      }
+      var code = compile(code, { natives: false, eval: true });
+      return new Thunk(code).run(context);
+    },
     FunctionCreate: function(args){
       args = toInternalArray(args);
       var body = args.pop();
       body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
       var code = compile(body, { natives: false, eval: true });
-      return new Thunk(code).run(context);
+      return new Thunk(code).run(realm.globalEnv);
     },
     // FUNCTION PROTOTYPE
     functionToString: function(fn){
@@ -11764,8 +11806,13 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     escape: function(value){
       return escape(ToString(value));
     },
+    MathCreate: function(){
+      return new $Math;
+    },
+    JSONCreate: function(){
+      return new $JSON;
+    },
   };
-
 
   function Realm(){
     this.natives = new Intrinsics(this);
@@ -12399,6 +12446,53 @@ exports.builtins = (function(exports){
   setupConstructor(WeakMap, $__WeakMapProto);
 
 
+
+  function Error(message){
+    this.message = message;
+  }
+  setupConstructor(Error, $__ErrorProto);
+
+  defineMethods(Error.prototype, [
+    function toString(){
+      return this.name + ': '+this.message;
+    }
+  ]);
+
+  function EvalError(message){
+    this.message = message;
+  }
+  setupConstructor(EvalError, $__EvalErrorProto);
+
+  function RangeError(message){
+    this.message = message;
+  }
+  setupConstructor(RangeError, $__RangeErrorProto);
+
+  function ReferenceError(message){
+    this.message = message;
+  }
+  setupConstructor(ReferenceError, $__ReferenceErrorProto);
+
+  function SyntaxError(message){
+    this.message = message;
+  }
+  setupConstructor(SyntaxError, $__SyntaxErrorProto);
+
+  function TypeError(message){
+    this.message = message;
+  }
+  setupConstructor(TypeError, $__TypeErrorProto);
+
+  function URIError(message){
+    this.message = message;
+  }
+  setupConstructor(URIError, $__URIErrorProto);
+
+
+  $__defineDirect(global, 'Math', $__MathCreate(), 6);
+  $__defineDirect(global, 'JSON', $__JSONCreate(), 6);
+
+
   defineMethods(global, [
     $__parseInt,
     $__parseFloat,
@@ -12407,6 +12501,7 @@ exports.builtins = (function(exports){
     $__decodeURIComponent,
     $__encodeURIComponent,
     $__escape,
+    $__eval,
     function isNaN(number){
       number = +number;
       return number !== number;
@@ -12416,9 +12511,8 @@ exports.builtins = (function(exports){
       return number === number && number !== Infinity && number !== -Infinity;
     }
   ]);
-
-
 })(this)
+
 
 return exports;
 })({});
