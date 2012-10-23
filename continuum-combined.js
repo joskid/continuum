@@ -1,4 +1,4 @@
-var continuum = (function(exports, require, module){
+continuum = (function(exports, require, module){
 
 
 exports.esprima = (function(exports){
@@ -5949,7 +5949,7 @@ exports.constants = (function(exports){
     EC_: E | C,
     __W: W,
     E_W: E | W,
-    _CW: C | A,
+    _CW: C | W,
     ECW: E | C | W,
     __A: A,
     E_A: E | A,
@@ -10552,6 +10552,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     Realm: null,
   }, [
     function Call(receiver, args, isConstruct){
+      if (realm !== this.Realm) {
+        this.Realm.activate();
+        this.Realm.prepareContext(null);
+      } else if (!context) {
+        this.Realm.prepareContext(null);
+      }
       if (this.ThisMode === 'lexical') {
         var local = NewDeclarativeEnvironment(this.Scope);
       } else {
@@ -11842,6 +11848,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         this.active = true;
         this.emit('activate');
       }
+    },
+    function prepareContext(code){
+      ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, code));
     }
   ]);
 
@@ -11986,6 +11995,14 @@ exports.builtins = (function(exports){
     clear: $__clear
   }, 6);
 
+  $__defineDirect(global, 'console', {
+    log: function log(){
+      for (var k in arguments) {
+        stdout.write(arguments[k] + ' ');
+      }
+      stdout.write('\n');
+    }
+  }, 6);
 
 
 
@@ -12467,7 +12484,8 @@ exports.debug = (function(exports){
     isEnumerable: always(null),
     isConfigurable: always(null),
     isAccessor: always(null),
-    isWritable: always(null)
+    isWritable: always(null),
+    propAttributes: always(null)
   });
 
   function brand(v){
@@ -12521,16 +12539,28 @@ exports.debug = (function(exports){
     props: null
   }, [
     function get(key){
-      return introspect(this.props[key]);
+      if (this.isPropAccessor(key)) {
+        return introspect(this.subject.Get(key));
+      } else {
+        return introspect(this.props[key]);
+      }
     },
     function getPrototype(){
       return introspect(this.subject.GetPrototype());
     },
     function hasOwn(key){
-      return key in this.props;
+      if (this.props) {
+        return key in this.props;
+      } else {
+        return false;
+      }
     },
     function has(key){
-      return key in this.props ? true : this.getPrototype().has(key);
+      if (this.props) {
+        return key in this.props ? true : this.getPrototype().has(key);
+      } else {
+        return false;
+      }
     },
     function isExtensible(key){
       return this.subject.GetExtensible();
@@ -12545,7 +12575,10 @@ exports.debug = (function(exports){
       return (this.attrs[key] & ACCESSOR) > 0;
     },
     function isPropWritable(key){
-      return !!(this.isAccessor() ? this.props[key].Set : this.attrs[key] & WRITABLE);
+      return !!(this.isPropAccessor(key) ? this.props[key].Set : this.attrs[key] & WRITABLE);
+    },
+    function propAttributes(key){
+      return this.attrs[key];
     },
     function label(){
       if (this.subject.ConstructorName) {
@@ -12574,7 +12607,7 @@ exports.debug = (function(exports){
     function ownAttrs(obj){
       obj || (obj = create(null));
       for (var k in this.props) {
-        out[k] = this.attrs[key];
+        obj[k] = this.attrs[k];
       }
       return obj;
     },
@@ -12747,6 +12780,13 @@ exports.debug = (function(exports){
         return false;
       }
     },
+    function propAttributes(key){
+      if (this.refresh(key)) {
+        return this.attrs[key];
+      } else {
+        return false;
+      }
+    },
     function inheritedAttrs(obj){
       if (obj) {
         this.getPrototype().inheritedAttrs(obj);
@@ -12806,7 +12846,7 @@ exports.debug = (function(exports){
     WeakMap : MirrorWeakMap
   };
 
-  var _Null        = new MirrorValue(null, 'object'),
+  var _Null        = new MirrorValue(null, 'null'),
       _Undefined   = new MirrorValue(undefined, 'undefined'),
       _True        = new MirrorValue(true, 'true'),
       _False       = new MirrorValue(false, 'false'),
@@ -12984,6 +13024,8 @@ return (function(Continuum){
   }
 
   continuum.debug = exports.debug;
+  continuum.utility = exports.utility;
+  continuum.constants = exports.constants;
   continuum.Continuum = Continuum;
 
   return continuum;
