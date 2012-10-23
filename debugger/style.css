@@ -2,14 +2,14 @@
 @import 'http://fonts.googleapis.com/css?family=Hammersmith+One';
 
 html, body
-{ width: 100%; height: 100%; margin: 0; font: 14px 'PT Mono', monospace; overflow: hidden; }
+{ width: 100%; height: 100%; margin: 0; font: 16px 'PT Mono', monospace; overflow: hidden; }
 
 h1, h2
 { margin: 0; font-family: 'Hammersmith One'; }
 h1
 { padding: 10px; font-size: 24px; background: #046; color: #adf; text-shadow: 3px 3px 1px #024 }
 h2
-{ font-size: 16px; }
+{ font-size: 18px; }
 
 #container
 { }
@@ -74,34 +74,44 @@ h2
       .ƒbranch > .ƒlabel:hover
       { text-decoration: underline; cursor: pointer; }
 
-.Circular               { color: #af8700 }
-.More                   { color: #d78700 }
+.Circular { color: #af8700 }
+.More     { color: #d78700 }
+.Curly    { color: #ffd700 }
+.Square   { color: #ff00af }
+.Accessor { color: #ffd700 }
+.Node     { color: #d7ff00 }
 
-.Accessor               { color: #ffd700 }
-.BooleanValue           { color: #ffff87 }
-.Constructor            { color: #00afff }
-.Curly                  { color: #ffd700 }
-.Date                   { color: #00af00 }
-.Error                  { color: #ff005f }
-.Function               { color: #005faf }
-.ƒkey.ECW               { color: #d7d7d7 }
-.ƒkey.E_W               { color: #d7d7ff }
-.ƒkey.__W               { color: #8787af }
-.ƒkey._CW               { color: #5f5f5f }
-.ƒkey.EC_               { color: #ffff87 }
-.ƒkey.E__               { color: #00ffd7 }
-.ƒkey._C_               { color: #5f5f00 }
-.ƒkey.___               { color: #008787 }
-.ƒkey.__A               { color: #885f00 }
-.ƒkey.E_A               { color: #ffd787 }
-.ƒkey._CA               { color: #885f87 }
-.ƒkey.ECA               { color: #ffd700 }
-.Node                   { color: #d7ff00 }
-.NullValue              { color: #5f5f87 }
-.NumberValue            { color: #af00ff }
-.Proto                  { color: #ff00af }
-.RegExp                 { color: #5fd700 }
-.Square                 { color: #ff00af }
-.StringValue            { color: #00d75f }
-.StringValue.hidden     { color: #00af00 }
-.UndefinedValue         { color: #5f875f }
+.BooleanValue   { color: #ffff87 }
+.NullValue      { color: #5f5f87 }
+.NumberValue    { color: #af5fff }
+.StringValue    { color: #00af5f }
+.UndefinedValue { color: #5f875f }
+
+.Array    { color: #87ff87 }
+.Boolean  { color: #afff5f }
+.Date     { color: #00af00 }
+.Error    { color: #ff005f }
+.Function { color: #5fafff }
+.Map      { color: #ff5f00 }
+.Number   { color: #af00ff }
+.Object   { color: #fff0f0 }
+.RegExp   { color: #5fd700 }
+.Set      { color: #ffaf5f }
+.String   { color: #00af5f }
+.WeakMap  { color: #ffaf00 }
+
+.Proto       { color: #ff00af }
+.Constructor { color: #00afff }
+
+.ECW { color: #d7d7d7 }
+.E_W { color: #d7d7ff }
+.__W { color: #8787af }
+._CW { color: #5f5f5f }
+.EC_ { color: #ffff87 }
+.E__ { color: #00ffd7 }
+._C_ { color: #5f5f00 }
+.___ { color: #008787 }
+.__A { color: #885f00 }
+.E_A { color: #ffd787 }
+._CA { color: #885f87 }
+.ECA { color: #ffd700 }
