@@ -11807,7 +11807,18 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       return escape(ToString(value));
     },
     JSONCreate: function(){
-      return new $JSON;
+      var json = new $JSON;
+      defineDirect(json, 'stringify', new $NativeFunction({
+        call: function(){},
+        name: 'stringify',
+        length: 3
+      }), _CW);
+      defineDirect(json, 'parse', new $NativeFunction({
+        call: function(){},
+        name: 'parse',
+        length: 2
+      }), _CW);
+      return json;
     },
     MathCreate: (function(Math){
       var consts = ['E', 'LN2', 'LN10', 'LOG2E', 'LOG10E', 'PI', 'SQRT1_2', 'SQRT2'],
@@ -12938,6 +12949,15 @@ exports.debug = (function(exports){
   });
 
 
+  function MirrorJSON(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorJSON, MirrorObject, {
+    kind: 'JSON'
+  }, [
+  ]);
+
   function MirrorMap(subject){
     MirrorObject.call(this, subject);
   }
@@ -12947,6 +12967,14 @@ exports.debug = (function(exports){
   }, [
   ]);
 
+  function MirrorMath(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorMath, MirrorObject, {
+    kind: 'Math'
+  }, [
+  ]);
 
   function MirrorNumber(subject){
     MirrorObject.call(this, subject);
@@ -13131,6 +13159,9 @@ exports.debug = (function(exports){
     Date    : MirrorDate,
     Error   : MirrorError,
     Function: MirrorFunction,
+    JSON    : MirrorJSON,
+    Map     : MirrorMap,
+    Math    : MirrorMath,
     Map     : MirrorMap,
     Number  : MirrorNumber,
     RegExp  : MirrorRegExp,
@@ -13259,7 +13290,13 @@ exports.debug = (function(exports){
     Function: function(mirror){
       return mirror.label();
     },
+    JSON: function(mirror){
+      return mirror.label();
+    },
     Map: function(mirror){
+      return mirror.label();
+    },
+    Math: function(mirror){
       return mirror.label();
     },
     Object: function(mirror){
