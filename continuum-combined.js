@@ -5360,7 +5360,21 @@ exports.utility = (function(exports){
   exports.quotes = quotes;
 
 
+  function unique(strings){
+    var seen = create(null),
+        out = [];
 
+    for (var i=0; i < strings.length; i++) {
+      if (!(strings[i] in seen)) {
+        seen[strings[i]] = true;
+        out.push(strings[i]);
+      }
+    }
+
+    return out;
+  }
+
+  exports.unique = unique;
 
   var Visitor = exports.Visitor = (function(){
     function Cursor(parent, items){
@@ -8981,6 +8995,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       define           = utility.define,
       copy             = utility.copy,
       inherit          = utility.inherit,
+      unique           = utility.unique,
       decompile        = utility.decompile,
       parse            = utility.parse;
 
@@ -10288,34 +10303,33 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function GetP(receiver, key){
-      if (!this.keys.has(key)) {
+      var desc = this.GetOwnProperty(key);
+      if (!desc) {
         var proto = this.GetPrototype();
         if (proto) {
           return proto.GetP(receiver, key);
         }
-      } else {
-        var attrs = this.attributes[key];
-        if (attrs & A) {
-          var getter = this.properties[key].Get;
-          if (IsCallable(getter))
-            return getter.Call(receiver, []);
-        } else {
-          return this.properties[key];
+      } else if (IsAccessorDescriptor(desc)) {
+        var getter = desc.Get;
+        if (IsCallable(getter)) {
+          return getter.Call(receiver, []);
         }
+      } else {
+        return desc.Value;
       }
     },
     function SetP(receiver, key, value) {
-      if (this.keys.has(key)) {
-        var attrs = this.attributes[key];
-        if (attrs & A) {
-          var setter = this.properties[key].Set;
+      var desc = this.GetOwnProperty(key);
+      if (desc) {
+        if (IsAccessorDescriptor(desc)) {
+          var setter = desc.Set;
           if (IsCallable(setter)) {
             setter.Call(receiver, [value]);
             return true;
           } else {
             return false;
           }
-        } else if (attrs & W) {
+        } else if (desc.Writable) {
           if (this === receiver) {
             return this.DefineOwnProperty(key, new Value(value), false);
           } else if (!receiver.GetExtensible()) {
@@ -10750,18 +10764,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       if (desc) {
         return desc;
       }
-
-      var index = ToInteger(key);
-      if (index.Completion) {
-        if (index.Abrupt) {
-          return index;
-        } else {
-          index = index.value;
-        }
-      }
-
-      if (index === +key && this.PrimitiveValue.length > index) {
-        return new StringIndice(this.PrimitiveValue[index]);
+      if (key < this.PrimitiveValue.length && key > 0 || key === '0') {
+        return new StringIndice(this.PrimitiveValue[key]);
       }
     },
     HasOwnProperty: function HasOwnProperty(key){
@@ -10798,31 +10802,30 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     Enumerate: function Enumerate(){
       var props = this.keys.filter(function(key){
         return this.attributes[key] & E;
-      }, this)
-      props.add(numbers(this.PrimitiveValue.length));
+      }, this);
 
       var proto = this.GetPrototype();
       if (proto) {
         props.add(proto.Enumerate());
       }
 
-      return props.toArray();
+      return unique(numbers(this.PrimitiveValue.length).concat(props.toArray()));
     },
     GetOwnPropertyNames: function GetOwnPropertyNames(){
-      return this.keys.toArray().concat(numbers(this.PrimitiveValue.length));
+      return unique(numbers(this.PrimitiveValue.length).concat(this.keys.toArray()));
     },
     GetPropertyNames: function GetPropertyNames(){
       var props = this.keys.clone();
-      props.add(numbers(this.PrimitiveValue.length));
 
       var proto = this.GetPrototype();
       if (proto) {
         props.add(proto.GetPropertyNames());
       }
 
-      return props.toArray();
+      return unique(numbers(this.PrimitiveValue.length).concat(props.toArray()));
     },
   });
+
 
 
   // ###############
@@ -12712,6 +12715,25 @@ exports.debug = (function(exports){
   inherit(MirrorString, MirrorObject,{
     kind: 'String'
   }, [
+    function get(key){
+      if (key < this.props.length && key >= 0) {
+        return this.subject.PrimitiveValue[key];
+      } else if (this.isPropAccessor(key)) {
+        return introspect(this.subject.Get(key));
+      } else {
+        return introspect(this.props[key]);
+      }
+    },
+    function ownAttrs(obj){
+      obj || (obj = create(null));
+      for (var i=0; i < this.props.length; i++) {
+        obj[i] = 1;
+      }
+      for (var k in this.props) {
+        obj[k] = this.attrs[k];
+      }
+      return obj;
+    },
   ]);
 
 
