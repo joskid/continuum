@@ -5385,6 +5385,36 @@ exports.utility = (function(exports){
 
   exports.unique = unique;
 
+  function toInteger(v){
+    return (v / 1 || 0) | 0;
+  }
+
+  exports.toInteger = toInteger;
+
+  function isNaN(number){
+    return number !== number;
+  }
+  exports.isNaN = isNaN;
+
+  function isFinite(number){
+    return typeof value === 'number'
+        && value === value
+        && value < Infinity
+        && value > -Infinity;
+  }
+
+  exports.isFinite = isFinite;
+
+  function isInteger(value) {
+    return typeof value === 'number'
+        && value === value
+        && value > -9007199254740992
+        && value < 9007199254740992
+        && value | 0 === value;
+  }
+
+  exports.isInteger = isInteger;
+
   function visit(root, callback){
     var stack = [root], branded = [],
         seen = Math.random().toString(36).slice(2);
@@ -12188,6 +12218,14 @@ exports.builtins = (function(exports){
   ]);
 
 
+  // ###########
+  // ### Map ###
+  // ###########
+
+  function Map(arg){}
+  setupConstructor(Map, $__MapProto);
+
+
   // ##############
   // ### Number ###
   // ##############
@@ -12303,6 +12341,15 @@ exports.builtins = (function(exports){
   setupConstructor(RegExp, $__RegExpProto);
 
 
+  // ###########
+  // ### Set ###
+  // ###########
+
+  function Set(arg){}
+  setupConstructor(Set, $__SetProto);
+
+
+
   // ##############
   // ### String ###
   // ##############
@@ -12337,6 +12384,14 @@ exports.builtins = (function(exports){
 
 
   $__wrapStringMethods(String.prototype);
+
+
+  // ###############
+  // ### WeakMap ###
+  // ###############
+
+  function WeakMap(arg){}
+  setupConstructor(WeakMap, $__WeakMapProto);
 
 
   defineMethods(global, [
@@ -12472,6 +12527,9 @@ exports.debug = (function(exports){
         return introspect(this.props[key]);
       }
     },
+    function getValue(key){
+      return this.get(key).subject;
+    },
     function getPrototype(){
       return introspect(this.subject.GetPrototype());
     },
@@ -12560,6 +12618,27 @@ exports.debug = (function(exports){
   inherit(MirrorArray, MirrorObject, {
     kind: 'Array'
   }, [
+    function list(own, hidden){
+      var props = own ? this.ownAttrs() : this.inheritedAttrs(),
+          len = this.getValue('length'),
+          indexes = [],
+          keys = [];
+
+      for (var i=0; i < len; i++) {
+        indexes.push(i+'');
+      }
+      indexes.push('length');
+
+      for (var k in props) {
+        if (hidden || props[k] & ENUMERABLE) {
+          if (k !== 'length' && !utility.isInteger(+k)) {
+            keys.push(k);
+          }
+        }
+      }
+
+      return indexes.concat(keys.sort());
+    }
   ]);
 
 
