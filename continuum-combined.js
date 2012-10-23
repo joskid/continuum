@@ -5933,6 +5933,29 @@ exports.constants = (function(exports){
     Uninitialized    : new Symbol('Uninitialized')
   };
 
+  var E = 0x1,
+      C = 0x2,
+      W = 0x4,
+      A = 0x8;
+
+  exports.ATTRIBUTES = {
+    ENUMERABLE  : E,
+    CONFIGURABLE: C,
+    WRITABLE    : W,
+    ACCESSOR    : A,
+    ___: 0,
+    E__: E,
+    _C_: C,
+    EC_: E | C,
+    __W: W,
+    E_W: E | W,
+    _CW: C | A,
+    ECW: E | C | W,
+    __A: A,
+    E_A: E | A,
+    _CA: C | A,
+    ECA: E | C | A
+  };
 
 
 
@@ -9006,6 +9029,23 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       METHOD = constants.FUNCTYPE.getIndex('METHOD'),
       NORMAL = constants.FUNCTYPE.getIndex('NORMAL');
 
+  var ATTRS = constants.ATTRIBUTES,
+      E = ATTRS.ENUMERABLE,
+      C = ATTRS.CONFIGURABLE,
+      W = ATTRS.WRITABLE,
+      A = ATTRS.ACCESSOR,
+      ___ = ATTRS.___,
+      E__ = ATTRS.E__,
+      _C_ = ATTRS._C_,
+      EC_ = ATTRS.EC_,
+      __W = ATTRS.__W,
+      E_W = ATTRS.E_W,
+      _CW = ATTRS._CW,
+      ECW = ATTRS.ECW,
+      __A = ATTRS.__A,
+      E_A = ATTRS.E_A,
+      _CA = ATTRS._CA,
+      ECA = ATTRS.ECA;
 
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',
@@ -9022,22 +9062,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       ENUMERABLE   = 'Enumerable',
       CONFIGURABLE = 'Configurable';
 
-  var E = 0x1,
-      C = 0x2,
-      W = 0x4,
-      A = 0x8,
-      ___ =  0,
-      E__ =  1,
-      _C_ =  2,
-      EC_ =  3,
-      __W =  4,
-      E_W =  5,
-      _CW =  6,
-      ECW =  7,
-      __A =  8,
-      E_A =  9,
-      _CA = 10,
-      ECA = 11;
 
 
 
@@ -10583,6 +10607,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         }
       }
       var instance = typeof prototype === OBJECT ? new $Object(prototype) : new $Object;
+      instance.ConstructorName = this.properties.name;
       var result = this.Call(instance, args, true);
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -10650,6 +10675,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         } else {
           var instance = new $Object;
         }
+        instance.ConstructorName = this.properties.name;
         return this.construct.apply(instance, args);
       } else {
         return this.call.apply(undefined, args);
@@ -11123,61 +11149,23 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
   ]);
 
-
-  // ######################
-  // ### $PrimitiveBase ###
-  // ######################
-
-  function $PrimitiveBase(value, proto){
-    this.base = value;
-    var type = typeof value;
-    if (type === STRING) {
-      $Object.call(this, intrinsics.StringProto);
-      this.NativeBrand = StringWrapper;
-    } else if (type === NUMBER) {
-      $Object.call(this, intrinsics.NumberProto);
-      this.NativeBrand = NumberWrapper;
-    } else if (type === BOOLEAN) {
-      $Object.call(this, intrinsics.BooleanProto);
-      this.NativeBrand = BooleanWrapper;
-    }
-  }
-
-  inherit($PrimitiveBase, $Object, [
-    function GetProperty(key, receiver){
-      var base = this.base;
-      var desc = $Object.prototype.GetProperty.call(this, key);
-      if (desc === undefined) {
-       return desc;
-      } else if (desc instanceof $DataDescriptor) {
-        return desc.properties.value;
-      } else {
-        var getter = desc.properties.get;
-        if (getter === undefined) {
-          return getter;
-        } else {
-          return getter.Call(receiver || base, []);
-        }
-      }
-    },
-    // function Put(key, value, strict){
-    //   var base = this.base;
-    //   this.SetP(this, key, value, function(desc){
-    //   }, ƒ);
-    // },
-  ]);
-
-
   function $Proxy(handler, target){
     this.Handler = handler;
     this.Target = target;
     this.NativeBrand = target.NativeBrand;
+    if ('Call' in target) {
+      this.HasInstance = $Function.prototype.HasInstance;
+      this.Call = ProxyCall;
+      this.Construct = ProxyConstruct;
+    }
     if ('PrimitiveValue' in target) {
       this.PrimitiveValue = target.PrimitiveValue;
     }
   }
 
-  inherit($Proxy, $Object, [
+  inherit($Proxy, $Object, {
+    isProxy: true
+  }, [
     function GetPrototype(){
       var trap = GetTrap(this.Handler, 'getPrototypeOf');
       if (trap === undefined) {
@@ -11271,21 +11259,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
   ]);
 
-
-  function $FunctionProxy(handler, target){
-    $Proxy.call(this, handler, target);
-  }
-
-  inherit($FunctionProxy, $Proxy, [
-    function Call(receiver, args){
-
-    },
-    function Construct(args){
-
-    },
-    $Function.prototype.HasInstance
-  ]);
-
+  function ProxyCall(receiver, args){}
+  function ProxyConstruct(args){}
 
 
 
@@ -11534,6 +11509,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     Function: $Function,
     Map     : $Map,
     Number  : $Number,
+    Proxy   : $Proxy,
     RegExp  : $RegExp,
     Set     : $Set,
     String  : $String,
@@ -11989,12 +11965,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
   ]);
 
+  for (var k in builtins) {
+    exports[k] = builtins[k];
+  }
 
   exports.Continuum = Continuum;
-  exports.create = function createContinuum(listener){
-    return new Continuum(listener);
-  };
-
   return exports;
 })((0,eval)('this'), typeof module !== 'undefined' ? module.exports : {});
 
@@ -12444,7 +12419,575 @@ exports.builtins = (function(exports){
 return exports;
 })({});
 
-return exports.runtime;
+exports.debug = (function(exports){
+
+  var utility = require('./utility'),
+      inherit = utility.inherit,
+      create = utility.create,
+      define = utility.define;
+
+  var constants = require('./constants'),
+      ENUMERABLE = constants.ATTRIBUTES.ENUMERABLE,
+      CONFIGURABLE = constants.ATTRIBUTES.CONFIGURABLE,
+      WRITABLE = constants.ATTRIBUTES.WRITABLE,
+      ACCESSOR = constants.ATTRIBUTES.ACCESSOR;
+
+  var Continuum = require('./runtime').Continuum
+
+
+
+  function always(value){
+    return function(){ return value };
+  }
+
+  function alwaysCall(func, args){
+    args || (args = []);
+    return function(){ return func.apply(null, args) }
+  }
+
+
+  function Mirror(){}
+
+  define(Mirror.prototype, {
+    type: null,
+    getPrototype: function(){
+      return _Null;
+    },
+    get: function(){
+      return _Undefined;
+    },
+    kind: 'Unknown',
+    label: always(''),
+    hasOwn: always(null),
+    has: always(null),
+    list: alwaysCall(Array),
+    inheritedAttrs: alwaysCall(create, [null]),
+    ownAttrs: alwaysCall(create, [null]),
+    isExtensible: always(null),
+    isEnumerable: always(null),
+    isConfigurable: always(null),
+    isAccessor: always(null),
+    isWritable: always(null)
+  });
+
+  function brand(v){
+    return Object.prototype.toString.call(v).slice(8, -1);
+  }
+
+  function MirrorValue(subject, label){
+    this.subject = subject;
+    this.type = typeof subject;
+    this.kind = brand(subject)+'Value';
+    this.label = always(label);
+  }
+
+  inherit(MirrorValue, Mirror);
+
+  function MirrorStringValue(subject){
+    this.subject = subject;
+  }
+
+  inherit(MirrorStringValue, MirrorValue, {
+    label: always('string'),
+    kind: 'StringValue',
+    type: 'string'
+  });
+
+  function MirrorNumberValue(subject){
+    this.subject = subject;
+  }
+
+  inherit(MirrorNumberValue, MirrorValue, {
+    label: always('number'),
+    kind: 'NumberValue',
+    type: 'number'
+  });
+
+
+
+
+
+  function MirrorObject(subject){
+    subject.__introspected = this;
+    this.subject = subject;
+    this.attrs = subject.attributes;
+    this.props = subject.properties;
+  }
+
+  inherit(MirrorObject, Mirror, {
+    kind: 'Object',
+    type: 'object',
+    attrs: null,
+    props: null
+  }, [
+    function get(key){
+      return introspect(this.props[key]);
+    },
+    function getPrototype(){
+      return introspect(this.subject.GetPrototype());
+    },
+    function hasOwn(key){
+      return key in this.props;
+    },
+    function has(key){
+      return key in this.props ? true : this.getPrototype().has(key);
+    },
+    function isExtensible(key){
+      return this.subject.GetExtensible();
+    },
+    function isPropEnumerable(key){
+      return (this.attrs[key] & ENUMERABLE) > 0;
+    },
+    function isPropConfigurable(key){
+      return (this.attrs[key] & CONFIGURABLE) > 0;
+    },
+    function isPropAccessor(key){
+      return (this.attrs[key] & ACCESSOR) > 0;
+    },
+    function isPropWritable(key){
+      return !!(this.isAccessor() ? this.props[key].Set : this.attrs[key] & WRITABLE);
+    },
+    function label(){
+      if (this.subject.ConstructorName) {
+        return this.subject.ConstructorName;
+      } else if (this.has('constructor')) {
+        var ctorName = this.get('constructor').get('name');
+        if (ctorName.subject && typeof ctorName.subject === 'string') {
+          return ctorName.subject;
+        }
+      }
+
+      if (this.subject.NativeBrand) {
+        return this.subject.NativeBrand.name;
+      }
+
+      return 'Object';
+    },
+    function inheritedAttrs(obj){
+      if (obj) {
+        this.getPrototype().inheritedAttrs(obj);
+        return this.ownAttrs(obj);
+      } else {
+        return this.getPrototype().inheritedAttrs(obj);
+      }
+    },
+    function ownAttrs(obj){
+      obj || (obj = create(null));
+      for (var k in this.props) {
+        out[k] = this.attrs[key];
+      }
+      return obj;
+    },
+    function list(own, hidden){
+      var props = own ? this.ownAttrs() : this.inheritedAttrs(),
+          keys = [];
+
+      for (var k in props) {
+        if (hidden || props[k] & ENUMERABLE) {
+          keys.push(k);
+        }
+      }
+
+      return keys.sort();
+    }
+  ]);
+
+
+  function MirrorArray(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorArray, MirrorObject, {
+    kind: 'Array'
+  }, [
+  ]);
+
+
+  function MirrorBoolean(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorBoolean, MirrorObject, {
+    kind: 'Boolean'
+  }, [
+  ]);
+
+  function MirrorDate(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorDate, MirrorObject, {
+    kind: 'Date'
+  }, [
+  ]);
+
+
+  function MirrorFunction(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorFunction, MirrorObject, {
+    type: 'function',
+    kind: 'Function'
+  });
+
+
+  function MirrorMap(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorMap, MirrorObject, {
+    kind: 'Map'
+  }, [
+  ]);
+
+
+  function MirrorNumber(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorNumber, MirrorObject, {
+    kind: 'Number'
+  }, [
+  ]);
+
+  function MirrorRegExp(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorRegExp, MirrorObject, {
+    kind: 'RegExp'
+  }, [
+  ]);
+
+
+  function MirrorSet(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorSet, MirrorObject, {
+    kind: 'Set'
+  }, [
+  ]);
+
+
+  function MirrorString(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorString, MirrorObject,{
+    kind: 'String'
+  }, [
+  ]);
+
+
+  function MirrorWeakMap(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorWeakMap, MirrorObject, {
+    kind: 'WeakMap'
+  }, [
+  ]);
+
+
+
+  function MirrorProxy(subject){
+    this.subject = subject;
+    if ('Call' in subject) {
+      this.type = 'function';
+    }
+    this.kind = introspect(subject.Target).kind;
+  }
+
+  inherit(MirrorProxy, Mirror, {
+    type: 'object'
+  }, [
+    MirrorObject.prototype.isExtensible,
+    MirrorObject.prototype.getPrototype,
+    MirrorObject.prototype.list,
+    function label(){
+      return 'Proxy' + MirrorObject.prototype.label.call(this);
+    },
+    function get(key){
+      this.refresh(key);
+      return introspect(this.props[key]);
+    },
+    function hasOwn(key){
+      return this.refresh(key);
+    },
+    function has(key){
+      return this.refresh(key) ? true : this.getPrototype().has(key);
+    },
+    function isPropEnumerable(key){
+      if (this.refresh(key)) {
+        return (this.attrs[key] & ENUMERABLE) > 0;
+      } else {
+        return false;
+      }
+    },
+    function isPropConfigurable(key){
+      if (this.refresh(key)) {
+        return (this.attrs[key] & CONFIGURABLE) > 0;
+      } else {
+        return false;
+      }
+    },
+    function isPropAccessor(key){
+      if (this.refresh(key)) {
+        return (this.attrs[key] & ACCESSOR) > 0;
+      } else {
+        return false;
+      }
+    },
+    function isPropWritable(key){
+      if (this.refresh(key)) {
+        return !!(this.isAccessor() ? this.props[key].Set : this.attrs[key] & WRITABLE);
+      } else {
+        return false;
+      }
+    },
+    function inheritedAttrs(obj){
+      if (obj) {
+        this.getPrototype().inheritedAttrs(obj);
+        return this.ownAttrs(obj);
+      } else {
+        return this.getPrototype().inheritedAttrs(obj);
+      }
+    },
+    function ownAttrs(obj){
+      var key, keys = this.subject.GetOwnPropertyNames();
+
+      obj || (obj = create(null));
+      this.props = create(null);
+      this.attrs = create(null);
+
+      for (var i=0; i < keys.length; i++) {
+        key = keys[i];
+        if (this.refresh(key)) {
+          obj[key] = this.attrs[key];
+        }
+      }
+
+      return obj;
+    },
+    function refresh(key){
+      if (!(key in this.attrs)) {
+        var desc = this.subject.GetOwnProperty(key, false);
+        if (desc) {
+          if ('Value' in desc) {
+            this.attrs[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
+            this.props[key] = desc.Value;
+          } else {
+            this.attrs[key] = desc.Enumerable | (desc.Configurable << 1) | A;
+            this.props[key] = { Get: desc.Get, Set: desc.Set };
+          }
+          return true;
+        } else {
+          delete this.attrs[key];
+          delete this.props[key];
+        }
+      }
+      return false;
+    }
+  ]);
+
+
+  var brands = {
+    Array   : MirrorArray,
+    Boolean : MirrorBoolean,
+    Date    : MirrorDate,
+    Function: MirrorFunction,
+    Map     : MirrorMap,
+    Number  : MirrorNumber,
+    RegExp  : MirrorRegExp,
+    Set     : MirrorSet,
+    String  : MirrorString,
+    WeakMap : MirrorWeakMap
+  };
+
+  var _Null        = new MirrorValue(null, 'object'),
+      _Undefined   = new MirrorValue(undefined, 'undefined'),
+      _True        = new MirrorValue(true, 'true'),
+      _False       = new MirrorValue(false, 'false'),
+      _NaN         = new MirrorValue(NaN, 'NaN'),
+      _Infinity    = new MirrorValue(Infinity, 'Infinity'),
+      _NegInfinity = new MirrorValue(-Infinity, '-Infinity'),
+      _Zero        = new MirrorValue(0, '0'),
+      _NegZero     = new MirrorValue(-0, '-0'),
+      _One         = new MirrorValue(1, '1'),
+      _NegOne      = new MirrorValue(-1, '-1'),
+      _Empty       = new MirrorValue('', "''");
+
+  var numbers = create(null),
+      strings = create(null);
+
+
+  function introspect(subject){
+    switch (typeof subject) {
+      case 'undefined': return _Undefined;
+      case 'boolean': return subject ? _True : _False;
+      case 'string':
+        if (subject === '') {
+          return _Empty
+        } else if (subject.length < 20) {
+          if (subject in strings) {
+            return strings[subject];
+          } else {
+            return strings[subject] = new MirrorStringValue(subject);
+          }
+        } else {
+          return new MirrorStringValue(subject);
+        }
+      case 'number':
+        if (subject !== subject) {
+          return _NaN;
+        }
+        switch (subject) {
+          case Infinity: return _Infinity;
+          case -Infinity: return _NegInfinity;
+          case 0: return 1 / subject === -Infinity ? _NegZero : _Zero;
+          case 1: return _One;
+          case -1: return _NegOne;
+        }
+        if (subject in numbers) {
+          return numbers[subject];
+        } else {
+          return numbers[subject] = new MirrorNumberValue(subject);
+        }
+      case 'object':
+        if (subject === null) {
+          return _Null;
+        }
+        if (subject instanceof Mirror) {
+          return subject;
+        }
+        if (subject.__introspected) {
+          return subject.__introspected;
+        }
+        if (!subject.isProxy) {
+          var Ctor = subject.NativeBrand in brands
+                    ? brands[subject.NativeBrand]
+                    : 'Call' in subject
+                      ? MirrorFunction
+                      : MirrorObject;
+
+          return new Ctor(subject);
+        } else {
+          return new MirrorProxy(subject);
+        }
+    }
+  }
+
+
+
+  function Renderer(handlers){
+    if (handlers) {
+      for (var k in this) {
+        if (k in handlers) {
+          this[k] = handlers[k];
+        }
+      }
+    }
+  }
+
+  Renderer.prototype = {
+    Unknown: function(mirror){
+      return 'unknown!?';
+    },
+    BooleanValue: function(mirror){
+      return mirror.label();
+    },
+    StringValue: function(mirror){
+      return utility.quotes(mirror.subject);
+    },
+    NumberValue: function(mirror){
+      var label = mirror.label();
+      return label === 'number' ? mirror.subject : label;
+    },
+    UndefinedValue: function(mirror){
+      return mirror.label();
+    },
+    NullValue: function(mirror){
+      return mirror.label();
+    },
+    Array: function(mirror){
+      return mirror.label();
+    },
+    Boolean: function(mirror){
+      return mirror.label();
+    },
+    Date: function(mirror){
+      return mirror.label();
+    },
+    Function: function(mirror){
+      return mirror.label();
+    },
+    Map: function(mirror){
+      return mirror.label();
+    },
+    Object: function(mirror){
+      return mirror.label();
+    },
+    Number: function(mirror){
+      return mirror.label();
+    },
+    RegExp: function(mirror){
+      return mirror.label();
+    },
+    Set: function(mirror){
+      return mirror.label();
+    },
+    String: function(mirror){
+      return mirror.label();
+    },
+    WeakMap: function(mirror){
+      return mirror.label();
+    }
+  };
+
+  define(Renderer.prototype, [
+    function render(subject){
+      var mirror = introspect(subject);
+      return this[mirror.kind](mirror);
+    }
+  ]);
+
+
+  var renderer = new Renderer;
+
+  function render(o){
+    return renderer.render(o);
+  }
+
+  function createRenderer(handlers){
+    return new Renderer(handlers);
+  }
+
+  function isMirror(o){
+    return o instanceof Mirror;
+  }
+
+  exports.createRenderer = createRenderer;
+  exports.basicRenderer = render;
+  exports.introspect = introspect;
+  exports.isMirror = isMirror;
+  exports.Renderer = Renderer;
+
+  return exports;
+})(typeof module !== 'undefined' ? module.exports : {});
+
+
+return (function(Continuum){
+  function continuum(listener){
+    return new Continuum(listener);
+  }
+
+  continuum.debug = exports.debug;
+  continuum.Continuum = Continuum;
+
+  return continuum;
+})(exports.runtime.Continuum);
 
 }).apply(this, function(){
   var exports = {};
