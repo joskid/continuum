@@ -9,7 +9,8 @@ function _(s){
 var sides = { left: 0, top: 1, right: 2, bottom: 3 },
     vert = { near: 'top', far: 'bottom', size: 'height' },
     horz = { near: 'left', far: 'right', size: 'width' },
-    eventOptions = { bubbles: true, cancelable: true };
+    eventOptions = { bubbles: true, cancelable: true },
+    opposites = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
 
 
 
@@ -89,6 +90,7 @@ PanelOptions.prototype = {
   orient: 'vertical',
   mainSize: 'auto',
   crossSize: 'auto',
+  splitter: true,
   name: null,
   label: null,
   left: null,
@@ -131,7 +133,6 @@ function Panel(parent, options){
         self.crossCalcSize = document.body.offsetHeight;
       }
     };
-    rootResize();
   }
 
 
@@ -147,14 +148,21 @@ function Panel(parent, options){
     this.content = null;
   }
 
+
   if (parent) {
-    parent.mount(this);
+    if (options.splitter) {
+      parent.mount(this);
+
   } else {
     document.body.appendChild(this.element);
     window.addEventListener('resize', function(){
       rootResize();
       self.readjust();
     }, true);
+    setTimeout(function(){
+      rootResize();
+      self.readjust();
+    }, 10);
   }
 
   this.forEach(function(_, side){
@@ -166,6 +174,11 @@ function Panel(parent, options){
 }
 
 inherit(Panel, Component, [
+  function opposite(panel){
+    if (panel && panel.mount) {
+      return this[opposites[panel.mount]]
+    }
+  },
   function mount(panel){
     if (panel.parent === this) {
       var side = this.find(panel);
@@ -698,7 +711,7 @@ var main = new Panel(null, {
     label: 'Input',
     anchor: 'bottom',
     name: 'input',
-    mainSize: 200,
+    mainSize: 35,
     content: input
   }
 });
