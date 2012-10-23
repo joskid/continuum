@@ -150,7 +150,6 @@ function Panel(parent, options){
 
 
   if (parent) {
-    if (options.splitter) {
       parent.mount(this);
 
   } else {
