@@ -92,6 +92,7 @@ PanelOptions.prototype = {
   mainSize: 'auto',
   crossSize: 'auto',
   name: null,
+  label: null,
   left: null,
   top: null,
   right: null,
@@ -104,6 +105,12 @@ function Panel(parent, options){
   Component.call(this, 'div');
   options = new PanelOptions(options);
 
+  if (options.label) {
+    var label = _('h2');
+    label.textContent = options.label;
+    label.className = this.ns + 'panel-label'
+    this.element.appendChild(label);
+  }
   this.anchor = parent ? options.anchor : null;
   this.orient = options.orient;
   this.mainSize = options.mainSize;
@@ -262,13 +269,26 @@ inherit(Panel, Component, [
 ]);
 
 
+function InputBoxOptions(o){
+  if (o)
+    for (var k in this)
+      if (k in o)
+        this[k] = o[k];
+}
+
+InputBoxOptions.prototype = {
+  hint: '',
+  spellcheck: false,
+  'class': 'input',
+  tag: 'textarea'
+};
 
 
-
-function InputBox(){
-  Component.call(this, 'textarea');
-  this.element.spellcheck = false;
-  this.addClass('input');
+function InputBox(options){
+  options = new InputBoxOptions(options);
+  Component.call(this, options.tag);
+  this.element.spellcheck = options.spellcheck;
+  this.addClass(options['class']);
 
   var keyboard = new Keyboard(this.element),
       self = this;
@@ -289,6 +309,13 @@ function InputBox(){
     e.preventDefault();
     self.next();
   });
+
+  if (options.hint) {
+    this.element.value = options.hint;
+    this.once('focus', function(e){
+      this.element.value = '';
+    });
+  }
 }
 
 inherit(InputBox, Component, [
@@ -645,33 +672,24 @@ var input = new InputBox,
 
 root.className = 'root';
 
-input.on('entry', function(evt){
-  if (root.firstChild) {
-    root.removeChild(root.firstChild);
-  }
-  var result = renderer.render(context.eval(evt.value));
-  root.appendChild(result.element);
-  if (result.tree) {
-    result.tree.expand();
-  }
-  console.log(result);
-});
-
 
 var main = new Panel(null, {
   anchor: 'full',
   name: 'container',
   left: {
+    label: 'stdout',
     name: 'output',
     mainSize: 250,
     content: stdout
   },
   right: {
+    label: 'Inspector',
     name: 'view',
     mainSize: 'auto',
     content: root
   },
   bottom: {
+    label: 'Input',
     anchor: 'bottom',
     name: 'input',
     mainSize: 200,
@@ -679,7 +697,19 @@ var main = new Panel(null, {
   }
 });
 
-console.log(main);
+
+function runInContext(code, context){
+  if (root.firstChild) {
+    root.removeChild(root.firstChild);
+  }
+  var result = renderer.render(context.eval(code));
+  root.appendChild(result.element);
+  if (result.tree) {
+    result.tree.expand();
+  }
+  return result;
+}
+
 
 var context = new Continuum;
 context.realm.on('write', stdout.append.bind(stdout));
@@ -687,9 +717,13 @@ context.realm.on('clear', stdout.clear.bind(stdout));
 context.realm.on('backspace', stdout.backspace.bind(stdout));
 
 
+input.on('entry', function(evt){
+  runInContext(evt.value, context);
+});
 
+console.log(runInContext('this', context));
 
-
+input.element.focus();
 
 })(this, continuum.Continuum, continuum.constants, continuum.utility, continuum.debug);
 delete continuum

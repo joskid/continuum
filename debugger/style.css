@@ -1,8 +1,16 @@
+@import 'http://fonts.googleapis.com/css?family=PT+Mono';
+@import 'http://fonts.googleapis.com/css?family=Hammersmith+One';
+
 html, body
-{ width: 100%; height: 100%; margin: 0; }
+{ width: 100%; height: 100%; margin: 0; font: 14px 'PT Mono', monospace; }
+
+h1
+{ margin: 0; padding: 10px; font-size: 30px; font-family: 'Hammersmith One'; background: #046; color: #adf; text-shadow: 3px 3px 1px #024 }
+h2
+{ font-family: 'Hammersmith One'; }
 
 #container
-{ font: 14px monospace; }
+{ }
 
 .ƒconsole
 {  background: #111; white-space: pre; color: #fff; padding: 6px; overflow: hidden; height: 100% }
@@ -11,28 +19,38 @@ html, body
 { border-top: 1px solid #000; background: #333; }
 #input textarea
 { display: block; border: 0; background: none; position: absolute; top: 6px; right: 6px; bottom: 6px; left: 6px;
-  resize: none; font: inherit; color: #fff; margin: 0; overflow: hidden; }
+  resize: none; font: 16px 'PT Mono', monospace; color: #fff; margin: 0; overflow: hidden; text-shadow: 1px 1px 1px #000 }
 
 #input textarea:focus
 { outline: 0; }
 
 .root
-{ background: #000; color: #fff; width: 100%; height: 100%; overflow-y: auto }
+{ background: #000; color: #fff; width: 100%; height: 100%; overflow-y: auto; padding: 15px; }
 
-.ƒpanel
-{ position: absolute; min-height: 100px; min-width: 100px; }
-.ƒpanel > *
-{ box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box }
-.ƒroot { top: 0; left: 0; right: 0; bottom: 0; }
-.ƒvertical > .ƒtop    { left: 0; right: 0; top: 0; }
-.ƒvertical > .ƒleft   { left: 0 }
-.ƒvertical > .ƒbottom { left: 0; right: 0; bottom: 0; }
-.ƒvertical > .ƒright  { right: 0 }
+.ƒroot { top: 50px; left: 0; right: 0; bottom: 0; }
+  .ƒpanel
+  { position: absolute; min-height: 100px; min-width: 100px; }
+    .ƒpanel > *
+    { box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box }
+    .ƒvertical > .ƒtop    { left: 0; right: 0; top: 0; }
+    .ƒvertical > .ƒleft   { left: 0 }
+    .ƒvertical > .ƒbottom { left: 0; right: 0; bottom: 0; }
+    .ƒvertical > .ƒright  { right: 0 }
 
-.ƒhorizontal > .ƒtop    { top: 0 }
-.ƒhorizontal > .ƒleft   { top: 0; bottom: 0; left: 0; }
-.ƒhorizontal > .ƒbottom { bottom: 0 }
-.ƒhorizontal > .ƒright  { top: 0; bottom: 0; right: 0; }
+    .ƒhorizontal > .ƒtop    { top: 0 }
+    .ƒhorizontal > .ƒleft   { top: 0; bottom: 0; left: 0; }
+    .ƒhorizontal > .ƒbottom { bottom: 0 }
+    .ƒhorizontal > .ƒright  { top: 0; bottom: 0; right: 0; }
+
+      .ƒpanel-label
+      { font-size: 24px; position: absolute; margin: 0; color: #9ff; right: 15px; top: 15px;
+        text-shadow: 1px 1px 0 #266, 0 0 0 #0ff; opacity: .1; -webkit-transition: .3s; -moz-transition: .3s; transition: .3s }
+      .ƒpanel:hover > .ƒpanel-label
+      { opacity: 1; text-shadow: 1px 1px 0 #266, 0 0 15px #0ff; }
+      .ƒtop > .ƒpanel-label
+      { bottom: 15px; }
+      .ƒbottom > .ƒpanel-label
+      { top: 15px; }
 
 .ƒtree
 { margin: 0; padding: 0 0 0 10px; list-style: none; display: none; }
