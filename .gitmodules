@@ -1,0 +1,3 @@
+[submodule "debugger/Keyboard"]
+	path = debugger/Keyboard
+	url = ../Keyboard.git
