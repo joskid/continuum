@@ -1,4 +1,4 @@
-(function(global, Continuum, constants, utility, debug){
+(function(global, Realm, constants, utility, debug){
 var inherit = utility.inherit,
     create = utility.create,
     assign = utility.assign,
@@ -833,7 +833,7 @@ function Proto(mirror){
   Component.call(this, 'li');
   this.mirror = mirror;
   this.addClass('property');
-  this.key = new Key('[[Proto]]');
+  this.key = new Key('__proto__');
   this.key.addClass('Proto');
   this.key.addClass(this.attrs);
   this.append(this.key);
@@ -1093,11 +1093,11 @@ var main = new Panel(null, {
 });
 
 
-function runInContext(code, context){
+function runInContext(code, realm){
   if (root.firstChild) {
     root.removeChild(root.firstChild);
   }
-  var result = renderer.render(context.eval(code));
+  var result = renderer.render(realm.eval(code));
   root.appendChild(result.element);
   if (result.tree) {
     result.tree.expand();
@@ -1106,20 +1106,20 @@ function runInContext(code, context){
 }
 
 
-var context = new Continuum;
-context.realm.on('write', stdout.append.bind(stdout));
-context.realm.on('clear', stdout.clear.bind(stdout));
-context.realm.on('backspace', stdout.backspace.bind(stdout));
+var realm = new Realm;
+realm.on('write', stdout.append.bind(stdout));
+realm.on('clear', stdout.clear.bind(stdout));
+realm.on('backspace', stdout.backspace.bind(stdout));
 
 
 input.on('entry', function(evt){
-  runInContext(evt.value, context);
+  runInContext(evt.value, realm);
 });
 
-console.log(runInContext('this', context));
+console.log(runInContext('this', realm));
 
 input.element.focus();
 
-})(this, continuum.Continuum, continuum.constants, continuum.utility, continuum.debug);
+})(this, continuum.Realm, continuum.constants, continuum.utility, continuum.debug);
 delete continuum
 

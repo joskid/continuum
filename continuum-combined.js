@@ -10726,6 +10726,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     hide(this, 'Realm');
     hide(this, 'call');
   }
+
   inherit($NativeFunction, $Function, {
     Native: true,
   }, [
@@ -12108,57 +12109,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
 
 
-
-  function Realm(){
-    this.natives = new Intrinsics(this);
-    this.intrinsics = this.natives.bindings;
-    this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
-    this.global.NativeBrand = BRANDS.GlobalObject;
-    this.globalEnv = new GlobalEnvironmentRecord(this.global);
-
-    this.intrinsics.FunctionProto.Realm = this;
-    this.intrinsics.FunctionProto.Scope = this.globalEnv;
-    this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
-
-    this.active = false;
-    Emitter.call(this);
-    hide(this.intrinsics.FunctionProto, 'Realm');
-    hide(this.intrinsics.FunctionProto, 'Scope');
-    hide(this.natives, 'realm');
-
-    for (var k in atoms) {
-      defineDirect(this.global, k, atoms[k], ___);
-    }
-    for (var k in natives) {
-      this.natives.binding({ name: k, call: natives[k] });
-    }
-  }
-
-  var realm = null,
-      global = null,
-      context = null,
-      intrinsics = null;
-
-  inherit(Realm, Emitter, [
-    function activate(){
-      if (realm !== this) {
-        if (realm) {
-          realm.active = false;
-          realm.emit('deactivate');
-        }
-        realm = this;
-        global = operators.global = this.global;
-        intrinsics = this.intrinsics;
-        this.active = true;
-        this.emit('activate');
-      }
-    },
-    function prepareContext(code){
-      ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, code));
-    }
-  ]);
-
-
   function Script(ast, code, name, native){
     if (ast instanceof Script)
       return ast;
@@ -12214,32 +12164,71 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  // ###################
-  // ### Interpreter ###
-  // ###################
-
   var builtins;
+  var realm = null,
+      global = null,
+      context = null,
+      intrinsics = null;
 
-  function Continuum(listener){
-    var self = this;
+
+  function Realm(listener){
     Emitter.call(this);
-    listener && this.on('*', listener);
+    this.state = 'initializing';
+    this.active = false;
+    this.scripts = [];
+    this.natives = new Intrinsics(this);
+    this.intrinsics = this.natives.bindings;
+    this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
+    this.global.NativeBrand = BRANDS.GlobalObject;
+    this.globalEnv = new GlobalEnvironmentRecord(this.global);
 
-    define(this, {
-      scripts: [],
-      realm: new Realm
-    });
+    this.intrinsics.FunctionProto.Realm = this;
+    this.intrinsics.FunctionProto.Scope = this.globalEnv;
+    this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
+    hide(this.intrinsics.FunctionProto, 'Realm');
+    hide(this.intrinsics.FunctionProto, 'Scope');
+    hide(this.natives, 'realm');
 
-    this.state = 'idle';
+    for (var k in atoms) {
+      defineDirect(this.global, k, atoms[k], ___);
+    }
+
+    for (var k in natives) {
+      this.natives.binding({ name: k, call: natives[k] });
+    }
+
+
     if (!builtins) {
       builtins = require('../builtins');
     }
+
+    listener && this.on('*', listener);
+
     for (var k in builtins) {
-      this.eval(new NativeScript(builtins[k], k+'.js'), true);
+      this.eval(new NativeScript(builtins[k], k+'.js'), !listener);
     }
+
+    this.state = 'idle';
   }
 
-  inherit(Continuum, Emitter, [
+
+  inherit(Realm, Emitter, [
+    function activate(){
+      if (realm !== this) {
+        if (realm) {
+          realm.active = false;
+          realm.emit('deactivate');
+        }
+        realm = this;
+        global = operators.global = this.global;
+        intrinsics = this.intrinsics;
+        this.active = true;
+        this.emit('activate');
+      }
+    },
+    function prepareContext(code){
+      ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, code));
+    },
     function resume(){
       if (this.executing) {
         this.emit('resume');
@@ -12247,7 +12236,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function run(thunk){
-      this.realm.activate();
+      this.activate();
       this.executing = thunk;
       this.state = 'executing';
       this.emit('executing', thunk);
@@ -12268,19 +12257,22 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           self = this;
 
       this.scripts.push(script);
+      ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, script.code));
+
       if (!quiet) {
         script.thunk.log();
         script.thunk.on('op', function(op){
           self.emit('op', op);
         });
       }
-      ExecutionContext.push(new ExecutionContext(null, this.realm.globalEnv, this.realm, script.code));
+
       TopLevelDeclarationInstantiation(script.code);
       return this.run(script.thunk);
-    }
+    },
   ]);
 
-  exports.Continuum = Continuum;
+
+  exports.Realm = Realm;
   return exports;
 })((0,eval)('this'), typeof module !== 'undefined' ? module.exports : {});
 
@@ -12988,24 +12980,26 @@ exports.builtins.builtins = "(function(global){\n  $__defineDirect(global, 'stdo
 
 
 
-return (function(Continuum){
+return (function(Realm){
   function continuum(listener){
-    return new Continuum(listener);
+    return new Realm(listener);
   }
 
   continuum.debug = exports.debug;
   continuum.utility = exports.utility;
   continuum.constants = exports.constants;
-  continuum.Continuum = Continuum;
+  continuum.Realm = Realm;
 
   return continuum;
-})(exports.runtime.Continuum);
+})(exports.runtime.Realm);
 
 }).apply(this, function(){
   var exports = { builtins: {} };
+
   function require(request){
     request = request.replace(/^\.{0,2}\//, '');
     return exports[request];
   }
+
   return [exports, require];
 }());

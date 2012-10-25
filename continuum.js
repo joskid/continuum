@@ -1,11 +1,10 @@
-var Continuum = require('./engine/runtime').Continuum;
+var Realm = require('./engine/runtime').Realm;
 
 module.exports = continuum;
 
 function continuum(listener){
-  return new Continuum(listener);
+  return new Realm(listener);
 }
 
 continuum.debug = require('./engine/debug');
-continuum.Continuum = Continuum;
-
+continuum.Realm = Realm;
