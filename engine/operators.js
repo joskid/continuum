@@ -577,6 +577,7 @@ var operators = (function(exports){
     }
   }
 
+  var LT, GT, LTE, GTE;
   void function(creatorComparer){
     exports.LT  = LT  = creatorComparer(true, false);
     exports.GT  = GT  = creatorComparer(false, false);
