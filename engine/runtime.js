@@ -26,6 +26,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   var ThrowException   = errors.ThrowException,
+      MakeException    = errors.MakeException,
       Completion       = errors.Completion,
       AbruptCompletion = errors.AbruptCompletion;
 
@@ -498,6 +499,18 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
+  function CreateThrowTypeError(realm){
+    var thrower = create($NativeFunction.prototype);
+    $Object.call(thrower, realm.intrinsics.FunctionProto);
+    thrower.call = function(){ return ThrowException('strict_poison_pill') };
+    defineDirect(thrower, 'length', 0, ___);
+    defineDirect(thrower, 'name', 'ThrowTypeError', ___);
+    thrower.Realm = realm;
+    thrower.Extensible = false;
+    thrower.Strict = true;
+    hide(thrower, 'Realm');
+    return new Accessor(thrower);
+  }
 
   // ## CreateStrictArgumentsObject
 
@@ -507,8 +520,8 @@ var runtime = (function(GLOBAL, exports, undefined){
       defineDirect(obj, i+'', args[i], ECW);
     }
 
-    //defineDirect(obj, 'caller', intrinsics.ThrowTypeError, __A);
-    //defineDirect(obj, ARGUMENTS, intrinsics.ThrowTypeError, __A);
+    defineDirect(obj, 'arguments', intrinsics.ThrowTypeError, __A);
+    defineDirect(obj, 'caller', intrinsics.ThrowTypeError, __A);
     return obj;
   }
 
@@ -618,7 +631,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       var ao = CreateStrictArgumentsObject(args);
       status = ArgumentBindingInitialization(params, ao, env);
     } else {
-      var ao = CreateMappedArgumentsObject(names, env, args, func)
+      var ao = env.arguments = CreateMappedArgumentsObject(names, env, args, func)
       status = ArgumentBindingInitialization(params, ao);
     }
 
@@ -1557,21 +1570,27 @@ var runtime = (function(GLOBAL, exports, undefined){
     this.Realm = realm;
     this.Scope = scope;
     this.Code = code;
-    if (holder !== undefined)
+    if (holder !== undefined) {
       this.Home = holder;
+    }
     if (method) {
       this.MethodName = name;
-    } else if (typeof name === 'string') {
-      defineDirect(this, 'name', name, ___);
+    }
+
+    if (kind === NORMAL && strict) {
+      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
+      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
+    } else {
+      defineDirect(this, 'arguments', null, ___);
+      defineDirect(this, 'caller', null, ___);
     }
 
     defineDirect(this, 'length', params.ExpectedArgumentCount, ___);
-    if (kind === NORMAL && strict) {
-      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, ARGUMENTS, intrinsics.ThrowTypeError, __A);
-    } else {
-      defineDirect(this, 'caller', null, ___);
+
+    if (typeof name === 'string' && kind !== ARROW) {
+      defineDirect(this, 'name', name, ___);
     }
+
     hide(this, 'Realm');
     hide(this, 'Code');
     hide(this, 'Scope');
@@ -1619,11 +1638,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         var local = NewMethodEnvironment(this, receiver);
       }
 
-      if (!this.Strict) {
-        defineDirect(this, 'caller', context.callee, ___);
-      }
-      ExecutionContext.push(new ExecutionContext(context, local, this.Realm, this.Code, this, isConstruct));
+      var caller = context.callee || null;
 
+      ExecutionContext.push(new ExecutionContext(context, local, this.Realm, this.Code, this, isConstruct));
       var status = FunctionDeclarationInstantiation(this, args, local);
       if (status && status.Abrupt) {
         ExecutionContext.pop();
@@ -1634,15 +1651,22 @@ var runtime = (function(GLOBAL, exports, undefined){
         this.thunk = new Thunk(this.Code);
         hide(this, 'thunk');
       }
-      var result = this.thunk.run(context);
-      ExecutionContext.pop();
+
       if (!this.Strict) {
+        defineDirect(this, 'arguments', local.arguments, ___);
+        defineDirect(this, 'caller', caller, ___);
+        local.arguments = null;
+      }
+
+      var result = this.thunk.run(context);
+
+      if (!this.Strict) {
+        defineDirect(this, 'arguments', null, ___);
         defineDirect(this, 'caller', null, ___);
       }
-      if (result && result.type === Return) {
-        return result.Value
-      }
-      return result;
+
+      ExecutionContext.pop();
+      return result && result.type === Return ? result.Value : result;
     },
     function Construct(args){
       var prototype = this.Get('prototype');
@@ -1694,13 +1718,16 @@ var runtime = (function(GLOBAL, exports, undefined){
   ]);
 
 
+
+
   function $NativeFunction(options){
     if (options.proto === undefined)
       options.proto = intrinsics.FunctionProto;
     $Object.call(this, options.proto);
-    defineDirect(this, 'name', options.name, ___);
-    defineDirect(this, 'length', options.length, ___);
+    defineDirect(this, 'arguments', null, ___);
     defineDirect(this, 'caller', null, ___);
+    defineDirect(this, 'length', options.length, ___);
+    defineDirect(this, 'name', options.name, ___);
     this.call = options.call;
     if (options.construct) {
       this.construct = options.construct;
@@ -1735,8 +1762,8 @@ var runtime = (function(GLOBAL, exports, undefined){
     this.TargetFunction = target;
     this.BoundThis = boundThis;
     this.BoundArgs = boundArgs;
-    //defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-    //defineDirect(this, ARGUMENTS, intrinsics.ThrowTypeError, __A);
+    defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
+    defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
     defineDirect(this, 'length', getDirect(target, 'length'));
   }
 
@@ -2136,7 +2163,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       } else {
         var val = $Object.prototype.Get.call(this, key);
         if (key === 'caller' && IsCallable(val) && val.Strict) {
-          return ThrowError('strict_poison_pill');
+          return ThrowException('strict_poison_pill');
         }
         return val;
       }
@@ -2153,7 +2180,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     function DefineOwnProperty(key, desc, strict){
       if (!DefineOwn.call(this, key, desc, false) && strict) {
-        return ThrowError('strict_lhs_assignment');
+        return ThrowException('strict_lhs_assignment');
       }
 
       if (hasOwnDirect(this.ParameterMap, key)) {
@@ -2277,7 +2304,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function DefineOwnProperty(key, desc, strict){
-      var descObj = FromGenericPropertyDescriptor(Desc);
+      var descObj = FromGenericPropertyDescriptor(desc);
       return TrapDefineOwnProperty(this, key, descObj, strict);
     },
     function HasOwnProperty(key){
@@ -2327,6 +2354,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function ProxyCall(receiver, args){}
   function ProxyConstruct(args){}
+
 
 
 
@@ -2388,7 +2416,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     function createFunction(code, name){
       var env = this.LexicalEnvironment.childScope();
+      name && env.CreateImmutableBinding(name);
       env.func = new $Function(code.Type, name, code.params, code, env, code.Strict);
+      name && env.InitializeBinding(name, env.func);
       MakeConstructor(env.func);
       return env.func;
     },
@@ -2492,7 +2522,8 @@ var runtime = (function(GLOBAL, exports, undefined){
   ]);
 
 
-  var $errors = ['EvalError',  'RangeError',  'ReferenceError',  'SyntaxError',  'TypeError',  'URIError']
+  var $errors = ['EvalError',  'RangeError',  'ReferenceError',  'SyntaxError',  'TypeError',  'URIError'];
+
 
   function Intrinsics(realm){
     DeclarativeEnvironmentRecord.call(this);
@@ -2513,13 +2544,13 @@ var runtime = (function(GLOBAL, exports, undefined){
       defineDirect(prototype, 'name', $errors[i], _CW);
       defineDirect(prototype, 'type', undefined, _CW);
       defineDirect(prototype, 'arguments', undefined, _CW);
-      defineDirect(prototype, 'type', undefined, _CW);
     }
 
     bindings.FunctionProto.FormalParameters = [];
     defineDirect(bindings.ArrayProto, 'length', 0, __W);
     defineDirect(bindings.ErrorProto, 'name', 'Error', _CW);
     defineDirect(bindings.ErrorProto, 'message', '', _CW);
+
   }
 
   inherit(Intrinsics, DeclarativeEnvironmentRecord, [
@@ -2623,6 +2654,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     markAsNative: function(fn){
       fn.Native = true;
       hide(fn, 'Native');
+    },
+    exception: function(type, args){
+      return MakeException(type, toInternalArray(args));
     },
     getPrimitiveValue: function(object){
       return object ? object.PrimitiveValue : undefined;
@@ -3086,6 +3120,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     this.intrinsics.FunctionProto.Realm = this;
     this.intrinsics.FunctionProto.Scope = this.globalEnv;
+    this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
 
     this.active = false;
     Emitter.call(this);
@@ -3153,7 +3188,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       code = decompile(ast);
     }
 
-    this.code = compile(code, { natives: true });
+    this.code = compile(code, { natives: !!native });
     this.thunk = new Thunk(this.code);
     define(this, {
       source: code,
@@ -3199,9 +3234,11 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     this.state = 'idle';
     if (!builtins) {
-      builtins = new NativeScript(require('./builtins').source, 'builtins.js');
+      builtins = require('../builtins');
     }
-    this.eval(builtins, true);
+    for (var k in builtins) {
+      this.eval(new NativeScript(builtins[k], k+'.js'), true);
+    }
   }
 
   inherit(Continuum, Emitter, [
@@ -3244,10 +3281,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       return this.run(script.thunk);
     }
   ]);
-
-  for (var k in builtins) {
-    exports[k] = builtins[k];
-  }
 
   exports.Continuum = Continuum;
   return exports;

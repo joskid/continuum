@@ -107,6 +107,9 @@ var debug = (function(exports){
         return introspect(this.props[key]);
       }
     },
+    function getInternal(name){
+      return this.subject[name];
+    },
     function getValue(key){
       return this.get(key).subject;
     },
@@ -257,8 +260,24 @@ var debug = (function(exports){
 
   inherit(MirrorFunction, MirrorObject, {
     type: 'function',
-    kind: 'Function'
-  });
+    kind: 'Function',
+  }, [
+    function getName(){
+      return this.subject.properties.name;
+    },
+    function getParams(){
+      var params = this.subject.FormalParameters;
+      if (params) {
+        var names = params.ArgNames.slice();
+        if (params.Rest) {
+          names.rest = true;
+        }
+        return names;
+      } else {
+        return [];
+      }
+    }
+  ]);
 
 
   function MirrorJSON(subject){

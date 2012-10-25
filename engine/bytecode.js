@@ -66,16 +66,6 @@ var bytecode = (function(exports){
   });
 
 
-  var collectExpectedArguments = collector({
-    Identifier: ['name'],
-    ObjectPattern: ['properties'],
-    ArrayPattern: ['items'],
-  });
-
-  function ExpectedArgumentCount(args){
-    return collectExpectedArguments(args).length;
-  }
-
   var LexicalDeclarations = (function(lexical){
     return collector({
       ClassDeclaration: lexical(true),
@@ -176,14 +166,30 @@ var bytecode = (function(exports){
     }
   ]);
 
+
+  var collectExpectedArguments = collector({
+    Identifier: true,
+    ObjectPattern: true,
+    ArrayPattern: true,
+  });
+
   function Params(params, names, rest){
     this.length = 0;
     if (params) {
       [].push.apply(this, params);
     }
     this.Rest = rest;
-    this.BoundNames = names;
-    this.ExpectedArgumentCount = ExpectedArgumentCount(this);
+    this.BoundNames = names.slice(1);
+    var args = collectExpectedArguments(this);
+    this.ExpectedArgumentCount = args.length;
+    this.ArgNames = [];
+    for (var i=0; i < args.length; i++) {
+      if (args[i].type === 'Identifier') {
+        this.ArgNames.push(args[i].name);
+      } else {
+
+      }
+    }
   }
 
   function recurse(o){

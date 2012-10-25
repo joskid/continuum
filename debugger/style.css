@@ -2,7 +2,7 @@
 @import 'http://fonts.googleapis.com/css?family=Hammersmith+One';
 
 html, body
-{ width: 100%; height: 100%; margin: 0; font: 16px 'PT Mono', monospace; overflow: hidden; }
+{ width: 100%; height: 100%; margin: 0; font: 16px monospace; overflow: hidden; }
 
 h1, h2
 { margin: 0; font-family: 'Hammersmith One'; }
@@ -21,7 +21,7 @@ h2
 { background: #333; }
   #input textarea
   { display: block; border: 0; background: none; position: absolute; top: 6px; right: 6px; bottom: 6px; left: 6px;
-    resize: none; font: 16px 'PT Mono', monospace; color: #fff; margin: 0; overflow: hidden; text-shadow: 1px 1px 1px #000 }
+    resize: none; font: 16px monospace; color: #fff; margin: 0; overflow: hidden; text-shadow: 1px 1px 1px #000 }
 
 #input textarea:focus
 { outline: 0; }
@@ -44,10 +44,10 @@ h2
     .ƒhorizontal > .ƒbottom { bottom: 0 }
     .ƒhorizontal > .ƒright  { top: 0; bottom: 0; right: 0; }
 
-    .ƒsplitter.ƒtop    { border-bottom: 5px solid #136 }
-    .ƒsplitter.ƒleft   { border-right: 5px solid #136 }
-    .ƒsplitter.ƒbottom { border-top: 5px solid #136 }
-    .ƒsplitter.ƒright  { border-left: 5px solid #136 }
+    .ƒsplitter.ƒtop    { border-bottom: 3px solid #789 }
+    .ƒsplitter.ƒleft   { border-right: 3px solid #789 }
+    .ƒsplitter.ƒbottom { border-top: 3px solid #789 }
+    .ƒsplitter.ƒright  { border-left: 3px solid #789 }
 
       .ƒpanel-label
       { position: absolute; color: #9ff; right: 8px; top: 8px; text-shadow: 1px 1px 0 #266, 0 0 0 #0ff; opacity: .1;
@@ -58,6 +58,33 @@ h2
       { bottom: 8px; }
       .ƒbottom > .ƒpanel-label
       { top: 8px; }
+
+.ƒrow-resize {cursor: row-resize }
+.ƒcol-resize {cursor: col-resize }
+
+.ƒdrag-helper
+{ position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000; }
+
+
+.ƒsplitter
+{ position: absolute; z-index: 10000; border: 0 solid hsla(200, 50%, 20%, 1);
+  box-shadow: 2px 2px 5px 0 rgba(0,0,0,.6);
+  background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+  background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+  background:         linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6)); }
+.ƒsplitter-vertical
+{ top: 0; left: 0; width: 100%; height: 5px; cursor: row-resize; border-top-width: 1px; }
+.ƒsplitter-horizontal
+{ top: 0; left: 0; width: 5px; height: 100%; cursor: col-resize; border-left-width: 1px; }
+.ƒsplitter:hover
+{ background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
+  background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
+  background:         linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8)); }
+.ƒsplitter.ƒdragging
+{ background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
+  background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
+  background:         linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1)); }
+
 
 .ƒtree
 { margin: 0; padding: 0 0 0 10px; list-style: none; display: none; }

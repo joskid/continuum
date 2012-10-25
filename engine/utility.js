@@ -451,15 +451,20 @@ var utility = (function(exports){
       return function(node){
         var items  = [];
         visit(node, function(node, parent){
-          if (!node) return CONTINUE;
+          if (!node) {
+            return CONTINUE;
+          }
           var handler = handlers[node.type];
           if (handler) {
-            if (handler === RECURSE || handler === CONTINUE) {
+            if (handler === true) {
+              items.push(node);
+            } else if (handler === RECURSE || handler === CONTINUE) {
               return handler;
             } else {
               var item = handler(node);
-              if (item !== undefined)
+              if (item !== undefined) {
                 items.push(item);
+              }
             }
           } else if (node instanceof Array) {
             return RECURSE;

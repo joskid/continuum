@@ -236,7 +236,7 @@ var thunk = (function(exports){
     }
 
     function FUNCTION(){
-      c = context.createFunction(ops[ip][1], code.lookup(ops[ip][0]) || '');
+      c = context.createFunction(ops[ip][1], code.lookup(ops[ip][0]));
       stack[sp++] = c;
       return cmds[++ip];
     }

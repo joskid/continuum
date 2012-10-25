@@ -1,19 +1,15 @@
-(function closure(global){
-  if (typeof exports !== 'undefined') {
-    return exports.source = '(function(global){\n'+(closure+'').split('\n').slice(4).join('\n') + ')(this)';
-  }
-
-  $__defineDirect(global, 'stdout', {
-    write: $__write,
-    backspace: $__backspace,
-    clear: $__clear
+(function(global){
+  %defineDirect(global, 'stdout', {
+    write: %write,
+    backspace: %backspace,
+    clear: %clear
   }, 6);
 
-  $__defineDirect(global, 'console', {
-    log: function log(){
-      for (var k in arguments) {
-        stdout.write(arguments[k] + ' ');
-      }
+  %defineDirect(global, 'console', {
+    log: function log(...args){
+      args.forEach(function(arg){
+        stdout.write(arg + ' ');
+      });
       stdout.write('\n');
     }
   }, 6);
@@ -22,53 +18,49 @@
 
   function defineMethods(obj, props){
     for (var i in props) {
-      $__defineDirect(obj, props[i].name, props[i], 6);
-      $__markAsNative(props[i]);
-      $__deleteDirect(props[i], 'prototype');
+      %defineDirect(obj, props[i].name, props[i], 6);
+      %markAsNative(props[i]);
+      %deleteDirect(props[i], 'prototype');
     }
   }
 
   function defineConstants(obj, props){
     for (var k in props) {
-      $__defineDirect(obj, k, props[k], 0);
+      %defineDirect(obj, k, props[k], 0);
     }
   }
 
 
   function setupConstructor(ctor, proto){
-    $__defineDirect(ctor, 'prototype', proto, 0);
-    $__defineDirect(ctor.prototype, 'constructor', ctor, 0);
-    $__defineDirect(global, ctor.name, ctor, 6);
-    $__markAsNative(ctor);
+    %defineDirect(ctor, 'prototype', proto, 0);
+    %defineDirect(ctor.prototype, 'constructor', ctor, 0);
+    %defineDirect(global, ctor.name, ctor, 6);
+    %markAsNative(ctor);
   }
 
 
-  $__EmptyClass = function constructor(){};
+  %EmptyClass = function constructor(){};
 
   // #############
   // ### Array ###
   // #############
 
-  function Array(n){
-    if (arguments.length === 1 && typeof n === 'number') {
-      var out = []
-      out.length = n;
+  function Array(...args){
+    if (args.length === 1 && typeof args[0] === 'number') {
+      var out = [];
+      out.length = args[0];
       return out;
     } else {
-      var out = [];
-      for (var i=0; i < arguments.length; i++) {
-        out[i] = arguments[i];
-      }
-      return out;
+      return args;
     }
   }
 
-  setupConstructor(Array, $__ArrayProto);
+  setupConstructor(Array, %ArrayProto);
 
 
   defineMethods(Array, [
     function isArray(array){
-      return $__getNativeBrand(array) === 'Array';
+      return %getNativeBrand(array) === 'Array';
     },
     function from(iterable){
       var out = [];
@@ -89,16 +81,16 @@
   defineMethods(Array.prototype, [
     function filter(callback, receiver) {
       if (this == null) {
-        throw new TypeError("called_on_null_or_undefined", "Array.prototype.filter");
+        throw %exception("called_on_null_or_undefined", ["Array.prototype.filter"]);
       }
 
-      var array = $__ToObject(this),
-          length = $__ToUint32(this.length);
+      var array = %ToObject(this),
+          length = %ToUint32(this.length);
 
       if (receiver == null) {
         receiver = this;
       } else if (typeof receiver !== 'object') {
-        receiver = $__ToObject(receiver);
+        receiver = %ToObject(receiver);
       }
 
       var result = [],
@@ -107,7 +99,7 @@
       for (var i = 0; i < length; i++) {
         if (i in array) {
           var element = array[i];
-          if ($__callFunction(callback, receiver, [element, i, array])) {
+          if (%callFunction(callback, receiver, [element, i, array])) {
             result[count++] = element;
           }
         }
@@ -116,18 +108,26 @@
       return result;
     },
     function forEach(callback, context){
-      context = context || this;
+      if (arguments.length === 1) {
+        context = this;
+      } else {
+        context = %ToObject(this);
+      }
       for (var i=0; i < this.length; i++) {
-        if ($__hasOwnDirect(this, i)) {
+        if (%hasOwnDirect(this, i)) {
           callback.call(context, this[i], i, this);
         }
       }
     },
     function map(callback, context){
       var out = [];
-      context = context || this;
+      if (arguments.length === 1) {
+        context = this;
+      } else {
+        context = %ToObject(this);
+      }
       for (var i=0; i < this.length; i++) {
-        if ($__hasOwnDirect(this, i)) {
+        if (%hasOwnDirect(this, i)) {
           out[i] = callback.call(context, this[i], i, this);
         }
       }
@@ -135,7 +135,7 @@
     },
     function reduce(callback, initial){
       var index = 0;
-      if (initial === undefined) {
+      if (arguments.length === 1) {
         initial = this[0];
         index++;
       }
@@ -156,7 +156,7 @@
       if (arguments.length === 0) {
         joiner = ',';
       } else {
-        joiner = $__ToString(joiner);
+        joiner = %ToString(joiner);
       }
 
       len--;
@@ -166,12 +166,12 @@
 
       return out + this[i];
     },
-    function push(){
+    function push(...args){
       var len = this.length,
-          argLen = arguments.length;
+          argsLen = args.length;
 
-      for (var i=0; i < argLen; i++) {
-        this[len++] = arguments[i];
+      for (var i=0; i < argsLen; i++) {
+        this[len++] = args[i];
       }
       return len;
     },
@@ -217,28 +217,28 @@
   // ###############
 
   function Boolean(arg){
-    if ($__isConstructCall()) {
-      return $__BooleanCreate($__ToBoolean(arg));
+    if (%isConstructCall()) {
+      return %BooleanCreate(%ToBoolean(arg));
     } else {
-      return $__ToBoolean(arg);
+      return %ToBoolean(arg);
     }
   }
 
-  setupConstructor(Boolean, $__BooleanProto);
+  setupConstructor(Boolean, %BooleanProto);
 
   defineMethods(Boolean.prototype, [
     function toString(){
-      if ($__getNativeBrand(this) === 'Boolean') {
-        return $__getPrimitiveValue(this) ? 'true' : 'false';
+      if (%getNativeBrand(this) === 'Boolean') {
+        return %getPrimitiveValue(this) ? 'true' : 'false';
       } else {
-        // throw
+        throw %exception("not_generic", ["Boolean.prototype.toString"]);
       }
     },
     function valueOf(){
-      if ($__getNativeBrand(this) === 'Boolean') {
-        return $__getPrimitiveValue(this);
+      if (%getNativeBrand(this) === 'Boolean') {
+        return %getPrimitiveValue(this);
       } else {
-        // throw
+        throw %exception("not_generic", ["Boolean.prototype.valueOf"]);
       }
     }
   ]);
@@ -248,50 +248,53 @@
   // ### Date ###
   // ############
 
-  function Date(arg){
-    return $__DateCreate(arg);
+  function Date(...args){
+    return %DateCreate(args);
   }
 
-  setupConstructor(Date, $__DateProto);
+  setupConstructor(Date, %DateProto);
 
   defineMethods(Date.prototype, [
     function toString(){
-      if ($__getNativeBrand(this) === 'Date') {
-        return $__dateToString(this);
+      if (%getNativeBrand(this) === 'Date') {
+        return %dateToString(this);
       } else {
-        // throw
+        throw %exception("not_generic", ["Date.prototype.toString"]);
       }
     },
     function valueOf(){
-      if ($__getNativeBrand(this) === 'Date') {
-        return $__dateToNumber(this);
+      if (%getNativeBrand(this) === 'Date') {
+        return %dateToNumber(this);
       } else {
-        // throw
+        throw %exception("not_generic", ["Date.prototype.valueOf"]);
       }
     }
   ]);
 
-  $__wrapDateMethods(Date.prototype);
+  %wrapDateMethods(Date.prototype);
 
 
   // ################
   // ### Function ###
   // ################
 
-  function Function(){
-    return $__FunctionCreate(arguments);
+  function Function(...args){
+    return %FunctionCreate(args);
   }
 
-  $__defineDirect($__FunctionProto, 'name', 'Empty', 0);
+  %defineDirect(%FunctionProto, 'name', 'Empty', 0);
 
-  setupConstructor(Function, $__FunctionProto);
+  setupConstructor(Function, %FunctionProto);
 
   defineMethods(Function.prototype, [
-    $__call,
-    $__apply,
-    $__bind,
+    %call,
+    %apply,
+    %bind,
     function toString(){
-      return $__functionToString(this);
+      if (typeof this !== 'function') {
+        throw %exception("not_generic", ["Function.prototype.toString"]);
+      }
+      return %functionToString(this);
     }
   ]);
 
@@ -300,8 +303,8 @@
   // ### Map ###
   // ###########
 
-  function Map(arg){}
-  setupConstructor(Map, $__MapProto);
+  function Map(iterable){}
+  setupConstructor(Map, %MapProto);
 
 
   // ##############
@@ -309,13 +312,13 @@
   // ##############
 
   function Number(arg){
-    if ($__isConstructCall()) {
-      return $__NumberCreate(+arg);
+    if (%isConstructCall()) {
+      return %NumberCreate(+arg);
     } else {
-      return $__ToNumber(arg);
+      return %ToNumber(arg);
     }
   }
-  setupConstructor(Number, $__NumberProto);
+  setupConstructor(Number, %NumberProto);
 
   defineConstants(Number, {
     EPSILON: 2.220446049250313e-16,
@@ -327,7 +330,7 @@
     POSITIVE_INFINITY: Infinity
   });
 
-  function isFinite(number){
+  %isFinite = function isFinite(number){
     return typeof value === 'number'
         && value === value
         && value < Infinity
@@ -338,7 +341,7 @@
     function isNaN(number){
       return number !== number;
     },
-    isFinite,
+    %isFinite,
     function isInteger(value) {
       return typeof value === 'number'
           && value === value
@@ -353,27 +356,27 @@
 
   defineMethods(Number.prototype, [
     function toString(radix){
-      if ($__getNativeBrand(this) === 'Number') {
-        return $__numberToString(this, radix);
+      if (%getNativeBrand(this) === 'Number') {
+        return %numberToString(this, radix);
       } else {
-        // throw
+        throw %exception("not_generic", ["Number.prototype.toString"]);
       }
     },
     function valueOf(){
-      if ($__getNativeBrand(this) === 'Number') {
-        return $__getPrimitiveValue(this);
+      if (%getNativeBrand(this) === 'Number') {
+        return %getPrimitiveValue(this);
       } else {
-        // throw
+        throw %exception("not_generic", ["Number.prototype.valueOf"]);
       }
     },
     function clz() {
-      var n = +this;
-      if (!n || !isFinite(n)) {
+      var x = +this;
+      if (!x || !isFinite(x)) {
         return 32;
       } else {
-        n = n < 0 ? n + 1 | 0 : n | 0;
-        n -= ((n / 0x100000000) | 0) * 0x100000000;
-        return 32 - n.toString(2).length;
+        x = x < 0 ? x + 1 | 0 : x | 0;
+        x -= ((x / 0x100000000) | 0) * 0x100000000;
+        return 32 - x.toString(2).length;
       }
     }
   ]);
@@ -384,27 +387,29 @@
   // ##############
 
   function Object(obj){
-    if ($__isConstructCall() || obj == null) {
+    if (%isConstructCall()) {
       return this;
+    } else if (obj == null) {
+      return {};
     } else {
-      return $__ToObject(obj);
+      return %ToObject(obj);
     }
   }
 
-  setupConstructor(Object, $__ObjectProto);
+  setupConstructor(Object, %ObjectProto);
 
 
   defineMethods(Object, [
-    $__keys,
-    $__create,
-    $__isExtensible,
-    $__getPrototypeOf,
-    $__defineProperty,
-    $__defineProperties,
-    $__getPropertyNames,
-    $__getOwnPropertyNames,
-    $__getPropertyDescriptor,
-    $__getOwnPropertyDescriptor
+    %keys,
+    %create,
+    %isExtensible,
+    %getPrototypeOf,
+    %defineProperty,
+    %defineProperties,
+    %getPropertyNames,
+    %getOwnPropertyNames,
+    %getPropertyDescriptor,
+    %getOwnPropertyDescriptor
   ]);
 
   defineMethods(Object.prototype, [
@@ -414,18 +419,18 @@
       } else if (this === null) {
         return '[object Null]';
       } else {
-        return $__objectToString(this);
+        return %objectToString(this);
       }
     },
     function toLocaleString(){
       return this.toString();
     },
     function valueOf(){
-      return $__ToObject(this);
+      return %ToObject(this);
     },
-    $__hasOwnProperty,
-    $__isPrototypeOf,
-    $__propertyIsEnumerable
+    %hasOwnProperty,
+    %isPrototypeOf,
+    %propertyIsEnumerable
   ]);
 
 
@@ -433,19 +438,19 @@
   // ### RegExp ###
   // ##############
 
-  function RegExp(arg){
-    return $__RegExpCreate(''+arg);
+  function RegExp(pattern){
+    return %RegExpCreate(%ToString(pattern));
   }
 
-  setupConstructor(RegExp, $__RegExpProto);
+  setupConstructor(RegExp, %RegExpProto);
 
 
   // ###########
   // ### Set ###
   // ###########
 
-  function Set(arg){}
-  setupConstructor(Set, $__SetProto);
+  function Set(iterable){}
+  setupConstructor(Set, %SetProto);
 
 
 
@@ -453,51 +458,51 @@
   // ### String ###
   // ##############
 
-  function String(arg){
-    arg = arguments.length ? $__ToString(arg) : '';
-    if ($__isConstructCall()) {
-      return $__StringCreate(arg);
+  function String(string){
+    string = arguments.length ? %ToString(string) : '';
+    if (%isConstructCall()) {
+      return %StringCreate(string);
     } else {
-      return arg;
+      return string;
     }
   }
 
-  setupConstructor(String, $__StringProto);
+  setupConstructor(String, %StringProto);
 
   defineMethods(String.prototype, [
     function toString(){
-      if ($__getNativeBrand(this) === 'String') {
-        return $__getPrimitiveValue(this);
+      if (%getNativeBrand(this) === 'String') {
+        return %getPrimitiveValue(this);
       } else {
-        // throw
+        throw %exception("not_generic", ["String.prototype.toString"]);
       }
     },
     function valueOf(){
-      if ($__getNativeBrand(this) === 'String') {
-        return $__getPrimitiveValue(this);
+      if (%getNativeBrand(this) === 'String') {
+        return %getPrimitiveValue(this);
       } else {
-        // throw
+        throw %exception("not_generic", ["String.prototype.valueOf"]);
       }
     },
   ]);
 
 
-  $__wrapStringMethods(String.prototype);
+  %wrapStringMethods(String.prototype);
 
 
   // ###############
   // ### WeakMap ###
   // ###############
 
-  function WeakMap(arg){}
-  setupConstructor(WeakMap, $__WeakMapProto);
+  function WeakMap(iterable){}
+  setupConstructor(WeakMap, %WeakMapProto);
 
 
 
   function Error(message){
     this.message = message;
   }
-  setupConstructor(Error, $__ErrorProto);
+  setupConstructor(Error, %ErrorProto);
 
   defineMethods(Error.prototype, [
     function toString(){
@@ -508,58 +513,54 @@
   function EvalError(message){
     this.message = message;
   }
-  setupConstructor(EvalError, $__EvalErrorProto);
+  setupConstructor(EvalError, %EvalErrorProto);
 
   function RangeError(message){
     this.message = message;
   }
-  setupConstructor(RangeError, $__RangeErrorProto);
+  setupConstructor(RangeError, %RangeErrorProto);
 
   function ReferenceError(message){
     this.message = message;
   }
-  setupConstructor(ReferenceError, $__ReferenceErrorProto);
+  setupConstructor(ReferenceError, %ReferenceErrorProto);
 
   function SyntaxError(message){
     this.message = message;
   }
-  setupConstructor(SyntaxError, $__SyntaxErrorProto);
+  setupConstructor(SyntaxError, %SyntaxErrorProto);
 
   function TypeError(message){
     this.message = message;
   }
-  setupConstructor(TypeError, $__TypeErrorProto);
+  setupConstructor(TypeError, %TypeErrorProto);
 
   function URIError(message){
     this.message = message;
   }
-  setupConstructor(URIError, $__URIErrorProto);
+  setupConstructor(URIError, %URIErrorProto);
 
 
-  $__defineDirect(global, 'Math', $__MathCreate(), 6);
-  $__defineDirect(global, 'JSON', $__JSONCreate(), 6);
+  %defineDirect(global, 'Math', %MathCreate(), 6);
+  %defineDirect(global, 'JSON', %JSONCreate(), 6);
 
 
   defineMethods(global, [
-    $__parseInt,
-    $__parseFloat,
-    $__decodeURI,
-    $__encodeURI,
-    $__decodeURIComponent,
-    $__encodeURIComponent,
-    $__escape,
-    $__eval,
+    %parseInt,
+    %parseFloat,
+    %decodeURI,
+    %encodeURI,
+    %decodeURIComponent,
+    %encodeURIComponent,
+    %escape,
+    %eval,
     function isNaN(number){
-      number = +number;
+      number = %ToNumber(number);
       return number !== number;
     },
     function isFinite(number){
-      number = +number;
+      number = %ToNumber(number);
       return number === number && number !== Infinity && number !== -Infinity;
     }
   ]);
-
-
-
 })(this)
-

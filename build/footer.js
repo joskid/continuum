@@ -12,7 +12,7 @@ return (function(Continuum){
 })(exports.runtime.Continuum);
 
 }).apply(this, function(){
-  var exports = {};
+  var exports = { builtins: {} };
   function require(request){
     request = request.replace(/^\.{0,2}\//, '');
     return exports[request];

@@ -12,8 +12,10 @@ var sides = { left: 0, top: 1, right: 2, bottom: 3 },
     vert = { near: 'top', far: 'bottom', size: 'height' },
     horz = { near: 'left', far: 'right', size: 'width' },
     eventOptions = { bubbles: true, cancelable: true },
-    opposites = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
-
+    noBubbleEventOptions = { bubbles: false, cancelable: true },
+    opposites = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' },
+    min = Math.min,
+    max = Math.max;
 
 
 
@@ -22,6 +24,7 @@ function Component(tag){
   if (this.element.classList) {
     this.classes = this.element.classList;
   }
+  this.styles = this.element.style;
 }
 
 define(Component.prototype, {
@@ -29,29 +32,36 @@ define(Component.prototype, {
 });
 
 define(Component.prototype, [
-  function on(event, listener){
-    define(listener, 'bound', listener.bind(this));
-    this.element.addEventListener(event, listener.bound, false);
+  function on(event, listener, receiver){
+    receiver = receiver || this;
+    function bound(e){ return listener.call(receiver, e) };
+    define(listener, bound);
+    this.element.addEventListener(event, bound, false);
     return this;
   },
   function off(event, listener){
     this.element.removeEventListener(event, listener.bound, false);
+    delete listener.bound;
     return this;
   },
-  function once(event, listener){
-    this.on(event, function once(e){
-      this.off(event, once);
-      return listener.apply(this, arguments);
-    });
+  function once(event, listener, receiver){
+    receiver = receiver || this;
+    this.element.addEventListener(event, function bound(e){
+      this.removeEventListener(event, bound, false);
+      return listener.call(receiver, e);
+    }, false);
     return this;
   },
   function emit(event, data){
     if (typeof event === 'string') {
-      event = new Event(event, eventOptions);
+      var opts = data && data.bubbles === false ? noBubbleEventOptions : eventOptions;
+      event = new Event(event, opts);
     }
     if (data) {
       for (var k in data) {
-        event[k] = data[k];
+        if (k !== 'bubbles') {
+          event[k] = data[k];
+        }
       }
     }
     return this.element.dispatchEvent(event);
@@ -65,6 +75,62 @@ define(Component.prototype, [
       this.element.appendChild(subject);
     }
     return this;
+  },
+  function remove(subject){
+    if (subject === undefined) {
+      this.element.parentNode.removeChild(this.element);
+    } else {
+      if (subject.element) {
+        subject = subject.element;
+      }
+      this.element.removeChild(subject);
+    }
+  },
+  function width(value){
+    if (value === undefined) {
+      return this.element.getBoundingClientRect().width;
+    } else {
+      this.styles.width = value + 'px';
+    }
+  },
+  function height(value){
+    if (value === undefined) {
+      return this.element.getBoundingClientRect().height;
+    } else {
+      this.styles.height = value + 'px';
+    }
+  },
+  function left(value){
+    if (value === undefined) {
+      return this.element.getBoundingClientRect().left;
+    } else {
+      this.styles.left = value + 'px';
+    }
+  },
+  function top(value){
+    if (value === undefined) {
+      return this.element.getBoundingClientRect().top;
+    } else {
+      this.styles.top = value + 'px';
+    }
+  },
+  function box(){
+    return this.element.getBoundingClientRect();
+  },
+  function getMetric(name){
+    return parseFloat(this.getComputed(name));
+  },
+  function getComputed(name){
+    if (!this.computedStyles) {
+      this.computedStyles = getComputedStyle(this.element);
+    }
+    return this.computedStyles[name];
+  },
+  function offset(){
+    return {
+      left: this.element.offsetLeft + this.getMetric('marginLeft'),
+      top: this.element.offsetTop + this.getMetric('marginTop')
+    }
   }
 ]);
 
@@ -204,19 +270,26 @@ function Panel(parent, options){
   }
 
 
-  if (parent) {
-      parent.mount(this);
+  function readjust(){
+    rootResize();
+    self.readjust();
+  }
 
+  if (parent) {
+    parent.mount(this);
+    if (options.splitter) {
+      var opposite = parent.opposite(this);
+      if (opposite && opposite.splitter === 'waiting') {
+        var orient = this.anchor === 'top' || this.anchor === 'botom' ? 'vertical' : 'horizontal';
+        opposite.splitter = this.splitter = new Splitter(opposite, this, orient);
+      } else {
+        this.splitter = 'waiting';
+      }
+    }
   } else {
     document.body.appendChild(this.element);
-    window.addEventListener('resize', function(){
-      rootResize();
-      self.readjust();
-    }, true);
-    setTimeout(function(){
-      rootResize();
-      self.readjust();
-    }, 10);
+    window.addEventListener('resize', readjust, true);
+    setTimeout(readjust, 10);
   }
 
   this.forEach(function(_, side){
@@ -229,8 +302,8 @@ function Panel(parent, options){
 
 inherit(Panel, Component, [
   function opposite(panel){
-    if (panel && panel.mount) {
-      return this[opposites[panel.mount]]
+    if (panel && panel.anchor) {
+      return this[opposites[panel.anchor]]
     }
   },
   function mount(panel){
@@ -340,6 +413,193 @@ inherit(Panel, Component, [
     return this;
   },
 ]);
+
+
+
+function Dragger(target){
+  Component.call(this, 'div');
+  this.target = target;
+  this.addClass('drag-helper');
+  target.on('mousedown', this.grab, this);
+  this.on('mousemove', this.drag);
+  target.on('mouseup', this.drop, this);
+}
+
+inherit(Dragger, Component, [
+  function grab(e){
+    e.preventDefault();
+    document.body.appendChild(this.element);
+    this.x = e.pageX;
+    this.y = e.pageY;
+    this.start = this.target.offset();
+    this.emit('grab');
+  },
+  function drag(e){
+    this.emit('drag', this.calculate(e.pageX, e.pageY));
+  },
+  function drop(e){
+    document.body.removeChild(this.element);
+    this.emit('drop', this.calculate(e.pageX, e.pageY));
+  },
+  function calculate(x, y){
+    var xDelta = this.x - x,
+        yDelta = this.y - y;
+
+    return {
+      xDelta: xDelta,
+      yDelta: yDelta,
+      xOffset: xDelta + this.start.left,
+      yOffset: yDelta + this.start.top
+    };
+  },
+]);
+
+
+var Splitter = (function(){
+  var updateSplitters = function(){};
+  window.addEventListener('resize', function(){
+    updateSplitters();
+  });
+
+  function Splitter(near, far, orientation){
+    if (!(this instanceof splitters[orientation])) {
+      return new splitters[orientation](near, far);
+    }
+    Component.call(this, 'div');
+    this.near = near;
+    this.far = far;
+    this.parent = near.parent;
+
+    this.addClass('splitter');
+    this.addClass('splitter-'+orientation);
+    this.parent.addClass('splitter-container');
+    far.addClass('splitter-side');
+    near.addClass('splitter-side');
+    far.append(this);
+
+    this.lastNear = this.nearSize();
+    this.lastFar = this.parentSize() - this.lastNear;
+    this.position(0);
+
+    this.dragger = new Dragger(this);
+    this.dragger.on('grab', this.grab, this);
+    this.dragger.on('drag', this.drag, this);
+    this.dragger.on('drop', this.drop, this);
+    this.parent.on('change-split', this.refresh, this);
+
+    var oldUpdate = updateSplitters, self = this;
+    updateSplitters = function(){ self.refresh(); oldUpdate() };
+  }
+
+
+  inherit(Splitter, Component, [
+    function grab(e){
+      this.addClass('dragging');
+      this.startSize = this.nearSize();
+    },
+    function drag(e){
+      var container = this.parentSize();
+      this.set(min(max(this.size(), this.startSize - this.mouseOffset(e)), container), container);
+    },
+    function drop(e){
+      this.removeClass('dragging');
+    },
+    function refresh(){
+      this.set(this.lastNear, this.parentSize(), true);
+    },
+    function set(near, container, silent){
+      if (this.maximized === -1) {
+        if (container < this.lastSize) {
+          near = container;
+        }
+      }
+
+      var far = container - near;
+
+      if (this.lastNear !== far || this.lastFar !== lastFar) {
+        this.lastNear = near;
+        this.lastFar = far;
+        this.nearSize(near);
+        this.farSize(far);
+
+        if (!silent) {
+          this.emit('change-split', {
+            change: near - far,
+            near: near,
+            far: far,
+            percent: (near / container * 100 | 0) / 100,
+            bubbles: false
+          });
+        }
+      }
+    },
+  ]);
+
+  function VerticalSplitter(near, far){
+    Splitter.call(this, near, far, 'vertical');
+    this.near.addClass('splitter-top');
+    this.far.addClass('splitter-bottom');
+    this.dragger.addClass('row-resize');
+  }
+
+  inherit(VerticalSplitter, Splitter, [
+    function nearSize(v){
+      return this.near.height(v);
+    },
+    function farSize(v){
+      return this.far.height(v);
+    },
+    function parentSize(v){
+      return this.parent.height(v);
+    },
+    function size(v){
+      return this.height(v);
+    },
+    function position(v){
+      return this.left(v);
+    },
+    function mouseOffset(e){
+      return e.yDelta;
+    }
+  ]);
+
+
+  function HorizontalSplitter(near, far){
+    Splitter.call(this, near, far, 'horizontal');
+    this.near.addClass('splitter-left');
+    this.far.addClass('splitter-right');
+    this.dragger.addClass('col-resize');
+  }
+
+  inherit(HorizontalSplitter, Splitter, [
+    function nearSize(v){
+      return this.near.width(v);
+    },
+    function farSize(v){
+      return this.far.width(v);
+    },
+    function parentSize(v){
+      return this.parent.width(v);
+    },
+    function size(v){
+      return this.width(v);
+    },
+    function position(v){
+      return this.top(v);
+    },
+    function mouseOffset(e){
+      return e.xDelta;
+    }
+  ]);
+
+  var splitters = {
+    vertical: VerticalSplitter,
+    horizontal: HorizontalSplitter
+  };
+
+  return Splitter;
+})();
+
 
 
 function InputBoxOptions(o){
@@ -714,10 +974,6 @@ inherit(Tree, Component, [
 ]);
 
 
-
-
-
-
 function Branch(mirror){
   var self = this,
       initialized;
@@ -769,8 +1025,12 @@ FunctionBranch.create = function create(mirror){
 
 inherit(FunctionBranch, Branch, [
   function refresh(){
-    var name = this.mirror.get('name').subject;
-    this.label.text(name);
+    var name = this.mirror.getName(),
+        params = this.mirror.getParams();
+    if (params.rest) {
+      params.push('...'+params.pop());
+    }
+    this.label.text(name+'('+params.join(', ')+')');
   }
 ])
 

@@ -67,13 +67,19 @@ var errors = (function(errors, messages, exports){
 
   exports.AbruptCompletion = AbruptCompletion;
 
-  function ThrowException(type, args){
+  function MakeException(type, args){
     if (!(args instanceof Array)) {
       args = [args];
     }
     error = errors[type];
-    var obj = exports.createError(error.name, type, error.apply(null, args));
-    return new AbruptCompletion(constants.Throw, obj);
+    return exports.createError(error.name, type, error.apply(null, args));
+  }
+
+  exports.MakeException = MakeException;
+
+
+  function ThrowException(type, args){
+    return new AbruptCompletion(constants.Throw, MakeException(type, args));
   }
 
   exports.ThrowException = ThrowException;
@@ -160,7 +166,8 @@ var errors = (function(errors, messages, exports){
     proxy_enumerate_properties          : ["enumerate trap failed to include non-configurable enumerable property '", "$0", "'"],
     non_object_superclass               : ["non-object superclass provided"],
     non_object_superproto               : ["non-object superprototype"],
-    invalid_super_binding               : ["object has no super binding"]
+    invalid_super_binding               : ["object has no super binding"],
+    not_generic                         : ["$0", " is not generic and was called on an invalid target"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],
