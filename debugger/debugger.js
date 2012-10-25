@@ -1042,6 +1042,7 @@ var renderer = new debug.Renderer({
   NumberValue: NumberLeaf.create,
   UndefinedValue: Leaf.create,
   NullValue: Leaf.create,
+  Global: Branch.create,
   Array: Branch.create,
   Boolean: Branch.create,
   Date: Branch.create,

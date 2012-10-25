@@ -267,7 +267,7 @@ var debug = (function(exports){
     },
     function getParams(){
       var params = this.subject.FormalParameters;
-      if (params) {
+      if (params && params.ArgNames) {
         var names = params.ArgNames.slice();
         if (params.Rest) {
           names.rest = true;
@@ -278,6 +278,17 @@ var debug = (function(exports){
       }
     }
   ]);
+
+
+  function MirrorGlobal(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorGlobal, MirrorObject, {
+    kind: 'Global'
+  }, [
+  ]);
+
 
 
   function MirrorJSON(subject){
@@ -490,6 +501,7 @@ var debug = (function(exports){
     Date    : MirrorDate,
     Error   : MirrorError,
     Function: MirrorFunction,
+    global  : MirrorGlobal,
     JSON    : MirrorJSON,
     Map     : MirrorMap,
     Math    : MirrorMath,
@@ -561,8 +573,8 @@ var debug = (function(exports){
           return subject.__introspected;
         }
         if (!subject.isProxy) {
-          var Ctor = subject.NativeBrand in brands
-                    ? brands[subject.NativeBrand]
+          var Ctor = subject.NativeBrand.name in brands
+                    ? brands[subject.NativeBrand.name]
                     : 'Call' in subject
                       ? MirrorFunction
                       : MirrorObject;
@@ -619,6 +631,9 @@ var debug = (function(exports){
       return mirror.getValue('name') + ': ' + mirror.getValue('message');
     },
     Function: function(mirror){
+      return mirror.label();
+    },
+    Global: function(mirror){
       return mirror.label();
     },
     JSON: function(mirror){
