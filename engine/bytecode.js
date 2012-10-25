@@ -179,7 +179,7 @@ var bytecode = (function(exports){
       [].push.apply(this, params);
     }
     this.Rest = rest;
-    this.BoundNames = names.slice(1);
+    this.BoundNames = names;
     var args = collectExpectedArguments(this);
     this.ExpectedArgumentCount = args.length;
     this.ArgNames = [];
