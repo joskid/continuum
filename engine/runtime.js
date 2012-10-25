@@ -1232,9 +1232,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     function HasThisBinding(){
       return true;
     },
-    function GetSuperBase(){
-      return this.bindings;
-    },
     function inspect(){
       return '[GlobalEnvironmentRecord]';
     }
@@ -2418,12 +2415,16 @@ var runtime = (function(GLOBAL, exports, undefined){
       return PropertyDefinitionEvaluation(kind, obj, key, code);
     },
     function createFunction(code, name){
-      var env = this.LexicalEnvironment.childScope();
-      name && env.CreateImmutableBinding(name);
-      env.func = new $Function(code.Type, name, code.params, code, env, code.Strict);
-      name && env.InitializeBinding(name, env.func);
-      MakeConstructor(env.func);
-      return env.func;
+      if (name) {
+        var env = NewDeclarativeEnvironment(this.LexicalEnvironment);
+        env.CreateImmutableBinding(name);
+      } else {
+        var env = this.LexicalEnvironment;
+      }
+      var func = new $Function(code.Type, name, code.params, code, env, code.Strict);
+      name && env.InitializeBinding(name, func);
+      MakeConstructor(func);
+      return func;
     },
     function createArray(len){
       return new $Array(len);
