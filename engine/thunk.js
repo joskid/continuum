@@ -229,7 +229,7 @@ var thunk = (function(exports){
     }
 
     function ENUM(){
-      a = stack[sp - 1].Enumerate();
+      a = stack[sp - 1].Enumerate(true, true);
       stack[sp - 1] = a;
       stack[sp++] = 0;
       return cmds[++ip];

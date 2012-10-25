@@ -1286,6 +1286,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       function tag(object){
         if (object.id === undefined) {
           object.id = counter++;
+          hide(object, 'id');
         }
       }
     ]);
@@ -1493,27 +1494,20 @@ var runtime = (function(GLOBAL, exports, undefined){
         return false;
       }
     },
-    function Enumerate(){
-      var props = this.keys.filter(function(key){
-        return this.attributes[key] & E;
-      }, this);
-
-      var proto = this.GetPrototype();
-      if (proto) {
-        props.add(proto.Enumerate());
+    function Enumerate(includePrototype, onlyEnumerable){
+      if (onlyEnumerable) {
+        var props = this.keys.filter(function(key){
+          return this.attributes[key] & E;
+        }, this);
+      } else {
+        var props = this.keys.clone();
       }
 
-      return props.toArray();
-    },
-    function GetOwnPropertyNames(){
-      return this.keys.toArray();
-    },
-    function GetPropertyNames(){
-      var props = this.keys.clone();
-
-      var proto = this.GetPrototype();
-      if (proto) {
-        props.add(proto.GetPropertyNames());
+      if (includePrototype) {
+        var proto = this.GetPrototype();
+        if (proto) {
+          props.add(proto.Enumerate(includePrototype, onlyEnumerable));
+        }
       }
 
       return props.toArray();
@@ -1812,8 +1806,9 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   inherit($String, $Object, {
     NativeBrand: BRANDS.StringWrapper,
-    PrimitiveValue: undefined,
-    GetOwnProperty: function GetOwnProperty(key){
+    PrimitiveValue: undefined
+  }, [
+    function GetOwnProperty(key){
       var desc = $Object.prototype.GetOwnProperty.call(this, key);
       if (desc) {
         return desc;
@@ -1822,7 +1817,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         return new StringIndice(this.PrimitiveValue[key]);
       }
     },
-    HasOwnProperty: function HasOwnProperty(key){
+    function HasOwnProperty(key){
       key = ToString(key);
       if (key && key.Completion) {
         if (key.Abrupt) {
@@ -1838,7 +1833,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
       return $Object.prototype.HasOwnProperty.call(this, key);
     },
-    HasProperty: function HasProperty(key){
+    function HasProperty(key){
       var ret = this.HasOwnProperty(key);
       if (ret && ret.Completion) {
         if (ret.Abrupt) {
@@ -1853,32 +1848,11 @@ var runtime = (function(GLOBAL, exports, undefined){
         return $Object.prototype.HasProperty.call(this, key);
       }
     },
-    Enumerate: function Enumerate(){
-      var props = this.keys.filter(function(key){
-        return this.attributes[key] & E;
-      }, this);
-
-      var proto = this.GetPrototype();
-      if (proto) {
-        props.add(proto.Enumerate());
-      }
-
+    function Enumerate(includePrototype, onlyEnumerable){
+      var props = $Object.prototype.Enumerate.call(this, includePrototype, onlyEnumerable);
       return unique(numbers(this.PrimitiveValue.length).concat(props.toArray()));
-    },
-    GetOwnPropertyNames: function GetOwnPropertyNames(){
-      return unique(numbers(this.PrimitiveValue.length).concat(this.keys.toArray()));
-    },
-    GetPropertyNames: function GetPropertyNames(){
-      var props = this.keys.clone();
-
-      var proto = this.GetPrototype();
-      if (proto) {
-        props.add(proto.GetPropertyNames());
-      }
-
-      return unique(numbers(this.PrimitiveValue.length).concat(props.toArray()));
-    },
-  });
+    }
+  ]);
 
 
 
@@ -2431,11 +2405,11 @@ var runtime = (function(GLOBAL, exports, undefined){
     function createArray(len){
       return new $Array(len);
     },
-    function createObject(){
-      return new $Object;
+    function createObject(proto){
+      return new $Object(proto);
     },
-    function createRegExo(v){
-      return new $RegExp(v);
+    function createRegExo(pattern){
+      return new $RegExp(pattern);
     },
     function popBlock(){
       this.LexicalEnvironment = this.LexicalEnvironment.outer;
@@ -2659,10 +2633,13 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     markAsNative: function(fn){
       fn.Native = true;
+      hide(fn, 'Native');
     },
     markAsNativeConstructor: function(fn){
       fn.Native = true;
       fn.NativeConstructor = true;
+      hide(fn, 'Native');
+      hide(fn, 'NativeConstructor');
     },
     exception: function(type, args){
       return MakeException(type, toInternalArray(args));
@@ -2806,103 +2783,38 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
 
     // OBJECT
-    defineProperty: function(obj, key, desc){
-      if (typeof obj !== OBJECT) {
-        return ThrowException('called_on_non_object', 'defineProperty')
-      }
-      if (typeof desc !==OBJECT) {
-        return ThrowException('property_desc_object')
-      }
-      desc = ToPropertyDescriptor(desc);
-      obj.DefineOwnProperty(key, desc, false);
-      return obj;
+    ObjectCreate: function(proto){
+      return new $Object(proto);
     },
-    defineProperties: function(obj, descs){
-      if (typeof obj !== OBJECT) {
-        return ThrowException('called_on_non_object', 'defineProperties');
-      }
-      if (typeof desc !== OBJECT) {
-        return ThrowException('property_desc_object')
-      }
-      if (descs !== undefined) {
-        if (typeof desc !==OBJECT) {
-          return ThrowException('property_desc_object')
-        }
-        var keys = toInternalArray(descs.Enumerate());
-        for (var i=0; i < keys.length; i++) {
-          natives.defineProperty(obj, keys[i], descs.Get(keys[i]));
-        }
-      }
+    GetExtensible: function(obj){
+      return obj.GetExtensible();
     },
-    create: function(proto, descs){
-      if (typeof proto !== OBJECT) {
-        return ThrowException('proto_object_or_null')
-      }
-      var obj = new $Object(proto);
-      if (descs !== undefined) {
-        natives.defineProperties(obj, descs);
-      }
-      return obj;
-    },
-    getPrototypeOf: function(obj){
-      if (typeof desc !== OBJECT) {
-        return ThrowException('called_on_non_object', 'getPrototypeOf');
-      }
+    GetPrototype: function(obj){
       return obj.GetPrototype();
     },
-    getPropertyNames: function(object){
-      return fromInternalArray(object.GetPropertyNames());
+    DefineOwnProperty: function(obj, key, desc){
+      obj.DefineOwnProperty(key, ToPropertyDescriptor(desc), false);
     },
-    getOwnPropertyNames: function(object){
-      return fromInternalArray(object.GetOwnPropertyNames());
+    Enumerate: function(obj, includePrototype, onlyEnumerable){
+      return fromInternalArray(obj.Enumerate(includePrototype, onlyEnumerable));
     },
-    getOwnPropertyDescriptor: function(object, key){
-      var desc = object.GetOwnProperty(key);
+    GetProperty: function(obj, key){
+      var desc = obj.GetProperty(key);
       if (desc) {
         return FromPropertyDescriptor(desc);
       }
     },
-    getPropertyDescriptor: function(object, key){
-      var desc = object.GetProperty(key);
+    GetOwnProperty: function(obj, key){
+      var desc = obj.GetOwnProperty(key);
       if (desc) {
         return FromPropertyDescriptor(desc);
       }
     },
-    keys: function(object){
-      var names = object.GetOwnPropertyNames(),
-          out = [],
-          count = 0;
-
-      for (var i=0; i < names.length; i++) {
-        if (object.attributes[names[i]] & E) {
-          out.push(names[i]);
-        }
-      }
-
-      return fromInternalArray(out);
+    GetPropertyAttributes: function(obj, key){
+      return obj.attributes[key];
     },
-    isExtensible: function(object){
-      return object.GetExtensible();
-    },
-
-    // OBJECT PROTOTYPE
-    objectToString: function(object){
-      return object.NativeBrand.brand;
-    },
-    isPrototypeOf: function(object){
-      while (object) {
-        object = object.GetPrototype();
-        if (object === this) {
-          return true;
-        }
-      }
-      return false;
-    },
-    propertyIsEnumerable: function(key){
-      return (this.attributes[key] & E) > 0;
-    },
-    hasOwnProperty: function(key){
-      return this.HasOwnProperty(key);
+    HasOwnProperty: function(obj, key){
+      return obj.HasOwnProperty(key);
     },
 
     parseInt: function(value, radix){

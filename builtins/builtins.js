@@ -1,4 +1,9 @@
 (function(global){
+  var E = 0x1,
+      C = 0x2,
+      W = 0x4,
+      A = 0x8;
+
   $__defineDirect(global, 'stdout', {
     write: $__write,
     backspace: $__backspace,
@@ -81,7 +86,7 @@
   defineMethods(Array.prototype, [
     function filter(callback, receiver) {
       if (this == null) {
-        throw $__exception("called_on_null_or_undefined", ["Array.prototype.filter"]);
+        throw $__exception('called_on_null_or_undefined', ['Array.prototype.filter']);
       }
 
       var array = $__ToObject(this),
@@ -230,14 +235,14 @@
       if ($__getNativeBrand(this) === 'Boolean') {
         return $__getPrimitiveValue(this) ? 'true' : 'false';
       } else {
-        throw $__exception("not_generic", ["Boolean.prototype.toString"]);
+        throw $__exception('not_generic', ['Boolean.prototype.toString']);
       }
     },
     function valueOf(){
       if ($__getNativeBrand(this) === 'Boolean') {
         return $__getPrimitiveValue(this);
       } else {
-        throw $__exception("not_generic", ["Boolean.prototype.valueOf"]);
+        throw $__exception('not_generic', ['Boolean.prototype.valueOf']);
       }
     }
   ]);
@@ -258,14 +263,14 @@
       if ($__getNativeBrand(this) === 'Date') {
         return $__dateToString(this);
       } else {
-        throw $__exception("not_generic", ["Date.prototype.toString"]);
+        throw $__exception('not_generic', ['Date.prototype.toString']);
       }
     },
     function valueOf(){
       if ($__getNativeBrand(this) === 'Date') {
         return $__dateToNumber(this);
       } else {
-        throw $__exception("not_generic", ["Date.prototype.valueOf"]);
+        throw $__exception('not_generic', ['Date.prototype.valueOf']);
       }
     }
   ]);
@@ -291,7 +296,7 @@
     $__bind,
     function toString(){
       if (typeof this !== 'function') {
-        throw $__exception("not_generic", ["Function.prototype.toString"]);
+        throw $__exception('not_generic', ['Function.prototype.toString']);
       }
       return $__functionToString(this);
     }
@@ -358,28 +363,40 @@
       if ($__getNativeBrand(this) === 'Number') {
         return $__numberToString(this, radix);
       } else {
-        throw $__exception("not_generic", ["Number.prototype.toString"]);
+        throw $__exception('not_generic', ['Number.prototype.toString']);
       }
     },
     function valueOf(){
       if ($__getNativeBrand(this) === 'Number') {
         return $__getPrimitiveValue(this);
       } else {
-        throw $__exception("not_generic", ["Number.prototype.valueOf"]);
+        throw $__exception('not_generic', ['Number.prototype.valueOf']);
       }
     },
     function clz() {
-      var x = +this;
+      var x = $__ToNumber(this);
       if (!x || !isFinite(x)) {
         return 32;
       } else {
         x = x < 0 ? x + 1 | 0 : x | 0;
-        x -= ((x / 0x100000000) | 0) * 0x100000000;
+        x -= (x / 0x100000000 | 0) * 0x100000000;
         return 32 - x.toString(2).length;
       }
     }
   ]);
 
+
+  function ensureObject(o, name){
+    if (o === null || typeof o !== 'object') {
+      throw $__exception('called_on_non_object', [name]);
+    }
+  }
+
+  function ensureDescriptor(o){
+    if (o === null || typeof desc !== 'object') {
+      throw $__exception('property_desc_object', [typeof o])
+    }
+  }
 
   // ##############
   // ### Object ###
@@ -397,40 +414,113 @@
 
   setupConstructor(Object, $__ObjectProto);
 
-
   defineMethods(Object, [
-    $__keys,
-    $__create,
-    $__isExtensible,
-    $__getPrototypeOf,
-    $__defineProperty,
-    $__defineProperties,
-    $__getPropertyNames,
-    $__getOwnPropertyNames,
-    $__getPropertyDescriptor,
-    $__getOwnPropertyDescriptor
+    function create(prototype, descriptors){
+      if (typeof prototype !== 'object') {
+        throw $__exception('proto_object_or_null', [])
+      }
+
+      var object = $__ObjectCreate(prototype);
+
+      if (descriptors !== undefined) {
+        ensureDescriptor(descriptors);
+
+        for (var k in descs) {
+          var desc = descriptors[k];
+          ensureDescriptor(desc);
+          $__DefineOwnProperty(object, key, desc);
+        }
+      }
+
+      return object;
+    },
+    function defineProperty(object, key, desc){
+      ensureObject(object, 'defineProperty');
+      ensureDescriptor(desc);
+      key = $__ToPropertyName(key);
+      $__DefineOwnProperty(object, key, desc);
+      return object;
+    },
+    function defineProperties(object, descriptors){
+      ensureObject(object, 'defineProperties');
+      ensureDescriptor(descriptors);
+
+      for (var key in descriptors) {
+        var desc = descriptors[key];
+        ensureDescriptor(desc);
+        $__DefineOwnProperty(object, key, desc);
+      }
+
+      return object;
+    },
+    function getOwnPropertyDescriptor(object, key){
+      ensureObject(object, 'getOwnPropertyDescriptor');
+      key = $__ToPropertyName(key);
+      return $__GetOwnProperty(object, key);
+    },
+    function getOwnPropertyNames(object){
+      ensureObject(object, 'getOwnPropertyNames');
+      return $__Enumerate(object, false, false);
+    },
+    function getPropertyDescriptor(object, key){
+      ensureObject(object, 'getPropertyDescriptor');
+      key = $__ToPropertyName(key);
+      return $__GetProperty(object, key);
+    },
+    function getPropertyNames(object){
+      ensureObject(object, 'getPropertyNames');
+      return $__Enumerate(object, true, false);
+    },
+    function getPrototypeOf(object){
+      ensureObject(object, 'getPrototypeOf');
+      return $__GetPrototype(object);
+    },
+    function isExtensible(object){
+      ensureObject(object, 'isExtensible');
+      return $__GetExtensible(object);
+    },
+    function keys(object){
+      ensureObject(object, 'keys');
+      return $__Enumerate(object, false, true);
+    }
   ]);
 
   defineMethods(Object.prototype, [
+    function isPrototypeOf(object){
+      while (object) {
+        object = $__GetPrototype(object);
+        if (object === this) {
+          return true;
+        }
+      }
+      return false;
+    },
+    function toLocaleString(){
+      return this.toString();
+    },
     function toString(){
       if (this === undefined) {
         return '[object Undefined]';
       } else if (this === null) {
         return '[object Null]';
       } else {
-        return $__objectToString(this);
+        var object = $__ToObject(this);
+        return '[object '+$__getNativeBrand(object)+']';
       }
-    },
-    function toLocaleString(){
-      return this.toString();
     },
     function valueOf(){
       return $__ToObject(this);
     },
-    $__hasOwnProperty,
-    $__isPrototypeOf,
-    $__propertyIsEnumerable
+    function hasOwnProperty(key){
+      var object = $__ToObject(this);
+      return $__HasOwnProperty(object, key);
+    },
+    function propertyIsEnumerable(key){
+      var object = $__ToObject(this);
+      return ($__GetPropertyAttributes(this, key) & E) !== 0;
+    }
   ]);
+
 
 
   // ##############
@@ -473,14 +563,14 @@
       if ($__getNativeBrand(this) === 'String') {
         return $__getPrimitiveValue(this);
       } else {
-        throw $__exception("not_generic", ["String.prototype.toString"]);
+        throw $__exception('not_generic', ['String.prototype.toString']);
       }
     },
     function valueOf(){
       if ($__getNativeBrand(this) === 'String') {
         return $__getPrimitiveValue(this);
       } else {
-        throw $__exception("not_generic", ["String.prototype.valueOf"]);
+        throw $__exception('not_generic', ['String.prototype.valueOf']);
       }
     },
   ]);
