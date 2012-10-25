@@ -49,7 +49,7 @@ var operators = (function(exports){
       var base = v.base;
 
       if (HasPrimitiveBase(v)) {
-        base = ToObject(base);
+        base = exports.ToObject(base);
       }
 
       if (base.Get) {
@@ -95,7 +95,7 @@ var operators = (function(exports){
       var base = v.base;
 
       if (HasPrimitiveBase(v)) {
-        base = ToObject(base);
+        base = exports.ToObject(base);
       }
 
       if (base.Get) {
@@ -326,7 +326,7 @@ var operators = (function(exports){
       if ('thisValue' in ref) {
         return ThrowException('super_delete_property', ref.name);
       } else {
-        var obj = ToObject(ref.base)
+        var obj = exports.ToObject(ref.base)
         if (obj && obj.Completion) {
           if (obj.Abrupt) {
             return obj;
