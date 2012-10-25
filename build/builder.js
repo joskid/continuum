@@ -28,11 +28,11 @@ function transformer(files, callback){
   });
 }
 
-function Combiner(){
+function Builder(){
   this.source = [];
 }
 
-Combiner.prototype.addSource = function addSource(code){
+Builder.prototype.addSource = function addSource(code){
   if (code instanceof Array) {
     [].push.apply(this.source, code);
   } else {
@@ -40,7 +40,7 @@ Combiner.prototype.addSource = function addSource(code){
   }
 };
 
-Combiner.prototype.addFiles = function addFiles(names, callback){
+Builder.prototype.addFiles = function addFiles(names, callback){
   if (!(names instanceof Array)) {
     names = [names];
   }
@@ -51,7 +51,7 @@ Combiner.prototype.addFiles = function addFiles(names, callback){
   }
 };
 
-Combiner.prototype.addDirectory = function addDirectory(name, callback){
+Builder.prototype.addDirectory = function addDirectory(name, callback){
   if (callback) {
     this.addSource(transformer(dir(name), callback));
   } else {
@@ -59,21 +59,24 @@ Combiner.prototype.addDirectory = function addDirectory(name, callback){
   }
 };
 
-Combiner.prototype.combine = function combine(){
+Builder.prototype.combine = function combine(){
   return this.source.join('\n\n');
 };
 
-Combiner.prototype.writeFile = function writeFile(name){
+Builder.prototype.writeFile = function writeFile(name){
   write(name, this.combine());
 }
 
 
-var source = new Combiner;
-source.addFiles('./header.js');
-source.addFiles('../node_modules/esprima/esprima.js', function(name, source){
+var builder = new Builder;
+
+builder.addFiles('./header.js');
+
+builder.addFiles('../node_modules/esprima/esprima.js', function(name, source){
   return 'exports.'+name+' = (function(exports){\n'+source+'\nreturn exports;\n})({});';
 });
-source.addFiles([
+
+builder.addFiles([
   '../engine/utility.js',
   '../engine/constants.js',
   '../engine/errors.js',
@@ -85,12 +88,15 @@ source.addFiles([
 ], function(name, source){
   return 'exports.'+source.slice(4);
 });
-source.addDirectory('../builtins', function(name, source){
+
+builder.addDirectory('../builtins', function(name, source){
   if (name === 'index') {
     return '';
   } else {
     return 'exports.builtins.'+name+' = '+escapeJS(source);
   }
 });
-source.addFiles('./footer.js');
-source.writeFile('../continuum-combined.js');
+
+builder.addFiles('./footer.js');
+
+builder.writeFile('../continuum-combined.js');
