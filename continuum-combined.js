@@ -5878,6 +5878,43 @@ exports.constants = (function(exports){
     }
   ]);
 
+
+  function NativeBrand(name){
+    this.name = name;
+    this.brand = '[object '+name+']';
+  }
+
+  define(NativeBrand.prototype, [
+    function toString(){
+      return this.name;
+    },
+    function inspect(){
+      return this.name;
+    }
+  ]);
+
+
+  exports.BRANDS = {
+    GlobalObject      : new NativeBrand('global'),
+    NativeArguments   : new NativeBrand('Arguments'),
+    NativeArray       : new NativeBrand('Array'),
+    NativeDate        : new NativeBrand('Date'),
+    NativeFunction    : new NativeBrand('Function'),
+    NativeMap         : new NativeBrand('Map'),
+    NativeObject      : new NativeBrand('Object'),
+    NativePrivateName : new NativeBrand('PrivateName'),
+    NativeRegExp      : new NativeBrand('RegExp'),
+    NativeSet         : new NativeBrand('Set'),
+    NativeWeakMap     : new NativeBrand('WeakMap'),
+    BooleanWrapper    : new NativeBrand('Boolean'),
+    NumberWrapper     : new NativeBrand('Number'),
+    StringWrapper     : new NativeBrand('String'),
+    NativeError       : new NativeBrand('Error'),
+    NativeMath        : new NativeBrand('Math'),
+    NativeJSON        : new NativeBrand('JSON')
+  };
+
+
   exports.BINARYOPS = new Constants(['instanceof', 'in', 'is', 'isnt', '==', '!=', '===', '!==', '<', '>',
                                    '<=', '>=', '*', '/','%', '+', '-', '<<', '>>', '>>>', '|', '&', '^']);
   exports.UNARYOPS = new Constants(['delete', 'void', 'typeof', '+', '-', '~', '!']);
@@ -5936,6 +5973,10 @@ exports.constants = (function(exports){
     'TaggedTemplateExpression', 'TemplateElement', 'TemplateLiteral', 'ThisExpression',
     'ThrowStatement', 'TryStatement', 'UnaryExpression', 'UpdateExpression', 'VariableDeclaration',
     'VariableDeclarator', 'WhileStatement', 'WithStatement', 'YieldExpression']);
+
+
+
+
 
   return exports;
 })(typeof module !== 'undefined' ? module.exports : {});
@@ -7704,9 +7745,9 @@ exports.operators = (function(exports){
   exports.ToUint32 = ToUint32;
 
 
-  // ## ToPropertyKey
+  // ## ToPropertyName
 
-  function ToPropertyKey(argument){
+  function ToPropertyName(argument){
     if (argument && argument.Completion) {
       if (argument.Abrupt) {
         return argument;
@@ -7720,7 +7761,7 @@ exports.operators = (function(exports){
       return ToString(argument);
     }
   }
-  exports.ToPropertyKey = ToPropertyKey;
+  exports.ToPropertyName = ToPropertyName;
 
   // ## ToString
 
@@ -7767,40 +7808,6 @@ exports.operators = (function(exports){
       return pre ? newVal : val;
     };
   });
-
-  function DELETE(ref){
-    if (!ref || !ref.Reference) {
-      return true;
-    }
-
-    if (ref.base === undefined) {
-      if (ref.strict) {
-        return ThrowException('strict_delete_property', [ref.name, ref.base]);
-      } else {
-        return true;
-      }
-    }
-
-    if (IsPropertyReference(ref)) {
-      if ('thisValue' in ref) {
-        return ThrowException('super_delete_property', ref.name);
-      } else {
-        var obj = exports.ToObject(ref.base)
-        if (obj && obj.Completion) {
-          if (obj.Abrupt) {
-            return obj;
-          } else {
-            obj = obj.value;
-          }
-        }
-
-        return obj.Delete(ref.name, ref.strict);
-      }
-    } else {
-      return ref.base.DeleteBinding(ref.name);
-    }
-  }
-  exports.DELETE = DELETE;
 
   function VOID(ref){
     var val = GetValue(ref);
@@ -7957,8 +7964,9 @@ exports.operators = (function(exports){
 
     return convertAdd(lval, rval, type, converter);
   }
-
   exports.ADD = ADD;
+
+
 
   var SHL, SHR, SAR;
   void function(makeShifter){
@@ -8069,7 +8077,6 @@ exports.operators = (function(exports){
     }
   }
 
-  var LT, GT, LTE, GTE;
   void function(creatorComparer){
     exports.LT  = LT  = creatorComparer(true, false);
     exports.GT  = GT  = creatorComparer(false, false);
@@ -8110,13 +8117,50 @@ exports.operators = (function(exports){
 
     return lval.HasInstance(rval);
   }
+  exports.INSTANCE_OF = INSTANCE_OF;
+
+
+  function DELETE(ref){
+    if (!ref || !ref.Reference) {
+      return true;
+    }
+
+    if (ref.base === undefined) {
+      if (ref.strict) {
+        return ThrowException('strict_delete_property', [ref.name, ref.base]);
+      } else {
+        return true;
+      }
+    }
+
+    if (IsPropertyReference(ref)) {
+      if ('thisValue' in ref) {
+        return ThrowException('super_delete_property', ref.name);
+      } else {
+        var obj = exports.ToObject(ref.base)
+        if (obj && obj.Completion) {
+          if (obj.Abrupt) {
+            return obj;
+          } else {
+            obj = obj.value;
+          }
+        }
+
+        return obj.Delete(ref.name, ref.strict);
+      }
+    } else {
+      return ref.base.DeleteBinding(ref.name);
+    }
+  }
+  exports.DELETE = DELETE;
+
 
   function IN(lval, rval) {
     if (lval === null || typeof lval !== OBJECT) {
       return ThrowException('invalid_in_operator_use', [rval, lval]);
     }
 
-    rval = ToString(rval);
+    rval = ToPropertyName(rval);
     if (rval && rval.Completion) {
       if (rval.Abrupt) {
         return rval;
@@ -8127,8 +8171,9 @@ exports.operators = (function(exports){
 
     return lval.HasProperty(rval);
   }
-
   exports.IN = IN;
+
+
 
   function IS(x, y) {
     if (x && x.Completion) {
@@ -8147,8 +8192,9 @@ exports.operators = (function(exports){
     }
     return x === y ? (x !== 0 || 1 / x === 1 / y) : (x !== x && y !== y);
   }
-
   exports.IS = IS;
+
+
 
   function STRICT_EQUAL(x, y) {
     if (x && x.Completion) {
@@ -8167,7 +8213,6 @@ exports.operators = (function(exports){
     }
     return x === y;
   }
-
   exports.STRICT_EQUAL = STRICT_EQUAL;
 
 
@@ -8207,8 +8252,9 @@ exports.operators = (function(exports){
       return false;
     }
   }
-
   exports.EQUAL = EQUAL;
+
+
 
   function UnaryOp(operator, val) {
     switch (operator) {
@@ -8222,6 +8268,8 @@ exports.operators = (function(exports){
     }
   }
   exports.UnaryOp = UnaryOp;
+
+
 
   function BinaryOp(operator, lval, rval) {
     switch (operator) {
@@ -8985,7 +9033,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       ToString         = operators.ToString,
       UnaryOp          = operators.UnaryOp,
       BinaryOp         = operators.BinaryOp,
-      ToPropertyKey    = operators.ToPropertyKey,
+      ToPropertyName   = operators.ToPropertyName,
       IS               = operators.IS,
       EQUAL            = operators.EQUAL,
       STRICT_EQUAL     = operators.STRICT_EQUAL;
@@ -9006,6 +9054,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   var BINARYOPS = constants.BINARYOPS.array,
       UNARYOPS  = constants.UNARYOPS.array,
+      BRANDS    = constants.BRANDS,
       ENTRY     = constants.ENTRY.hash,
       AST       = constants.AST.array;
 
@@ -9835,6 +9884,30 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
 
+  function MapInitialization(object, iterable){
+    if (typeof object !== OBJECT) {
+      return ThrowException('mapinit_nonobject', typeof object);
+    }
+    if (object.MapData) {
+      return ThrowException('mapinit_duplicate');
+    }
+    if (!object.Extensible) {
+      return ThrowException('mapinit_nonextensible');
+    }
+    if (iterable !== undefined) {
+      iterable = ToObject(iterable);
+      if (iterable && iterable.Completion) {
+        if (iterable.Abrupt) {
+          return iterable;
+        } else {
+          iterable = iterable.value;
+        }
+      }
+
+      var itr = Invoke(iterator, object, []);
+    }
+  }
+
 
   function GetTrap(handler, trap){
 
@@ -10181,42 +10254,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  // ###################
-  // ### NativeBrand ###
-  // ##################
-
-  function NativeBrand(name){
-    this.name = name;
-    this.brand = '[object '+name+']';
-  }
-
-  define(NativeBrand.prototype, [
-    function toString(){
-      return this.name;
-    },
-    function inspect(){
-      return this.name;
-    }
-  ]);
-
-  var GlobalObject      = new NativeBrand('global'),
-      NativeArguments   = new NativeBrand('Arguments'),
-      NativeArray       = new NativeBrand('Array'),
-      NativeDate        = new NativeBrand('Date'),
-      NativeFunction    = new NativeBrand('Function'),
-      NativeMap         = new NativeBrand('Map'),
-      NativeObject      = new NativeBrand('Object'),
-      NativePrivateName = new NativeBrand('PrivateName'),
-      NativeRegExp      = new NativeBrand('RegExp'),
-      NativeSet         = new NativeBrand('Set'),
-      NativeWeakMap     = new NativeBrand('WeakMap'),
-      BooleanWrapper    = new NativeBrand('Boolean'),
-      NumberWrapper     = new NativeBrand('Number'),
-      StringWrapper     = new NativeBrand('String'),
-      NativeError       = new NativeBrand('Error'),
-      NativeMath        = new NativeBrand('Math'),
-      NativeJSON        = new NativeBrand('JSON');
-
 
   // ###############
   // ### $Object ###
@@ -10229,13 +10266,24 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     this.properties = new Hash;
     this.attributes = new Hash;
     define(this, 'keys', new PropertyList);
+    $Object.tag(this);
     hide(this, 'Prototype');
     hide(this, 'attributes');
   }
 
+  void function(counter){
+    define($Object, [
+      function tag(object){
+        if (object.id === undefined) {
+          object.id = counter++;
+        }
+      }
+    ]);
+  }(0)
+
   define($Object.prototype, {
     Extensible: true,
-    NativeBrand: NativeObject
+    NativeBrand: BRANDS.NativeObject
   });
 
   define($Object.prototype, [
@@ -10539,7 +10587,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Function, $Object, {
-    NativeBrand: NativeFunction,
+    NativeBrand: BRANDS.NativeFunction,
     FormalParameters: null,
     Code: null,
     Scope: null,
@@ -10737,7 +10785,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Date, $Object, {
-    NativeBrand: NativeDate,
+    NativeBrand: BRANDS.NativeDate,
     PrimitiveValue: undefined,
   });
 
@@ -10752,7 +10800,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($String, $Object, {
-    NativeBrand: StringWrapper,
+    NativeBrand: BRANDS.StringWrapper,
     PrimitiveValue: undefined,
     GetOwnProperty: function GetOwnProperty(key){
       var desc = $Object.prototype.GetOwnProperty.call(this, key);
@@ -10833,7 +10881,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Number, $Object, {
-    NativeBrand: NumberWrapper,
+    NativeBrand: BRANDS.NumberWrapper,
     PrimitiveValue: undefined,
   });
 
@@ -10848,7 +10896,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Boolean, $Object, {
-    NativeBrand: BooleanWrapper,
+    NativeBrand: BRANDS.BooleanWrapper,
     PrimitiveValue: undefined,
   });
 
@@ -10863,7 +10911,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Map, $Object, {
-    NativeBrand: NativeMap,
+    NativeBrand: BRANDS.NativeMap,
+    MapData: null
   });
 
   // ############
@@ -10875,7 +10924,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Set, $Object, {
-    NativeBrand: NativeSet,
+    NativeBrand: BRANDS.NativeSet
   });
 
 
@@ -10888,7 +10937,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($WeakMap, $Object, {
-    NativeBrand: NativeWeakMap,
+    NativeBrand: BRANDS.NativeWeakMap,
   });
 
   // ##############
@@ -10909,7 +10958,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Array, $Object, {
-    NativeBrand: NativeArray,
+    NativeBrand: BRANDS.NativeArray,
     DefineOwnProperty: function DefineOwnProperty(key, desc, strict){
       function Reject(str) {
         if (strict) {
@@ -11054,7 +11103,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($RegExp, $Object, {
-    NativeBrand: NativeRegExp,
+    NativeBrand: BRANDS.NativeRegExp,
     Match: null,
   });
 
@@ -11068,7 +11117,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($PrivateName, $Object, {
-    NativeBrand: NativePrivateName,
+    NativeBrand: BRANDS.NativePrivateName,
     Match: null,
   });
 
@@ -11084,7 +11133,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Arguments, $Object, {
-    NativeBrand: NativeArguments,
+    NativeBrand: BRANDS.NativeArguments,
     ParameterMap: null,
   });
 
@@ -11159,7 +11208,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Math, $Object, {
-    NativeBrand: NativeMath
+    NativeBrand: BRANDS.NativeMath
   });
 
   function $JSON(){
@@ -11167,7 +11216,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($JSON, $Object, {
-    NativeBrand: NativeJSON
+    NativeBrand: BRANDS.NativeJSON
   });
 
   function $Error(name, type, message){
@@ -11179,7 +11228,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Error, $Object, {
-    NativeBrand: NativeError
+    NativeBrand: BRANDS.NativeError
   });
 
 
@@ -11415,7 +11464,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       if (prop === false) {
         var key = env.GetMethodName();
       } else {
-        var key = ToPropertyKey(prop);
+        var key = ToPropertyName(prop);
         if (key && key.Completion) {
           if (key.Abrupt) {
             return key;
@@ -12064,7 +12113,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     this.natives = new Intrinsics(this);
     this.intrinsics = this.natives.bindings;
     this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
-    this.global.NativeBrand = GlobalObject;
+    this.global.NativeBrand = BRANDS.GlobalObject;
     this.globalEnv = new GlobalEnvironmentRecord(this.global);
 
     this.intrinsics.FunctionProto.Realm = this;

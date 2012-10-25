@@ -245,9 +245,9 @@ var operators = (function(exports){
   exports.ToUint32 = ToUint32;
 
 
-  // ## ToPropertyKey
+  // ## ToPropertyName
 
-  function ToPropertyKey(argument){
+  function ToPropertyName(argument){
     if (argument && argument.Completion) {
       if (argument.Abrupt) {
         return argument;
@@ -261,7 +261,7 @@ var operators = (function(exports){
       return ToString(argument);
     }
   }
-  exports.ToPropertyKey = ToPropertyKey;
+  exports.ToPropertyName = ToPropertyName;
 
   // ## ToString
 
@@ -308,40 +308,6 @@ var operators = (function(exports){
       return pre ? newVal : val;
     };
   });
-
-  function DELETE(ref){
-    if (!ref || !ref.Reference) {
-      return true;
-    }
-
-    if (ref.base === undefined) {
-      if (ref.strict) {
-        return ThrowException('strict_delete_property', [ref.name, ref.base]);
-      } else {
-        return true;
-      }
-    }
-
-    if (IsPropertyReference(ref)) {
-      if ('thisValue' in ref) {
-        return ThrowException('super_delete_property', ref.name);
-      } else {
-        var obj = exports.ToObject(ref.base)
-        if (obj && obj.Completion) {
-          if (obj.Abrupt) {
-            return obj;
-          } else {
-            obj = obj.value;
-          }
-        }
-
-        return obj.Delete(ref.name, ref.strict);
-      }
-    } else {
-      return ref.base.DeleteBinding(ref.name);
-    }
-  }
-  exports.DELETE = DELETE;
 
   function VOID(ref){
     var val = GetValue(ref);
@@ -498,8 +464,9 @@ var operators = (function(exports){
 
     return convertAdd(lval, rval, type, converter);
   }
-
   exports.ADD = ADD;
+
+
 
   var SHL, SHR, SAR;
   void function(makeShifter){
@@ -610,7 +577,6 @@ var operators = (function(exports){
     }
   }
 
-  var LT, GT, LTE, GTE;
   void function(creatorComparer){
     exports.LT  = LT  = creatorComparer(true, false);
     exports.GT  = GT  = creatorComparer(false, false);
@@ -651,13 +617,50 @@ var operators = (function(exports){
 
     return lval.HasInstance(rval);
   }
+  exports.INSTANCE_OF = INSTANCE_OF;
+
+
+  function DELETE(ref){
+    if (!ref || !ref.Reference) {
+      return true;
+    }
+
+    if (ref.base === undefined) {
+      if (ref.strict) {
+        return ThrowException('strict_delete_property', [ref.name, ref.base]);
+      } else {
+        return true;
+      }
+    }
+
+    if (IsPropertyReference(ref)) {
+      if ('thisValue' in ref) {
+        return ThrowException('super_delete_property', ref.name);
+      } else {
+        var obj = exports.ToObject(ref.base)
+        if (obj && obj.Completion) {
+          if (obj.Abrupt) {
+            return obj;
+          } else {
+            obj = obj.value;
+          }
+        }
+
+        return obj.Delete(ref.name, ref.strict);
+      }
+    } else {
+      return ref.base.DeleteBinding(ref.name);
+    }
+  }
+  exports.DELETE = DELETE;
+
 
   function IN(lval, rval) {
     if (lval === null || typeof lval !== OBJECT) {
       return ThrowException('invalid_in_operator_use', [rval, lval]);
     }
 
-    rval = ToString(rval);
+    rval = ToPropertyName(rval);
     if (rval && rval.Completion) {
       if (rval.Abrupt) {
         return rval;
@@ -668,8 +671,9 @@ var operators = (function(exports){
 
     return lval.HasProperty(rval);
   }
-
   exports.IN = IN;
+
+
 
   function IS(x, y) {
     if (x && x.Completion) {
@@ -688,8 +692,9 @@ var operators = (function(exports){
     }
     return x === y ? (x !== 0 || 1 / x === 1 / y) : (x !== x && y !== y);
   }
-
   exports.IS = IS;
+
+
 
   function STRICT_EQUAL(x, y) {
     if (x && x.Completion) {
@@ -708,7 +713,6 @@ var operators = (function(exports){
     }
     return x === y;
   }
-
   exports.STRICT_EQUAL = STRICT_EQUAL;
 
 
@@ -748,8 +752,9 @@ var operators = (function(exports){
       return false;
     }
   }
-
   exports.EQUAL = EQUAL;
+
+
 
   function UnaryOp(operator, val) {
     switch (operator) {
@@ -763,6 +768,8 @@ var operators = (function(exports){
     }
   }
   exports.UnaryOp = UnaryOp;
+
+
 
   function BinaryOp(operator, lval, rval) {
     switch (operator) {

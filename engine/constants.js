@@ -34,6 +34,43 @@ var constants = (function(exports){
     }
   ]);
 
+
+  function NativeBrand(name){
+    this.name = name;
+    this.brand = '[object '+name+']';
+  }
+
+  define(NativeBrand.prototype, [
+    function toString(){
+      return this.name;
+    },
+    function inspect(){
+      return this.name;
+    }
+  ]);
+
+
+  exports.BRANDS = {
+    GlobalObject      : new NativeBrand('global'),
+    NativeArguments   : new NativeBrand('Arguments'),
+    NativeArray       : new NativeBrand('Array'),
+    NativeDate        : new NativeBrand('Date'),
+    NativeFunction    : new NativeBrand('Function'),
+    NativeMap         : new NativeBrand('Map'),
+    NativeObject      : new NativeBrand('Object'),
+    NativePrivateName : new NativeBrand('PrivateName'),
+    NativeRegExp      : new NativeBrand('RegExp'),
+    NativeSet         : new NativeBrand('Set'),
+    NativeWeakMap     : new NativeBrand('WeakMap'),
+    BooleanWrapper    : new NativeBrand('Boolean'),
+    NumberWrapper     : new NativeBrand('Number'),
+    StringWrapper     : new NativeBrand('String'),
+    NativeError       : new NativeBrand('Error'),
+    NativeMath        : new NativeBrand('Math'),
+    NativeJSON        : new NativeBrand('JSON')
+  };
+
+
   exports.BINARYOPS = new Constants(['instanceof', 'in', 'is', 'isnt', '==', '!=', '===', '!==', '<', '>',
                                    '<=', '>=', '*', '/','%', '+', '-', '<<', '>>', '>>>', '|', '&', '^']);
   exports.UNARYOPS = new Constants(['delete', 'void', 'typeof', '+', '-', '~', '!']);
@@ -92,6 +129,10 @@ var constants = (function(exports){
     'TaggedTemplateExpression', 'TemplateElement', 'TemplateLiteral', 'ThisExpression',
     'ThrowStatement', 'TryStatement', 'UnaryExpression', 'UpdateExpression', 'VariableDeclaration',
     'VariableDeclarator', 'WhileStatement', 'WithStatement', 'YieldExpression']);
+
+
+
+
 
   return exports;
 })(typeof module !== 'undefined' ? module.exports : {});
