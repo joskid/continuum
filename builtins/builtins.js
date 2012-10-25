@@ -1,15 +1,15 @@
 (function(global){
-  %defineDirect(global, 'stdout', {
-    write: %write,
-    backspace: %backspace,
-    clear: %clear
+  $__defineDirect(global, 'stdout', {
+    write: $__write,
+    backspace: $__backspace,
+    clear: $__clear
   }, 6);
 
-  %defineDirect(global, 'console', {
+  $__defineDirect(global, 'console', {
     log: function log(...args){
-      args.forEach(function(arg){
-        stdout.write(arg + ' ');
-      });
+      for (var i=0; i < args.length; i++) {
+        stdout.write(args[i] + ' ');
+      }
       stdout.write('\n');
     }
   }, 6);
@@ -18,28 +18,28 @@
 
   function defineMethods(obj, props){
     for (var i in props) {
-      %defineDirect(obj, props[i].name, props[i], 6);
-      %markAsNative(props[i]);
-      %deleteDirect(props[i], 'prototype');
+      $__defineDirect(obj, props[i].name, props[i], 6);
+      $__markAsNative(props[i]);
+      $__deleteDirect(props[i], 'prototype');
     }
   }
 
   function defineConstants(obj, props){
     for (var k in props) {
-      %defineDirect(obj, k, props[k], 0);
+      $__defineDirect(obj, k, props[k], 0);
     }
   }
 
 
   function setupConstructor(ctor, proto){
-    %defineDirect(ctor, 'prototype', proto, 0);
-    %defineDirect(ctor.prototype, 'constructor', ctor, 0);
-    %defineDirect(global, ctor.name, ctor, 6);
-    %markAsNativeConstructor(ctor);
+    $__defineDirect(ctor, 'prototype', proto, 0);
+    $__defineDirect(ctor.prototype, 'constructor', ctor, 0);
+    $__defineDirect(global, ctor.name, ctor, 6);
+    $__markAsNativeConstructor(ctor);
   }
 
 
-  %EmptyClass = function constructor(){};
+  $__EmptyClass = function constructor(){};
 
   // #############
   // ### Array ###
@@ -55,12 +55,12 @@
     }
   }
 
-  setupConstructor(Array, %ArrayProto);
+  setupConstructor(Array, $__ArrayProto);
 
 
   defineMethods(Array, [
     function isArray(array){
-      return %getNativeBrand(array) === 'Array';
+      return $__getNativeBrand(array) === 'Array';
     },
     function from(iterable){
       var out = [];
@@ -81,16 +81,16 @@
   defineMethods(Array.prototype, [
     function filter(callback, receiver) {
       if (this == null) {
-        throw %exception("called_on_null_or_undefined", ["Array.prototype.filter"]);
+        throw $__exception("called_on_null_or_undefined", ["Array.prototype.filter"]);
       }
 
-      var array = %ToObject(this),
-          length = %ToUint32(this.length);
+      var array = $__ToObject(this),
+          length = $__ToUint32(this.length);
 
       if (receiver == null) {
         receiver = this;
       } else if (typeof receiver !== 'object') {
-        receiver = %ToObject(receiver);
+        receiver = $__ToObject(receiver);
       }
 
       var result = [],
@@ -99,7 +99,7 @@
       for (var i = 0; i < length; i++) {
         if (i in array) {
           var element = array[i];
-          if (%callFunction(callback, receiver, [element, i, array])) {
+          if ($__callFunction(callback, receiver, [element, i, array])) {
             result[count++] = element;
           }
         }
@@ -108,28 +108,27 @@
       return result;
     },
     function forEach(callback, context){
+      var len = this.length;
       if (arguments.length === 1) {
         context = this;
       } else {
-        context = %ToObject(this);
+        context = $__ToObject(this);
       }
-      for (var i=0; i < this.length; i++) {
-        if (%hasOwnDirect(this, i)) {
-          callback.call(context, this[i], i, this);
-        }
+      for (var i=0; i < len; i++) {
+        callback.call(context, this[i], i, this);
       }
     },
     function map(callback, context){
       var out = [];
+      var len = this.length;
       if (arguments.length === 1) {
         context = this;
       } else {
-        context = %ToObject(this);
+        context = Object(this);
       }
-      for (var i=0; i < this.length; i++) {
-        if (%hasOwnDirect(this, i)) {
-          out[i] = callback.call(context, this[i], i, this);
-        }
+      for (var i=0; i < len; i++) {
+        console.log(i);
+        out.push(callback.call(context, this[i], i, this));
       }
       return out;
     },
@@ -156,7 +155,7 @@
       if (arguments.length === 0) {
         joiner = ',';
       } else {
-        joiner = %ToString(joiner);
+        joiner = $__ToString(joiner);
       }
 
       len--;
@@ -217,28 +216,28 @@
   // ###############
 
   function Boolean(arg){
-    if (%isConstructCall()) {
-      return %BooleanCreate(%ToBoolean(arg));
+    if ($__isConstructCall()) {
+      return $__BooleanCreate($__ToBoolean(arg));
     } else {
-      return %ToBoolean(arg);
+      return $__ToBoolean(arg);
     }
   }
 
-  setupConstructor(Boolean, %BooleanProto);
+  setupConstructor(Boolean, $__BooleanProto);
 
   defineMethods(Boolean.prototype, [
     function toString(){
-      if (%getNativeBrand(this) === 'Boolean') {
-        return %getPrimitiveValue(this) ? 'true' : 'false';
+      if ($__getNativeBrand(this) === 'Boolean') {
+        return $__getPrimitiveValue(this) ? 'true' : 'false';
       } else {
-        throw %exception("not_generic", ["Boolean.prototype.toString"]);
+        throw $__exception("not_generic", ["Boolean.prototype.toString"]);
       }
     },
     function valueOf(){
-      if (%getNativeBrand(this) === 'Boolean') {
-        return %getPrimitiveValue(this);
+      if ($__getNativeBrand(this) === 'Boolean') {
+        return $__getPrimitiveValue(this);
       } else {
-        throw %exception("not_generic", ["Boolean.prototype.valueOf"]);
+        throw $__exception("not_generic", ["Boolean.prototype.valueOf"]);
       }
     }
   ]);
@@ -249,29 +248,29 @@
   // ############
 
   function Date(...args){
-    return %DateCreate(args);
+    return $__DateCreate(args);
   }
 
-  setupConstructor(Date, %DateProto);
+  setupConstructor(Date, $__DateProto);
 
   defineMethods(Date.prototype, [
     function toString(){
-      if (%getNativeBrand(this) === 'Date') {
-        return %dateToString(this);
+      if ($__getNativeBrand(this) === 'Date') {
+        return $__dateToString(this);
       } else {
-        throw %exception("not_generic", ["Date.prototype.toString"]);
+        throw $__exception("not_generic", ["Date.prototype.toString"]);
       }
     },
     function valueOf(){
-      if (%getNativeBrand(this) === 'Date') {
-        return %dateToNumber(this);
+      if ($__getNativeBrand(this) === 'Date') {
+        return $__dateToNumber(this);
       } else {
-        throw %exception("not_generic", ["Date.prototype.valueOf"]);
+        throw $__exception("not_generic", ["Date.prototype.valueOf"]);
       }
     }
   ]);
 
-  %wrapDateMethods(Date.prototype);
+  $__wrapDateMethods(Date.prototype);
 
 
   // ################
@@ -279,22 +278,22 @@
   // ################
 
   function Function(...args){
-    return %FunctionCreate(args);
+    return $__FunctionCreate(args);
   }
 
-  %defineDirect(%FunctionProto, 'name', 'Empty', 0);
+  $__defineDirect($__FunctionProto, 'name', 'Empty', 0);
 
-  setupConstructor(Function, %FunctionProto);
+  setupConstructor(Function, $__FunctionProto);
 
   defineMethods(Function.prototype, [
-    %call,
-    %apply,
-    %bind,
+    $__call,
+    $__apply,
+    $__bind,
     function toString(){
       if (typeof this !== 'function') {
-        throw %exception("not_generic", ["Function.prototype.toString"]);
+        throw $__exception("not_generic", ["Function.prototype.toString"]);
       }
-      return %functionToString(this);
+      return $__functionToString(this);
     }
   ]);
 
@@ -304,7 +303,7 @@
   // ###########
 
   function Map(iterable){}
-  setupConstructor(Map, %MapProto);
+  setupConstructor(Map, $__MapProto);
 
 
   // ##############
@@ -312,13 +311,13 @@
   // ##############
 
   function Number(arg){
-    if (%isConstructCall()) {
-      return %NumberCreate(+arg);
+    if ($__isConstructCall()) {
+      return $__NumberCreate(+arg);
     } else {
-      return %ToNumber(arg);
+      return $__ToNumber(arg);
     }
   }
-  setupConstructor(Number, %NumberProto);
+  setupConstructor(Number, $__NumberProto);
 
   defineConstants(Number, {
     EPSILON: 2.220446049250313e-16,
@@ -330,7 +329,7 @@
     POSITIVE_INFINITY: Infinity
   });
 
-  %isFinite = function isFinite(number){
+  $__isFinite = function isFinite(number){
     return typeof value === 'number'
         && value === value
         && value < Infinity
@@ -341,7 +340,7 @@
     function isNaN(number){
       return number !== number;
     },
-    %isFinite,
+    $__isFinite,
     function isInteger(value) {
       return typeof value === 'number'
           && value === value
@@ -356,17 +355,17 @@
 
   defineMethods(Number.prototype, [
     function toString(radix){
-      if (%getNativeBrand(this) === 'Number') {
-        return %numberToString(this, radix);
+      if ($__getNativeBrand(this) === 'Number') {
+        return $__numberToString(this, radix);
       } else {
-        throw %exception("not_generic", ["Number.prototype.toString"]);
+        throw $__exception("not_generic", ["Number.prototype.toString"]);
       }
     },
     function valueOf(){
-      if (%getNativeBrand(this) === 'Number') {
-        return %getPrimitiveValue(this);
+      if ($__getNativeBrand(this) === 'Number') {
+        return $__getPrimitiveValue(this);
       } else {
-        throw %exception("not_generic", ["Number.prototype.valueOf"]);
+        throw $__exception("not_generic", ["Number.prototype.valueOf"]);
       }
     },
     function clz() {
@@ -387,29 +386,29 @@
   // ##############
 
   function Object(obj){
-    if (%isConstructCall()) {
+    if ($__isConstructCall()) {
       return this;
     } else if (obj == null) {
       return {};
     } else {
-      return %ToObject(obj);
+      return $__ToObject(obj);
     }
   }
 
-  setupConstructor(Object, %ObjectProto);
+  setupConstructor(Object, $__ObjectProto);
 
 
   defineMethods(Object, [
-    %keys,
-    %create,
-    %isExtensible,
-    %getPrototypeOf,
-    %defineProperty,
-    %defineProperties,
-    %getPropertyNames,
-    %getOwnPropertyNames,
-    %getPropertyDescriptor,
-    %getOwnPropertyDescriptor
+    $__keys,
+    $__create,
+    $__isExtensible,
+    $__getPrototypeOf,
+    $__defineProperty,
+    $__defineProperties,
+    $__getPropertyNames,
+    $__getOwnPropertyNames,
+    $__getPropertyDescriptor,
+    $__getOwnPropertyDescriptor
   ]);
 
   defineMethods(Object.prototype, [
@@ -419,18 +418,18 @@
       } else if (this === null) {
         return '[object Null]';
       } else {
-        return %objectToString(this);
+        return $__objectToString(this);
       }
     },
     function toLocaleString(){
       return this.toString();
     },
     function valueOf(){
-      return %ToObject(this);
+      return $__ToObject(this);
     },
-    %hasOwnProperty,
-    %isPrototypeOf,
-    %propertyIsEnumerable
+    $__hasOwnProperty,
+    $__isPrototypeOf,
+    $__propertyIsEnumerable
   ]);
 
 
@@ -439,10 +438,10 @@
   // ##############
 
   function RegExp(pattern){
-    return %RegExpCreate(%ToString(pattern));
+    return $__RegExpCreate($__ToString(pattern));
   }
 
-  setupConstructor(RegExp, %RegExpProto);
+  setupConstructor(RegExp, $__RegExpProto);
 
 
   // ###########
@@ -450,7 +449,7 @@
   // ###########
 
   function Set(iterable){}
-  setupConstructor(Set, %SetProto);
+  setupConstructor(Set, $__SetProto);
 
 
 
@@ -459,35 +458,35 @@
   // ##############
 
   function String(string){
-    string = arguments.length ? %ToString(string) : '';
-    if (%isConstructCall()) {
-      return %StringCreate(string);
+    string = arguments.length ? $__ToString(string) : '';
+    if ($__isConstructCall()) {
+      return $__StringCreate(string);
     } else {
       return string;
     }
   }
 
-  setupConstructor(String, %StringProto);
+  setupConstructor(String, $__StringProto);
 
   defineMethods(String.prototype, [
     function toString(){
-      if (%getNativeBrand(this) === 'String') {
-        return %getPrimitiveValue(this);
+      if ($__getNativeBrand(this) === 'String') {
+        return $__getPrimitiveValue(this);
       } else {
-        throw %exception("not_generic", ["String.prototype.toString"]);
+        throw $__exception("not_generic", ["String.prototype.toString"]);
       }
     },
     function valueOf(){
-      if (%getNativeBrand(this) === 'String') {
-        return %getPrimitiveValue(this);
+      if ($__getNativeBrand(this) === 'String') {
+        return $__getPrimitiveValue(this);
       } else {
-        throw %exception("not_generic", ["String.prototype.valueOf"]);
+        throw $__exception("not_generic", ["String.prototype.valueOf"]);
       }
     },
   ]);
 
 
-  %wrapStringMethods(String.prototype);
+  $__wrapStringMethods(String.prototype);
 
 
   // ###############
@@ -495,14 +494,14 @@
   // ###############
 
   function WeakMap(iterable){}
-  setupConstructor(WeakMap, %WeakMapProto);
+  setupConstructor(WeakMap, $__WeakMapProto);
 
 
 
   function Error(message){
     this.message = message;
   }
-  setupConstructor(Error, %ErrorProto);
+  setupConstructor(Error, $__ErrorProto);
 
   defineMethods(Error.prototype, [
     function toString(){
@@ -513,53 +512,53 @@
   function EvalError(message){
     this.message = message;
   }
-  setupConstructor(EvalError, %EvalErrorProto);
+  setupConstructor(EvalError, $__EvalErrorProto);
 
   function RangeError(message){
     this.message = message;
   }
-  setupConstructor(RangeError, %RangeErrorProto);
+  setupConstructor(RangeError, $__RangeErrorProto);
 
   function ReferenceError(message){
     this.message = message;
   }
-  setupConstructor(ReferenceError, %ReferenceErrorProto);
+  setupConstructor(ReferenceError, $__ReferenceErrorProto);
 
   function SyntaxError(message){
     this.message = message;
   }
-  setupConstructor(SyntaxError, %SyntaxErrorProto);
+  setupConstructor(SyntaxError, $__SyntaxErrorProto);
 
   function TypeError(message){
     this.message = message;
   }
-  setupConstructor(TypeError, %TypeErrorProto);
+  setupConstructor(TypeError, $__TypeErrorProto);
 
   function URIError(message){
     this.message = message;
   }
-  setupConstructor(URIError, %URIErrorProto);
+  setupConstructor(URIError, $__URIErrorProto);
 
 
-  %defineDirect(global, 'Math', %MathCreate(), 6);
-  %defineDirect(global, 'JSON', %JSONCreate(), 6);
+  $__defineDirect(global, 'Math', $__MathCreate(), 6);
+  $__defineDirect(global, 'JSON', $__JSONCreate(), 6);
 
 
   defineMethods(global, [
-    %parseInt,
-    %parseFloat,
-    %decodeURI,
-    %encodeURI,
-    %decodeURIComponent,
-    %encodeURIComponent,
-    %escape,
-    %eval,
+    $__parseInt,
+    $__parseFloat,
+    $__decodeURI,
+    $__encodeURI,
+    $__decodeURIComponent,
+    $__encodeURIComponent,
+    $__escape,
+    $__eval,
     function isNaN(number){
-      number = %ToNumber(number);
+      number = $__ToNumber(number);
       return number !== number;
     },
     function isFinite(number){
-      number = %ToNumber(number);
+      number = $__ToNumber(number);
       return number === number && number !== Infinity && number !== -Infinity;
     }
   ]);
