@@ -35,7 +35,7 @@
     %defineDirect(ctor, 'prototype', proto, 0);
     %defineDirect(ctor.prototype, 'constructor', ctor, 0);
     %defineDirect(global, ctor.name, ctor, 6);
-    %markAsNative(ctor);
+    %markAsNativeConstructor(ctor);
   }
 
 

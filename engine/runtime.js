@@ -1678,6 +1678,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
       var instance = typeof prototype === OBJECT ? new $Object(prototype) : new $Object;
+      if (this.NativeConstructor) {
+        instance.NativeBrand = prototype.NativeBrand;
+      }
       instance.ConstructorName = this.properties.name;
       var result = this.Call(instance, args, true);
       if (result && result.Completion) {
@@ -2653,7 +2656,10 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     markAsNative: function(fn){
       fn.Native = true;
-      hide(fn, 'Native');
+    },
+    markAsNativeConstructor: function(fn){
+      fn.Native = true;
+      fn.NativeConstructor = true;
     },
     exception: function(type, args){
       return MakeException(type, toInternalArray(args));
