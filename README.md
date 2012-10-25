@@ -5,21 +5,36 @@ Continuum is a JavaScript meta-interpeter that uses a bytecode virtual machine t
 
 # Usage
 
-As I said, still a work in progress. The easiest way to see it in action is to load up the __continuum-combined.js__ file which will bestow a `continuum` object globally. (or load this module in Node.js)
 
-```javascript
-// when you create a new context, it will bootstrap in the builtin globals by executing the script
 
-var realm = continuum.create(); // returns a Realm object which contains the global object and everything else
-realm.eval('Object.getOwnPropertyNames(this)');
-  { properties:
-    { 'NaN', 'Infinity', 'undefined', 'console', 'Array', 'Boolean', 'Date', 'Function', 'Number',
-      'Object', 'RegExp', 'String', 'parseInt', 'parseFloat', 'decodeURI', 'encodeURI',
-      'decodeURIComponent', 'encodeURIComponent', 'escape', 'isNaN', 'isFinite', length: 21 } }
+# ES6 Implementation Status
 
-realm.eval('class Rect { constructor(...args){ [this.x, this.y, this.w, this.h] = args } }')
-realm.eval('new Rect(25, 50, 200, 500)');
+### Already Implemented
 
-{ properties: { x: 25, y: 50, w: 200, h: 500 } }
+* Destructuring assignment
+* Rest Params
+* Classes and super
+* `is` and `isnt` operators
+* Arrow functions
+* Block Scope
+* new Math functions
+* new Object functions
+* terse method syntax in literals
 
-```
+### Partially Implemented
+
+* Proxy and Reflect
+* Map, Set, WeakMap
+* Iterators and for..of
+* Spread
+* Tail call optimization
+* Templates
+
+### Soon
+* Generators
+* Private Names
+*
+
+### Further out
+* Proper implementation of Modules
+* Binary data api
