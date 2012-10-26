@@ -1735,7 +1735,7 @@ parseYieldExpression: true
         previousYieldAllowed = yieldAllowed;
         yieldAllowed = options.generator;
         body = parseConciseBody();
-        if (options.name && strict && isRestrictedWord(param[0].name)) {
+        if (options.name && strict && param[0] && isRestrictedWord(param[0].name)) {
             throwErrorTolerant(options.name, Messages.StrictParamName);
         }
         if (yieldAllowed && !yieldFound) {
@@ -1746,7 +1746,7 @@ parseYieldExpression: true
 
         return {
             type: Syntax.FunctionExpression,
-            id: null,
+            id: options.name,
             params: param,
             defaults: [],
             body: body,
@@ -1800,6 +1800,7 @@ parseYieldExpression: true
 
         method = parsePropertyFunction(params, {
             generator: options.generator,
+            name: options.name,
             rest: rest
         });
 
@@ -1845,7 +1846,7 @@ parseYieldExpression: true
                 return {
                     type: Syntax.Property,
                     key: key,
-                    value: parsePropertyFunction([], { generator: false }),
+                    value: parsePropertyFunction([], { generator: false, name: key }),
                     kind: 'get'
                 };
             } else if (token.value === 'set' && !(match(':') || match('('))) {
@@ -1873,7 +1874,7 @@ parseYieldExpression: true
                     return {
                         type: Syntax.Property,
                         key: id,
-                        value: parsePropertyMethodFunction({ generator: false }),
+                        value: parsePropertyMethodFunction({ generator: false, name: id }),
                         kind: 'init',
                         method: true
                     };
@@ -1902,7 +1903,7 @@ parseYieldExpression: true
             return {
                 type: Syntax.Property,
                 key: id,
-                value: parsePropertyMethodFunction({ generator: true }),
+                value: parsePropertyMethodFunction({ generator: true, name: id }),
                 kind: 'init',
                 method: true
             };
@@ -1920,7 +1921,7 @@ parseYieldExpression: true
                 return {
                     type: Syntax.Property,
                     key: key,
-                    value: parsePropertyMethodFunction({ generator: false }),
+                    value: parsePropertyMethodFunction({ generator: false, name: key }),
                     kind: 'init',
                     method: true
                 };
@@ -4094,7 +4095,7 @@ parseYieldExpression: true
             return {
                 type: Syntax.MethodDefinition,
                 key: key,
-                value: parsePropertyFunction([], { generator: false }),
+                value: parsePropertyFunction([], { generator: false, key: key }),
                 kind: 'get'
             };
         } else if (token.value === 'set' && !match('(')) {
@@ -4113,7 +4114,7 @@ parseYieldExpression: true
             return {
                 type: Syntax.MethodDefinition,
                 key: key,
-                value: parsePropertyMethodFunction({ generator: false }),
+                value: parsePropertyMethodFunction({ generator: false, name: key }),
                 kind: ''
             };
         }
@@ -10572,7 +10573,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       this.MethodName = name;
     }
 
-    if (kind === NORMAL && strict) {
+    if (strict) {
       defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
       defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
     } else {
