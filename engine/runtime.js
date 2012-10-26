@@ -2622,6 +2622,19 @@ var runtime = (function(GLOBAL, exports, undefined){
   var nativeCode = ['function ', '() { [native code] }'];
 
   var natives = {
+    defineDirect: defineDirect,
+    deleteDirect: deleteDirect,
+    hasOwnDirect: hasOwnDirect,
+    hasDirect: hasDirect,
+    setDirect: setDirect,
+    ToObject: ToObject,
+    ToString: ToString,
+    ToNumber: ToNumber,
+    ToBoolean: ToBoolean,
+    ToPropertyName: ToPropertyName,
+    ToInteger: ToInteger,
+    ToInt32: ToInt32,
+    ToUint32: ToUint32,
     callFunction: function(func, receiver, args){
       return func.Call(receiver, toInternalArray(args))
     },
@@ -2687,18 +2700,6 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       });
     },
-    defineDirect: defineDirect,
-    deleteDirect: deleteDirect,
-    hasOwnDirect: hasOwnDirect,
-    hasDirect: hasDirect,
-    setDirect: setDirect,
-    ToObject: ToObject,
-    ToString: ToString,
-    ToNumber: ToNumber,
-    ToBoolean: ToBoolean,
-    ToInteger: ToInteger,
-    ToInt32: ToInt32,
-    ToUint32: ToUint32,
     // FUNCTION
     eval: function(code){
       if (typeof code !== 'string') {
