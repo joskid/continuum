@@ -2,7 +2,8 @@
 var inherit = utility.inherit,
     create = utility.create,
     assign = utility.assign,
-    define = utility.define;
+    define = utility.define,
+    isObject = utility.isObject;
 
 function _(s){
   return document.createElement(s);
@@ -134,6 +135,14 @@ define(Component.prototype, [
     return {
       left: this.element.offsetLeft + this.getMetric('marginLeft'),
       top: this.element.offsetTop + this.getMetric('marginTop')
+    }
+  },
+  function text(value){
+    if (value === undefined) {
+      return this.element.textContent;
+    } else {
+      this.element.textContent = value;
+      return this;
     }
   }
 ]);
@@ -479,7 +488,7 @@ var Splitter = (function(){
 
       var far = container - near;
 
-      if (this.lastNear !== far || this.lastFar !== lastFar) {
+      if (this.lastNear !== near || this.lastFar !== far) {
         this.lastNear = near;
         this.lastFar = far;
         //this.nearSize(near);
@@ -1027,27 +1036,111 @@ var renderer = new debug.Renderer({
   WeakMap: Branch.create
 });
 
+function Span(text, name){
+  Component.call(this, 'span');
+  this.name = name;
+  this.text(text);
+  if (name) {
+    this.addClass(name);
+  }
+}
 
+inherit(Span, Component, []);
+
+var typeofs = {
+  string: 'StringValue',
+  boolean: 'BooleanValue',
+  number: 'NumberValue',
+  undefined: 'UndefinedValue',
+  object: 'NullValue'
+};
+
+function identity(x){
+  return x;
+}
+
+var translators = {
+  string: utility.quotes,
+  boolean: identity,
+  number: identity,
+  undefined: identity,
+  object: identity
+};
+
+function Instruction(instruction, stack){
+  var op = instruction.op;
+  Component.call(this, 'li');
+  this.instruction = instruction;
+  this.addClass('instruction');
+  this.addClass(op.name);
+  this.append(new Span(op.name, 'op-name'));
+  if (op.name === 'GET' || op.name === 'PUT') {
+    var item = stack[stack.length - 1];
+    if (!isObject(item)) {
+      var type = typeof item;
+      this.append(new Span(translators[type](item), typeofs[type]));
+    } else {
+      if (item.Reference) {
+        if (item.base) {
+          if (item.base.bindings) {
+            if (item.base.bindings.NativeBrand) {
+              item = item.base.bindings.properties[item.name];
+            } else if (item.name in item.base.bindings) {
+              item = item.base.bindings[item.name];
+            }
+          } else if (item.base.NativeBrand) {
+            item = item.base[item.name];
+          }
+        }
+      }
+      if (item && item.NativeBrand) {
+        var result = renderer.render(item);
+        this.append(result);
+      }
+    }
+    console.log(item);
+  } else if (op.name === 'BINARY') {
+    this.append(new Span(constants.BINARYOPS.getKey(instruction[0]), 'Operator'));
+  } else if (op.name === 'UNARY') {
+    this.append(new Span(constants.UNARYOPS.getKey(instruction[0]), 'Operator'));
+  } else {
+    for (var i=0; i < op.params; i++) {
+      var param = instruction[i];
+      if (!isObject(param)) {
+        this.append(new Span(param, typeofs[typeof param]));
+      }
+    }
+  }
+}
+
+inherit(Instruction, Component, []);
+
+
+function Instructions(){
+  Component.call(this, 'ul');
+  this.addClass('instructions');
+}
+
+inherit(Instructions, Component, []);
 
 var input = new InputBox,
     stdout = new Console,
     root = _('div'),
-    ops = _('div');
+    instructions = new Instructions;
 
 root.className = 'root';
-ops.className = 'ops';
 
 
 var main = new Panel(null, {
   name: 'container',
   top: {
     left: {
-      size: 200,
+      size: 250,
       top: {
-        size: 300,
-        label: 'Ops',
-        name: 'ops',
-        content: ops
+        size: .7,
+        label: 'Instructions',
+        name: 'instructions',
+        content: instructions
       },
       bottom: {
         label: 'stdout',
@@ -1084,7 +1177,15 @@ function runInContext(code, realm){
 
 
 var realm = new Realm(function(type, value){
-  console.log(type, value);
+  if (type !== 'op') {
+    console.log(type, value);
+  }
+});
+
+runInContext('this', realm);
+
+realm.on('op', function(parts){
+  instructions.append(new Instruction(parts[0], parts[1]));
 });
 realm.on('write', stdout.append.bind(stdout));
 realm.on('clear', stdout.clear.bind(stdout));
@@ -1095,7 +1196,6 @@ input.on('entry', function(evt){
   runInContext(evt.value, realm);
 });
 
-console.log(runInContext('this', realm));
 
 input.element.focus();
 

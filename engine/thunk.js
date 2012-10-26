@@ -623,7 +623,7 @@ var thunk = (function(exports){
       var f = cmds[ip];
 
       while (f) {
-        thunk.emit('op', [ops[ip], stack, sp]);
+        thunk.emit('op', [ops[ip], stack.slice(0, sp)]);
         f = f();
       }
     }

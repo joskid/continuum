@@ -15,13 +15,22 @@ h2
 { }
 
 .ƒconsole
-{  background: #111; white-space: pre; color: #fff; padding: 6px; overflow: hidden; height: 100% }
+{ background: #111; white-space: pre; color: #fff; padding: 6px; overflow: hidden; height: 100% }
 
 
-#ops
+#instructions
 { background: #111; color: #fff;}
-.ops
-{ overflow-y: auto; height: 100%; padding: 6px; }
+.ƒinstructions
+{ overflow-y: auto; margin: 0; padding: 6px; font-size: 70% }
+  .ƒinstruction > div
+  { display: inline-block; vertical-align: top }
+  .ƒinstruction > span
+  { margin-right: 5px; vertical-align: top }
+  .ƒop-name
+  { text-shadow: 1px 1px 1px #000 }
+
+.ƒCOMPLETE
+{ padding-bottom: 3px; border-bottom: 1px dashed #666; margin-bottom: 3px; }
 
 #input
 { background: #333; }
@@ -52,7 +61,7 @@ h2
     .ƒsplitter.ƒright  { border-left: 3px solid #789 }
 
       .ƒpanel-label
-      { position: absolute; color: #9ff; right: 8px; top: 8px; text-shadow: 1px 1px 0 #266, 0 0 0 #0ff; opacity: .1;
+      { position: absolute; color: #9ff; right: 8px; text-shadow: 1px 1px 0 #266, 0 0 0 #0ff; opacity: .1;
         -webkit-transition: .3s; -moz-transition: .3s; transition: .3s }
       .ƒpanel:focus > .ƒpanel-label
       { opacity: 1; text-shadow: 1px 1px 0 #266, 0 0 15px #0ff; }
@@ -106,6 +115,8 @@ h2
       .ƒbranch > .ƒlabel:hover
       { text-decoration: underline; cursor: pointer; }
 
+
+
 .Circular { color: #af8700 }
 .More     { color: #d78700 }
 .Curly    { color: #ffd700 }
@@ -137,6 +148,7 @@ h2
 
 .ƒProto       { color: #ff00af }
 .ƒConstructor { color: #00afff }
+.ƒOperator    { color: #00ffff }
 
 .ƒECW { color: #d7d7d7 }
 .ƒE_W { color: #d7d7ff }
