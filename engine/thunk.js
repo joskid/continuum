@@ -149,7 +149,7 @@ var thunk = (function(exports){
     }
     function CLASS_DECL(){
       a = ops[ip][0];
-      b = ops[ip][1] ? stack[--sp] : null;
+      b = ops[ip][1] ? stack[--sp] : undefined;
       c = context.pushClass(a, b);
       if (c && c.Completion) {
         if (c.Abrupt) {
@@ -160,7 +160,7 @@ var thunk = (function(exports){
         }
       }
 
-      d = context.initializeBindings(a.pattern, a);
+      d = context.initializeBindings(a.pattern, c);
       if (d && d.Abrupt) {
         error = d;
         return ƒ;
@@ -169,7 +169,7 @@ var thunk = (function(exports){
     }
 
     function CLASS_EXPR(){
-      b = ops[ip][1] ? stack[--sp] : null;
+      b = ops[ip][1] ? stack[--sp] : undefined;
       a = context.pushClass(ops[ip][0], b);
       if (a && a.Completion) {
         if (a.Abrupt) {

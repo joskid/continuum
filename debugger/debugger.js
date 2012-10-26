@@ -994,6 +994,20 @@ inherit(Branch, Component, [
 
 function FunctionBranch(mirror){
   Branch.call(this, mirror);
+
+  var name = this.mirror.getName(),
+      params = this.mirror.getParams();
+
+  if (params.rest) {
+    params.push('...'+params.pop());
+  }
+
+  this.label.append(new Span(name, 'FunctionName'));
+  var paramContainer = new Span('', 'Params');
+  for (var i=0; i < params.length; i++) {
+    paramContainer.append(new Span(params[i], 'Param'))
+  }
+  this.label.append(paramContainer);
 }
 
 FunctionBranch.create = function create(mirror){
@@ -1001,14 +1015,7 @@ FunctionBranch.create = function create(mirror){
 }
 
 inherit(FunctionBranch, Branch, [
-  function refresh(){
-    var name = this.mirror.getName(),
-        params = this.mirror.getParams();
-    if (params.rest) {
-      params.push('...'+params.pop());
-    }
-    this.label.text(name+'('+params.join(', ')+')');
-  }
+  function refresh(){ }
 ]);
 
 

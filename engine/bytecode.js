@@ -872,11 +872,10 @@ var bytecode = (function(exports){
         }
       }
 
-      var superClass = null;
       if (node.superClass) {
         this.visit(node.superClass);
         this.record(GET);
-        superClass = node.superClass.name;
+        var superClass = node.superClass.name;
       }
 
       var type = node.type === 'ClassExpression' ? CLASS_EXPR : CLASS_DECL;
@@ -1272,8 +1271,9 @@ var bytecode = (function(exports){
 
         this.record(op, item.id);
 
-        if (node.kind === 'var')
+        if (node.kind === 'var') {
           this.code.VarDeclaredNames.push(item.id.name);
+        }
       }
     },
     function VariableDeclarator(node){},

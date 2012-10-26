@@ -131,6 +131,15 @@ h2
 .ƒUndefinedValue { color: #5f875f }
 .ƒException      { color: #ff005f; font-weight: bold;  }
 
+.ƒParams { font-style: italic; color: #0087ff }
+  .ƒParams:before { content: '(';}
+  .ƒParams:after { content: ')'; }
+  .ƒParams:before,
+  .ƒParams:after,
+  .ƒParam:after { color: #87d7ff }
+  .ƒParam:after { content: ', ' }
+  .ƒParam:last-child:after { content: '' }
+
 .ƒArray    { color: #ff5f87 }
 .ƒBoolean  { color: #afff5f }
 .ƒDate     { color: #00af00 }

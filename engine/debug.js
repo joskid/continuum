@@ -588,16 +588,21 @@ var debug = (function(exports){
         }
         if (subject.Completion) {
           return new MirrorThrown(subject.value);
-        } else if (!subject.isProxy) {
-          var Ctor = subject.NativeBrand.name in brands
-                    ? brands[subject.NativeBrand.name]
-                    : 'Call' in subject
-                      ? MirrorFunction
-                      : MirrorObject;
+        } else if (subject.NativeBrand) {
+          if (!subject.isProxy) {
+            var Ctor = subject.NativeBrand.name in brands
+                      ? brands[subject.NativeBrand.name]
+                      : 'Call' in subject
+                        ? MirrorFunction
+                        : MirrorObject;
 
-          return new Ctor(subject);
+            return new Ctor(subject);
+          } else {
+            return new MirrorProxy(subject);
+          }
         } else {
-          return new MirrorProxy(subject);
+          console.log(subject);
+          return _Undefined
         }
     }
   }

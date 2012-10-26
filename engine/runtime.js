@@ -736,6 +736,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     ctor.SetPrototype(superctor);
     setDirect(ctor, 'name', name ? name.name || name : '');
     MakeConstructor(ctor, false, proto);
+    defineDirect(proto, 'constructor', ctor, _CW);
     defineDirect(ctor, 'prototype', proto, ___);
 
     for (var i=0, method; method = methods[i]; i++) {
@@ -1578,7 +1579,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       defineDirect(this, 'caller', null, ___);
     }
 
-    defineDirect(this, 'length', params.ExpectedArgumentCount, ___);
+    defineDirect(this, 'length', params ? params.ExpectedArgumentCount : 0, ___);
 
     if (typeof name === 'string' && kind !== ARROW) {
       defineDirect(this, 'name', name, ___);
