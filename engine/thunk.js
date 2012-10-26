@@ -58,14 +58,25 @@ var thunk = (function(exports){
       CLASS_EXPR, CONST, CONSTRUCT, DEBUGGER, DEFAULT, DUP, ELEMENT,
       FUNCTION, GET, IFEQ, IFNE, INDEX, JSR, JUMP, LET, LITERAL,
       MEMBER, METHOD, OBJECT, POP, SAVE, POPN, PROPERTY, PUT,
-      REGEXP, RESOLVE, RETURN, COMPLETE, ROTATE, RUN, SUPER_CALL, SUPER_ELEMENT,
+      REGEXP, REF, RETURN, COMPLETE, ROTATE, RUN, SUPER_CALL, SUPER_ELEMENT,
       SUPER_GUARD, SUPER_MEMBER, THIS, THROW, UNARY, UNDEFINED, UPDATE, VAR, WITH,
-      NATIVE_RESOLVE, ENUM, NEXT, STRING, NATIVE_CALL
+      NATIVE_REF, ENUM, NEXT, STRING, NATIVE_CALL, TO_OBJECT, SPREAD, ARGS, ARG, SPREAD_ARG
     ];
 
     var thunk = this,
         ops = code.ops,
         cmds = instructions(ops, opcodes);
+
+    function ARGS(){
+      stack[sp++] = [];
+      return cmds[++ip];
+    }
+
+    function ARG(){
+      a = stack[--sp];
+      stack[sp - 1].push(a);
+      return cmds[++ip];
+    }
 
     function ARRAY(){
       stack[sp++] = context.createArray(0);
@@ -83,7 +94,7 @@ var thunk = (function(exports){
       a = BinaryOp(BINARYOPS[ops[ip][0]], stack[--sp], stack[--sp]);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -104,14 +115,13 @@ var thunk = (function(exports){
     }
 
     function CALL(){
-      sp -= ops[ip][0];
-      a = stack.slice(sp, sp + ops[ip][0]);
+      a = stack[--sp];
       b = stack[--sp];
       c = stack[--sp];
       d = context.EvaluateCall(c, b, a);
       if (d && d.Completion) {
         if (d.Abrupt) {
-          error = d.value;
+          error = d;
           return ƒ;
         } else {
           d = d.value;
@@ -125,7 +135,7 @@ var thunk = (function(exports){
       a = STRICT_EQUAL(stack[--sp], stack[sp - 1]);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -138,20 +148,21 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
     function CLASS_DECL(){
+      a = ops[ip][0];
       b = ops[ip][1] ? stack[--sp] : null;
-      a = context.pushClass(ops[ip][0], b);
-      if (a && a.Completion) {
-        if (a.Abrupt) {
-          error = a.value;
+      c = context.pushClass(a, b);
+      if (c && c.Completion) {
+        if (c.Abrupt) {
+          error = c;
           return ƒ;
         } else {
-          a = a.value;
+          c = c.value;
         }
       }
 
-      a = context.initializeBindings(ops[ip][0], a);
-      if (a && a.Abrupt) {
-        error = a.value;
+      d = context.initializeBindings(a.pattern, a);
+      if (d && d.Abrupt) {
+        error = d;
         return ƒ;
       }
       return cmds[++ip];
@@ -162,7 +173,7 @@ var thunk = (function(exports){
       a = context.pushClass(ops[ip][0], b);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -182,18 +193,18 @@ var thunk = (function(exports){
     }
 
     function CONSTRUCT(){
-      sp -= ops[ip][0];
-      a = stack.slice(sp, sp + ops[ip][0]);
-      a = context.EvaluateConstruct(stack[--sp], a);
-      if (a && a.Completion) {
-        if (a.Abrupt) {
-          error = a.value;
+      a = stack[--sp];
+      b = stack[--sp];
+      c = context.EvaluateConstruct(b, a);
+      if (c && c.Completion) {
+        if (c.Abrupt) {
+          error = c;
           return ƒ;
         } else {
-          a = a.value;
+          c = c.value;
         }
       }
-      stack[sp++] = a;
+      stack[sp++] = c;
       return cmds[++ip];
     }
 
@@ -218,7 +229,7 @@ var thunk = (function(exports){
       a = context.Element(stack[--sp], stack[--sp]);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -245,7 +256,7 @@ var thunk = (function(exports){
       a = GetValue(stack[--sp]);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -278,15 +289,25 @@ var thunk = (function(exports){
         a = GetValue(stack[--sp]);
         if (a && a.Completion) {
           if (a.Abrupt) {
-            error = a.value;
+            error = a;
             return ƒ;
           } else {
             a = a.value;
           }
         }
         b = stack[--sp];
-        stack[sp - 1].DefineOwnProperty(b, new Desc(a));
-        stack[sp++] = b + 1;
+        c = stack[sp - 1];
+        if (ops[ip][1]) {
+          d = context.SpreadInitialization(c, b, a)
+          if (d && d.Abrupt) {
+            error = d;
+            return ƒ;
+          }
+          stack[sp++] = d;
+        } else {
+          c.DefineOwnProperty(b, new Desc(a));
+          stack[sp++] = b + 1;
+        }
       }
       return cmds[++ip];
     }
@@ -314,7 +335,7 @@ var thunk = (function(exports){
       a = context.Element(code.lookup(ops[ip][0]), stack[--sp]);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -327,21 +348,20 @@ var thunk = (function(exports){
     function METHOD(){
       context.defineMethod(ops[ip][0], stack[sp - 1], code.lookup(ops[ip][2]), ops[ip][1]);
       if (a && a.Abrupt) {
-        error = a.value;
+        error = a;
         return ƒ;
       }
       return cmds[++ip];
     }
 
     function NATIVE_CALL(){
-      sp -= ops[ip][0];
-      a = stack.slice(sp, sp + ops[ip][0]);
+      a = stack[--sp];
       b = stack[--sp];
       c = stack[--sp];
       d = context.EvaluateCall(c, b, a);
       if (d && d.Completion) {
         if (d.Abrupt) {
-          error = d.value;
+          error = d;
           return ƒ;
         } else {
           d = d.value;
@@ -351,7 +371,7 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
-    function NATIVE_RESOLVE(){
+    function NATIVE_REF(){
       if (!code.natives) {
         error = 'invalid native reference';
         return ƒ;
@@ -376,7 +396,7 @@ var thunk = (function(exports){
       a = stack[--sp];
       b = DefineProperty(stack[sp - 1], code.lookup(ops[ip][0]), a);
       if (b && b.Abrupt) {
-        error = b.value;
+        error = b;
         return ƒ;
       }
       return cmds[++ip];
@@ -401,7 +421,7 @@ var thunk = (function(exports){
       a = stack[--sp];
       b = PutValue(stack[--sp], a);
       if (b && b.Abrupt) {
-        error = b.value;
+        error = b;
         return ƒ;
       }
       stack[sp++] = a;
@@ -414,7 +434,7 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
-    function RESOLVE(){
+    function REF(){
       stack[sp++] = context.IdentifierResolution(code.lookup(ops[ip][0]));
       return cmds[++ip];
     }
@@ -446,6 +466,30 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
+    function SPREAD(){
+      a = context.SpreadDestructuring(stack[--sp], ops[ip][0]);
+      if (a && a.Completion) {
+        if (a.Abrupt) {
+          error = a;
+          return ƒ;
+        } else {
+          a = a.value;
+        }
+      }
+      stack[sp++] = a;
+      return cmds[++ip];
+    }
+
+    function SPREAD_ARG(){
+      a = stack[--sp];
+      b = context.SpreadArguments(stack[sp - 1], a);
+      if (b && b.Abrupt) {
+        error = b;
+        return ƒ;
+      }
+      return cmds[++ip];
+    }
+
     function STRING(){
       stack[sp++] = code.lookup(ops[ip][0]);
       return cmds[++ip];
@@ -455,7 +499,7 @@ var thunk = (function(exports){
       a = SuperReference(false);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -469,7 +513,7 @@ var thunk = (function(exports){
       a = context.SuperReference(stack[--sp]);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -482,7 +526,7 @@ var thunk = (function(exports){
     function SUPER_GUARD(){
       a = context.SuperReference(null);
       if (a && a.Abrupt) {
-        error = a.value;
+        error = a;
         return ƒ;
       }
       return cmds[++ip];
@@ -492,7 +536,7 @@ var thunk = (function(exports){
       a = context.SuperReference(code.lookup(ops[ip][0]));
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -506,7 +550,7 @@ var thunk = (function(exports){
       a = context.ThisResolution();
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -521,11 +565,15 @@ var thunk = (function(exports){
       return ƒ;
     }
 
+    function TO_OBJECT(){
+
+    }
+
     function UNARY(){
       a = UnaryOp(UNARYOPS[ops[ip][0]], stack[--sp]);
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -549,7 +597,7 @@ var thunk = (function(exports){
       }
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -568,7 +616,7 @@ var thunk = (function(exports){
       a = ToObject(GetValue(stack[--sp]));
       if (a && a.Completion) {
         if (a.Abrupt) {
-          error = a.value;
+          error = a;
           return ƒ;
         } else {
           a = a.value;
@@ -620,10 +668,11 @@ var thunk = (function(exports){
     }
 
     function instrumentedExecute(){
-      var f = cmds[ip];
+      var f = cmds[ip],
+          realm = context.realm;
 
       while (f) {
-        thunk.emit('op', [ops[ip], stack.slice(0, sp)]);
+        realm.emit('op', [ops[ip], stack[sp - 1]]);
         f = f();
       }
     }
@@ -649,18 +698,16 @@ var thunk = (function(exports){
 
     function run(ctx){
       context = ctx;
+      if (context.realm.quiet) {
+        execute = normalExecute;
+      } else {
+        execute = instrumentedExecute;
+      }
       prepare();
       execute();
       return cleanup();
     }
 
-    function log(){
-      if (execute = normalExecute) {
-        execute = instrumentedExecute;
-      } else {
-        execute = normalExecute;
-      }
-    }
 
     var completion, stack, ip, sp, error, a, b, c, d, ctx, context;
 
@@ -670,7 +717,6 @@ var thunk = (function(exports){
 
     this.run = run;
     this.code = code;
-    this.log = log
     Emitter.call(this);
   }
 

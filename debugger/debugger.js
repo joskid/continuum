@@ -1009,9 +1009,27 @@ inherit(FunctionBranch, Branch, [
     }
     this.label.text(name+'('+params.join(', ')+')');
   }
-])
+]);
 
 
+
+function ThrownBranch(mirror){
+  Branch.call(this, mirror);
+}
+
+ThrownBranch.create = function create(mirror){
+  return new ThrownBranch(mirror);
+}
+
+inherit(ThrownBranch, Branch, [
+  function refresh(){
+    this.label.innerHTML = '';
+    this.label.append(new Div('Uncaught Exception', 'Exception'));
+    this.label.append(new Div(this.mirror.getError()));
+  }
+]);
+
+'Uncaught Exception'
 var renderer = new debug.Renderer({
   Unknown: Branch.create,
   BooleanValue: Leaf.create,
@@ -1020,6 +1038,7 @@ var renderer = new debug.Renderer({
   UndefinedValue: Leaf.create,
   NullValue: Leaf.create,
   Global: Branch.create,
+  Thrown: ThrownBranch.create,
   Array: Branch.create,
   Boolean: Branch.create,
   Date: Branch.create,
@@ -1047,6 +1066,18 @@ function Span(text, name){
 
 inherit(Span, Component, []);
 
+function Div(text, name){
+  Component.call(this, 'div');
+  this.name = name;
+  this.text(text);
+  if (name) {
+    this.addClass(name);
+  }
+}
+
+inherit(Div, Component, []);
+
+
 var typeofs = {
   string: 'StringValue',
   boolean: 'BooleanValue',
@@ -1067,7 +1098,7 @@ var translators = {
   object: identity
 };
 
-function Instruction(instruction, stack){
+function Instruction(instruction, item){
   var op = instruction.op;
   Component.call(this, 'li');
   this.instruction = instruction;
@@ -1075,7 +1106,6 @@ function Instruction(instruction, stack){
   this.addClass(op.name);
   this.append(new Span(op.name, 'op-name'));
   if (op.name === 'GET' || op.name === 'PUT') {
-    var item = stack[stack.length - 1];
     if (!isObject(item)) {
       var type = typeof item;
       this.append(new Span(translators[type](item), typeofs[type]));
@@ -1098,7 +1128,6 @@ function Instruction(instruction, stack){
         this.append(result);
       }
     }
-    console.log(item);
   } else if (op.name === 'BINARY') {
     this.append(new Span(constants.BINARYOPS.getKey(instruction[0]), 'Operator'));
   } else if (op.name === 'UNARY') {
@@ -1121,7 +1150,12 @@ function Instructions(){
   this.addClass('instructions');
 }
 
-inherit(Instructions, Component, []);
+inherit(Instructions, Component, [
+  function append(item){
+    Component.prototype.append.call(this, item);
+    this.element.scrollTop = this.element.scrollHeight;
+  }
+]);
 
 var input = new InputBox,
     stdout = new Console,
@@ -1176,9 +1210,10 @@ function runInContext(code, realm){
 }
 
 
-var realm = new Realm(function(type, value){
-  if (type !== 'op') {
-    console.log(type, value);
+var realm = new Realm(function(type, parts){
+  if (type === 'op') {
+  } else {
+    console.log(type, parts);
   }
 });
 

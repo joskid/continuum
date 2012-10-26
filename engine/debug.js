@@ -103,8 +103,10 @@ var debug = (function(exports){
     function get(key){
       if (this.isPropAccessor(key)) {
         return introspect(this.subject.Get(key));
-      } else {
+      } else if (key in this.props) {
         return introspect(this.props[key]);
+      } else {
+        return this.getPrototype().get(key);
       }
     },
     function getInternal(name){
@@ -251,6 +253,18 @@ var debug = (function(exports){
   inherit(MirrorError, MirrorObject, {
     kind: 'Error'
   }, [
+  ]);
+
+  function MirrorThrown(subject){
+    MirrorError.call(this, subject);
+  }
+
+  inherit(MirrorThrown, MirrorError, {
+    kind: 'Thrown'
+  }, [
+    function getError(){
+      return this.getValue('name') + ': ' + this.getValue('message');
+    }
   ]);
 
 
@@ -572,7 +586,9 @@ var debug = (function(exports){
         if (subject.__introspected) {
           return subject.__introspected;
         }
-        if (!subject.isProxy) {
+        if (subject.Completion) {
+          return new MirrorThrown(subject.value);
+        } else if (!subject.isProxy) {
           var Ctor = subject.NativeBrand.name in brands
                     ? brands[subject.NativeBrand.name]
                     : 'Call' in subject
@@ -617,6 +633,9 @@ var debug = (function(exports){
     },
     NullValue: function(mirror){
       return mirror.label();
+    },
+    Thrown: function(mirror){
+      return mirror.getError();
     },
     Array: function(mirror){
       return mirror.label();

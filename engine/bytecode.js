@@ -73,7 +73,7 @@ var bytecode = (function(exports){
 
   var LexicalDeclarations = (function(lexical){
     return collector({
-      ClassDeclaration: lexical(true),
+      ClassDeclaration: lexical(false),
       FunctionDeclaration: lexical(false),
       SwitchCase: visit.RECURSE,
       VariableDeclaration: lexical(function(node){
@@ -361,12 +361,12 @@ var bytecode = (function(exports){
       BINARY         = new OpCode( 2, 1, 'BINARY'),
       BLOCK          = new OpCode( 3, 1, 'BLOCK'),
       BLOCK_EXIT     = new OpCode( 4, 0, 'BLOCK_EXIT'),
-      CALL           = new OpCode( 5, 1, 'CALL'),
+      CALL           = new OpCode( 5, 0, 'CALL'),
       CASE           = new OpCode( 6, 1, 'CASE'),
       CLASS_DECL     = new OpCode( 7, 1, 'CLASS_DECL'),
       CLASS_EXPR     = new OpCode( 8, 1, 'CLASS_EXPR'),
       CONST          = new OpCode( 9, 1, 'CONST'),
-      CONSTRUCT      = new OpCode(10, 1, 'CONSTRUCT'),
+      CONSTRUCT      = new OpCode(10, 0, 'CONSTRUCT'),
       DEBUGGER       = new OpCode(11, 0, 'DEBUGGER'),
       DEFAULT        = new OpCode(12, 1, 'DEFAULT'),
       DUP            = new OpCode(13, 0, 'DUP'),
@@ -375,7 +375,7 @@ var bytecode = (function(exports){
       GET            = new OpCode(16, 0, 'GET'),
       IFEQ           = new OpCode(17, 2, 'IFEQ'),
       IFNE           = new OpCode(18, 2, 'IFNE'),
-      INDEX          = new OpCode(19, 1, 'INDEX'),
+      INDEX          = new OpCode(19, 2, 'INDEX'),
       JSR            = new OpCode(20, 2, 'JSR'),
       JUMP           = new OpCode(21, 1, 'JUMP'),
       LET            = new OpCode(22, 1, 'LET'),
@@ -389,7 +389,7 @@ var bytecode = (function(exports){
       PROPERTY       = new OpCode(30, 1, 'PROPERTY'),
       PUT            = new OpCode(31, 0, 'PUT'),
       REGEXP         = new OpCode(32, 1, 'REGEXP'),
-      RESOLVE        = new OpCode(33, 1, 'RESOLVE'),
+      REF            = new OpCode(33, 1, 'REF'),
       RETURN         = new OpCode(34, 0, 'RETURN'),
       COMPLETE       = new OpCode(35, 0, 'COMPLETE'),
       ROTATE         = new OpCode(36, 1, 'ROTATE'),
@@ -405,12 +405,16 @@ var bytecode = (function(exports){
       UPDATE         = new OpCode(46, 1, 'UPDATE'),
       VAR            = new OpCode(47, 1, 'VAR'),
       WITH           = new OpCode(48, 0, 'WITH'),
-      NATIVE_RESOLVE = new OpCode(49, 1, 'NATIVE_RESOLVE'),
+      NATIVE_REF     = new OpCode(49, 1, 'NATIVE_REF'),
       ENUM           = new OpCode(50, 0, 'ENUM'),
       NEXT           = new OpCode(51, 1, 'NEXT'),
       STRING         = new OpCode(52, 1, 'STRING'),
-      NATIVE_CALL    = new OpCode(53, 1, 'NATIVE_CALL'),
-      TO_OBJECT      = new OpCode(54, 0, 'TO_OBJECT');
+      NATIVE_CALL    = new OpCode(53, 2, 'NATIVE_CALL'),
+      TO_OBJECT      = new OpCode(54, 0, 'TO_OBJECT'),
+      SPREAD         = new OpCode(55, 1, 'SPREAD'),
+      ARGS           = new OpCode(56, 0, 'ARGS'),
+      ARG            = new OpCode(57, 0, 'ARG'),
+      SPREAD_ARG     = new OpCode(58, 0, 'SPREAD_ARG');
 
 
 
@@ -699,37 +703,39 @@ var bytecode = (function(exports){
           right = destructureNode[key](a, i);
         }
 
-        if (left.type === 'SpreadElement') {
-
-        } else if (isPattern(left)){
+        if (isPattern(left)){
           this.destructure(left, right);
         } else {
-          this.visit(left);
-          this.visit(b);
-          this.record(GET);
-          if (a.type === 'ArrayPattern') {
-            this.record(LITERAL, i);
-            this.record(ELEMENT, i);
+          if (left.type === 'SpreadElement') {
+            this.visit(left.argument);
+            this.visit(b);
+            this.record(GET);
+            this.record(SPREAD, i);
           } else {
-            this.record(MEMBER, a[key][i].key.name)
+            this.visit(left);
+            this.visit(b);
+            this.record(GET);
+            if (a.type === 'ArrayPattern') {
+              this.record(LITERAL, i);
+              this.record(ELEMENT, i);
+            } else {
+              this.record(MEMBER, a[key][i].key.name)
+            }
+            this.record(GET);
           }
-          this.record(GET);
           this.record(PUT);
         }
       }
-    },
-    function assign(left, right){
-      this.visit(left)
-      this.visit(right)
-      this.record(GET);
-      this.record(PUT);
     },
     function AssignmentExpression(node){
       if (node.operator === '='){
         if (isPattern(node.left)){
           this.destructure(node.left, node.right);
         } else {
-          this.assign(node.left, node.right);
+          this.visit(node.left)
+          this.visit(node.right)
+          this.record(GET);
+          this.record(PUT);
         }
       } else {
         this.visit(node.left);
@@ -803,13 +809,19 @@ var bytecode = (function(exports){
       }
       this.record(DUP);
       this.record(GET);
-
+      this.record(ARGS);
       for (var i=0, item; item = node.arguments[i]; i++) {
-        this.visit(item);
-        this.record(GET);
+        if (item && item.type === 'SpreadElement') {
+          this.visit(item.argument);
+          this.record(GET);
+          this.record(SPREAD_ARG);
+        } else {
+          this.visit(item);
+          this.record(GET);
+          this.record(ARG);
+        }
       }
-
-      this.record(node.callee.type === 'NativeIdentifier' ? NATIVE_CALL : CALL, node.arguments.length);
+      this.record(node.callee.type === 'NativeIdentifier' ? NATIVE_CALL : CALL);
     },
     function CatchClause(node){
       this.recordEntrypoint(ENTRY.hash.ENV, function(){
@@ -873,9 +885,7 @@ var bytecode = (function(exports){
     function ClassExpression(node){
       this.ClassDeclaration(node);
     },
-    function ClassHeritage(node){
-
-    },
+    function ClassHeritage(node){ },
     function ConditionalExpression(node){
       this.visit(node.test);
       this.record(GET);
@@ -954,7 +964,7 @@ var bytecode = (function(exports){
     function ForInStatement(node){
       this.withEntry(function(patch){
         this.visit(node.left);
-        this.record(RESOLVE, this.last()[0].name);
+        this.record(REF, this.last()[0].name);
         this.visit(node.right);
         this.record(GET);
         var update = this.current();
@@ -972,13 +982,15 @@ var bytecode = (function(exports){
         this.record(GET);
         this.record(MEMBER, this.code.intern('iterator'));
         this.record(GET);
-        this.record(CALL, 0);
+        this.record(ARGS);
+        this.record(CALL);
         this.record(ROTATE, 4);
         this.record(POPN, 3);
         var update = this.current();
         this.record(MEMBER, this.code.intern('next'));
         this.record(GET);
-        this.record(CALL, 0);
+        this.record(ARGS);
+        this.record(CALL);
         this.visit(node.left);
         this.visit(node.body);
         this.record(JUMP, update);
@@ -999,7 +1011,7 @@ var bytecode = (function(exports){
     },
     function Glob(node){},
     function Identifier(node){
-      this.record(RESOLVE, this.code.intern(node.name));
+      this.record(REF, this.code.intern(node.name));
     },
     function IfStatement(node){
       this.visit(node.test);
@@ -1064,16 +1076,24 @@ var bytecode = (function(exports){
     },
     function ModuleDeclaration(node){ },
     function NativeIdentifier(node){
-      this.record(NATIVE_RESOLVE, this.code.intern(node.name));
+      this.record(NATIVE_REF, this.code.intern(node.name));
     },
     function NewExpression(node){
       this.visit(node.callee);
       this.record(GET);
+      this.record(ARGS);
       for (var i=0, item; item = node.arguments[i]; i++) {
-        this.visit(item);
-        this.record(GET);
+        if (item && item.type === 'SpreadElement') {
+          this.visit(item.argument);
+          this.record(GET);
+          this.record(SPREAD_ARG);
+        } else {
+          this.visit(item);
+          this.record(GET);
+          this.record(ARG);
+        }
       }
-      this.record(CONSTRUCT, i);
+      this.record(CONSTRUCT);
     },
     function ObjectExpression(node){
       this.record(OBJECT);
@@ -1237,9 +1257,9 @@ var bytecode = (function(exports){
     },
     function VariableDeclaration(node){
       var op = {
-        var: VAR,
-        const: CONST,
-        let: LET
+        'var': VAR,
+        'const': CONST,
+        'let': LET
       }[node.kind];
 
       for (var i=0, item; item = node.declarations[i]; i++) {

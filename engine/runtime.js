@@ -567,7 +567,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         decls = code.LexicalDeclarations;
 
     for (var i=0, decl; decl = decls[i]; i++) {
-      if (decl.type === 'FunctionDeclaration') {
+      if (decl.type === 'FunctionDeclaration' || decl.type === 'ClassDeclaration') {
         var name = decl.id.name;
         if (env.HasBinding(name)) {
           env.CreateMutableBinding(name, configurable);
@@ -584,6 +584,7 @@ var runtime = (function(GLOBAL, exports, undefined){
             return ThrowException('global invalid define');
           }
         }
+        if (decl.type === 'FunctionDeclaration')
         env.SetMutableBinding(name, InstantiateFunctionDeclaration(decl), code.Strict);
       }
     }
@@ -636,12 +637,8 @@ var runtime = (function(GLOBAL, exports, undefined){
       status = ArgumentBindingInitialization(params, ao);
     }
 
-    if (status && status.Completion) {
-      if (status.Abrupt) {
-        return status;
-      } else {
-        status = status.value;
-      }
+    if (status && status.Abrupt) {
+      return status;
     }
 
     if (!env.HasBinding(ARGUMENTS)) {
@@ -654,7 +651,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
     var vardecls = func.Code.VarDeclaredNames;
-
     for (var i=0; i < vardecls.length; i++) {
       if (!env.HasBinding(vardecls[i])) {
         env.CreateMutableBinding(vardecls[i]);
@@ -683,8 +679,8 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function ClassDefinitionEvaluation(name, superclass, constructor, methods){
     if (superclass === undefined) {
-      var superproto = intrinsics.ObjectPrototype,
-          superctor = intrinsics.FunctionPrototype;
+      var superproto = intrinsics.ObjectProto,
+          superctor = intrinsics.FunctionProto;
     } else {
       if (superclass && superclass.Completion) {
         if (superclass.Abrupt) {
@@ -695,12 +691,12 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
       if (superclass === null) {
         superproto = null;
-        superctor = intrinsics.FunctionPrototype;
+        superctor = intrinsics.FunctionProto;
       } else if (typeof superclass !== 'object') {
         return ThrowException('non_object_superclass');
       } else if (!('Construct' in superclass)) {
         superproto = superclass;
-        superctor = intrinsics.FunctionPrototype;
+        superctor = intrinsics.FunctionProto;
       } else {
         superproto = superclass.Get('prototype');
         if (superproto && superproto.Completion) {
@@ -711,19 +707,19 @@ var runtime = (function(GLOBAL, exports, undefined){
           }
         }
 
-        if (typeof superproto !== 'object' && superproto !== null) {
+        if (typeof superproto !== 'object') {
           return ThrowException('non_object_superproto');
         }
         superctor = superclass;
       }
     }
+
     var proto = new $Object(superproto),
         lex = context.LexicalEnvironment;
 
     if (name) {
-      var scope = NewDeclarativeEnvironment(lex);
+      var scope = context.LexicalEnvironment = NewDeclarativeEnvironment(lex);
       scope.CreateImmutableBinding(name.name ? name.name : name);
-      context.LexicalEnvironment = scope;
     }
 
     constructor || (constructor = intrinsics.EmptyClass);
@@ -740,16 +736,13 @@ var runtime = (function(GLOBAL, exports, undefined){
     ctor.SetPrototype(superctor);
     setDirect(ctor, 'name', name ? name.name || name : '');
     MakeConstructor(ctor, false, proto);
-    defineDirect(proto, 'constructor', ctor, _CW);
+    defineDirect(ctor, 'prototype', proto, ___);
 
     for (var i=0, method; method = methods[i]; i++) {
       PropertyDefinitionEvaluation(method.kind, proto, method.name, method.code);
     }
 
     context.LexicalEnvironment = lex;
-    var _name = name.name ? name.name : name;
-    context.LexicalEnvironment.CreateMutableBinding(_name);
-    context.LexicalEnvironment.InitializeBinding(_name, ctor);
     return ctor;
   }
 
@@ -839,6 +832,14 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function IndexedBindingInitialization(pattern, array, i, env){
     for (var element; element = pattern.elements[i]; i++) {
+      if (element.type === 'SpreadElement') {
+        var value = context.SpreadDestructuring(array, i);
+        if (value.Abrupt) {
+          return value;
+        }
+        return BindingInitialization(element.argument, value, env);
+      }
+
       var value = array.HasProperty(i) ? array.Get(i) : undefined;
       if (value && value.Completion) {
         if (value.Abrupt) {
@@ -867,6 +868,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       BindingInitialization(property.value, value, env);
     }
   }
+
 
 
   // ## NewObjectEnvironment
@@ -1813,7 +1815,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (desc) {
         return desc;
       }
-      if (key < this.PrimitiveValue.length && key > 0 || key === '0') {
+      if (key < this.PrimitiveValue.length && key >= 0) {
         return new StringIndice(this.PrimitiveValue[key]);
       }
     },
@@ -1827,7 +1829,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
       if (typeof key === 'string') {
-        if (key < getDirect(this, 'length') && key > 0 || key === '0') {
+        if (key < getDirect(this, 'length') && key >= 0) {
           return true;
         }
       }
@@ -2471,7 +2473,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         env = env.outer;
       }
     },
-    function IdentifierResolution(name) {
+    function IdentifierResolution(name){
       return GetIdentifierReference(this.LexicalEnvironment, name, this.strict);
     },
     function ThisResolution(){
@@ -2488,7 +2490,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         return ThrowException('not_constructor', func);
       }
     },
-    function EvaluateCall(ref, func, args) {
+    function EvaluateCall(ref, func, args){
       if (typeof func !== OBJECT || !IsCallable(func)) {
         return ThrowException('called_non_callable', func);
       }
@@ -2498,6 +2500,100 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
 
       return func.Call(receiver, args);
+    },
+    function SpreadArguments(precedingArgs, spread){
+      if (typeof spread !== 'object') {
+        return ThrowException('spread_non_object');
+      }
+
+      var offset = precedingArgs.length,
+          len = ToUint32(spread.Get('length'));
+
+      if (len && len.Completion) {
+        if (len.Abrupt) {
+          return len;
+        } else {
+          return len.value;
+        }
+      }
+
+      for (var i=0; i < len; i++) {
+        var value = spread.Get(i);
+        if (value && value.Completion) {
+          if (value.Abrupt) {
+            return value;
+          } else {
+            value = value.value;
+          }
+        }
+
+        precedingArgs[i + offset] = value;
+      }
+    },
+    function SpreadInitialization(array, offset, spread){
+      if (typeof spread !== 'object') {
+        return ThrowException('spread_non_object');
+      }
+
+      var len = ToUint32(spread.Get('length'));
+
+      if (len && len.Completion) {
+        if (len.Abrupt) {
+          return len;
+        } else {
+          return len.value;
+        }
+      }
+
+      for (var i=0; i < len; i++) {
+        var value = spread.Get(i);
+        if (value && value.Completion) {
+          if (value.Abrupt) {
+            return value;
+          } else {
+            value = value.value;
+          }
+        }
+
+        defineDirect(array, i + offset, value, ECW);
+      }
+
+      defineDirect(array, 'length', i + offset, _CW);
+      return i + offset;
+    },
+    function SpreadDestructuring(target, index){
+      var array = new $Array(0);
+      if (target == null) {
+        return array;
+      }
+      if (typeof target !== 'object') {
+        return ThrowException('called_on_non_object', typeof target);
+      }
+
+      var len = ToUint32(target.Get('length'));
+      if (len && len.Completion) {
+        if (len.Abrupt) {
+          return len;
+        } else {
+          len = len.value;
+        }
+      }
+
+      var count = len - index;
+      for (var i=0; i < count; i++) {
+        var value = target.Get(index + i);
+        if (value && value.Completion) {
+          if (value.Abrupt) {
+            return value;
+          } else {
+            value = value.value;
+          }
+        }
+        defineDirect(array, i, value, ECW);
+      }
+
+      defineDirect(array, 'length', i, _CW);
+      return array;
     }
   ]);
 
@@ -3186,12 +3282,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.scripts.push(script);
       ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, script.code));
 
-      if (!quiet) {
-        script.thunk.log();
-        script.thunk.on('op', function(op){
-          self.emit('op', op);
-        });
-      }
+      realm.quiet = !!quiet;
 
       var status = TopLevelDeclarationInstantiation(script.code);
       if (status && status.Abrupt) {

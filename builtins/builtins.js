@@ -43,7 +43,7 @@
 
 
 
-  $__EmptyClass = function constructor(){};
+ $__EmptyClass = function constructor(...args){ super(...args) };
 
   // #############
   // ### Array ###

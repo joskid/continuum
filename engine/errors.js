@@ -85,7 +85,7 @@ var errors = (function(errors, messages, exports){
 
 
   function ThrowException(type, args){
-    return new AbruptCompletion(constants.Throw, MakeException(type, args));
+    return new AbruptCompletion('throw', MakeException(type, args));
   }
 
   exports.ThrowException = ThrowException;
@@ -173,7 +173,8 @@ var errors = (function(errors, messages, exports){
     non_object_superclass               : ["non-object superclass provided"],
     non_object_superproto               : ["non-object superprototype"],
     invalid_super_binding               : ["object has no super binding"],
-    not_generic                         : ["$0", " is not generic and was called on an invalid target"]
+    not_generic                         : ["$0", " is not generic and was called on an invalid target"],
+    spread_non_object                   : ["spread on non-object"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],

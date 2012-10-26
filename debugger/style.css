@@ -129,6 +129,7 @@ h2
 .ƒNumberValue    { color: #af5fff }
 .ƒStringValue    { color: #00af5f }
 .ƒUndefinedValue { color: #5f875f }
+.ƒException      { color: #ff005f; font-weight: bold;  }
 
 .ƒArray    { color: #ff5f87 }
 .ƒBoolean  { color: #afff5f }
