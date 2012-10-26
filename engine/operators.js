@@ -83,7 +83,9 @@ var operators = (function(exports){
         w = w.value;
       }
     }
-    if (!v || !v.Reference) {
+    if (!v) {
+      return ThrowException('non_object_property_store', ['undefined', 'undefined']);
+    } else if (!v.Reference) {
       return ThrowException('non_object_property_store', [v.name, v.base]);
     } else if (v.base === undefined) {
       if (v.strict) {
