@@ -429,10 +429,6 @@ inherit(Dragger, Component, [
 
 
 var Splitter = (function(){
-  var updateSplitters = function(){};
-  window.addEventListener('resize', function(){
-    updateSplitters();
-  });
 
   function Splitter(near, far, orientation){
     if (!(this instanceof splitters[orientation])) {
@@ -459,8 +455,6 @@ var Splitter = (function(){
     this.dragger.on('drag', this.drag, this);
     this.dragger.on('drop', this.drop, this);
 
-    var oldUpdate = updateSplitters, self = this;
-    updateSplitters = function(){ self.refresh(); oldUpdate() };
   }
 
 
