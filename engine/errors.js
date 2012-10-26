@@ -47,6 +47,10 @@ var errors = (function(errors, messages, exports){
 
   exports.Completion = Completion;
 
+  define(Completion.prototype, {
+    Completion: true
+  });
+
   define(Completion.prototype, [
     function toString(){
       return this.value;
@@ -63,7 +67,9 @@ var errors = (function(errors, messages, exports){
     this.target = target;
   }
 
-  inherit(AbruptCompletion, Completion);
+  inherit(AbruptCompletion, Completion, {
+    Abrupt: true
+  });
 
   exports.AbruptCompletion = AbruptCompletion;
 
