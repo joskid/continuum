@@ -1568,7 +1568,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.MethodName = name;
     }
 
-    if (kind === NORMAL && strict) {
+    if (strict) {
       defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
       defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
     } else {
