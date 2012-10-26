@@ -6498,7 +6498,6 @@ exports.bytecode = (function(exports){
   }
   var identifiersPrinted = false;
 
-
   define(Code.prototype, [
     function inherit(code){
       if (code) {
@@ -6520,10 +6519,7 @@ exports.bytecode = (function(exports){
     function lookup(id){
       return id;
       if (typeof id === 'number') {
-        var ret = this.identifiers[id];
-        if (ret === PROTO) {
-          return '__proto__';
-        }
+        return this.identifiers[id];
       } else {
         return id;
       }
@@ -9212,9 +9208,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       CONFIGURABLE = 'Configurable';
 
 
-  var PROTO = {};
-
-
   errors.createError = function(name, type, message){
     return new $Error(name, type, message);
   };
@@ -10112,7 +10105,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   // ### Reference ###
   // #################
 
-
   function Reference(base, name, strict){
     this.base = base;
     this.name = name;
@@ -10194,8 +10186,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   // #########################
   // ### EnvironmentRecord ###
   // #########################
-
-  var PROTO = Math.random().toString(36).slice(2);
 
   function EnvironmentRecord(bindings){
     this.bindings = bindings;
@@ -12591,6 +12581,11 @@ exports.debug = (function(exports){
       return this.attrs[key];
     },
     function label(){
+      var brand = this.subject.NativeBrand;
+      if (brand && brand.name !== 'Object') {
+        return brand.name;
+      }
+
       if (this.subject.ConstructorName) {
         return this.subject.ConstructorName;
       } else if (this.has('constructor')) {
@@ -12600,9 +12595,6 @@ exports.debug = (function(exports){
         }
       }
 
-      if (this.subject.NativeBrand) {
-        return this.subject.NativeBrand.name;
-      }
 
       return 'Object';
     },

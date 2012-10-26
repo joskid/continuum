@@ -151,6 +151,11 @@ var debug = (function(exports){
       return this.attrs[key];
     },
     function label(){
+      var brand = this.subject.NativeBrand;
+      if (brand && brand.name !== 'Object') {
+        return brand.name;
+      }
+
       if (this.subject.ConstructorName) {
         return this.subject.ConstructorName;
       } else if (this.has('constructor')) {
@@ -160,9 +165,6 @@ var debug = (function(exports){
         }
       }
 
-      if (this.subject.NativeBrand) {
-        return this.subject.NativeBrand.name;
-      }
 
       return 'Object';
     },
