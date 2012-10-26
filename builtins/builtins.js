@@ -158,7 +158,7 @@
 
       if (arguments.length === 0) {
         joiner = ',';
-      } else {
+      } else if (typeof joiner !== 'string') {
         joiner = $__ToString(joiner);
       }
 
@@ -293,14 +293,10 @@
     $__call,
     $__apply,
     $__bind,
-    function toString(){
-      if (typeof this !== 'function') {
-        throw $__exception('not_generic', ['Function.prototype.toString']);
-      }
-      return $__functionToString(this);
-    }
+
   ]);
 
+  $__defineDirect($__FunctionProto, 'toString', $__functionToString, 6);
 
   // ###########
   // ### Map ###
@@ -403,7 +399,7 @@
 
   function Object(obj){
     if ($__isConstructCall()) {
-      return this;
+      return {};
     } else if (obj == null) {
       return {};
     } else {
@@ -484,7 +480,17 @@
     }
   });
 
+
   defineProps(Object.prototype, {
+    toString(){
+      if (this === undefined) {
+        return '[object Undefined]';
+      } else if (this === null) {
+        return '[object Null]';
+      } else {
+        return '[object '+$__getNativeBrand($__ToObject(this))+']';
+      }
+    },
     isPrototypeOf(object){
       while (object) {
         object = $__GetPrototype(object);
@@ -496,16 +502,6 @@
     },
     toLocaleString(){
       return this.toString();
-    },
-    toString(){
-      if (this === undefined) {
-        return '[object Undefined]';
-      } else if (this === null) {
-        return '[object Null]';
-      } else {
-        var object = $__ToObject(this);
-        return '[object '+$__getNativeBrand(object)+']';
-      }
     },
     valueOf(){
       return $__ToObject(this);
