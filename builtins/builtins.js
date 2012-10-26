@@ -4,20 +4,6 @@
       W = 0x4,
       A = 0x8;
 
-  $__defineDirect(global, 'stdout', {
-    write: $__write,
-    backspace: $__backspace,
-    clear: $__clear
-  }, 6);
-
-  $__defineDirect(global, 'console', {
-    log: function log(...args){
-      for (var i=0; i < args.length; i++) {
-        stdout.write(args[i] + ' ');
-      }
-      stdout.write('\n');
-    }
-  }, 6);
 
 
 
@@ -26,6 +12,18 @@
       $__defineDirect(obj, props[i].name, props[i], 6);
       $__markAsNative(props[i]);
       $__deleteDirect(props[i], 'prototype');
+    }
+  }
+
+  function defineProps(obj, props){
+    for (var name in props) {
+      var prop = props[name];
+      $__defineDirect(obj, name, prop, 6);
+      if (typeof prop === 'function') {
+        $__defineDirect(prop, 'name', name, 0);
+        $__markAsNative(prop);
+        $__deleteDirect(prop, 'prototype');
+      }
     }
   }
 
@@ -42,6 +40,7 @@
     $__defineDirect(global, ctor.name, ctor, 6);
     $__markAsNativeConstructor(ctor);
   }
+
 
 
   $__EmptyClass = function constructor(){};
@@ -63,11 +62,11 @@
   setupConstructor(Array, $__ArrayProto);
 
 
-  defineMethods(Array, [
-    function isArray(array){
+  defineProps(Array, {
+    isArray(array){
       return $__getNativeBrand(array) === 'Array';
     },
-    function from(iterable){
+    from(iterable){
       var out = [];
       iterable = Object(iterable);
 
@@ -79,12 +78,12 @@
 
       return out;
     }
-  ]);
+  });
 
 
 
-  defineMethods(Array.prototype, [
-    function filter(callback, receiver) {
+  defineProps(Array.prototype, {
+    filter(callback){
       if (this == null) {
         throw $__exception('called_on_null_or_undefined', ['Array.prototype.filter']);
       }
@@ -92,9 +91,9 @@
       var array = $__ToObject(this),
           length = $__ToUint32(this.length);
 
-      if (receiver == null) {
-        receiver = this;
-      } else if (typeof receiver !== 'object') {
+      var receiver = this;
+
+      if (typeof receiver !== 'object') {
         receiver = $__ToObject(receiver);
       }
 
@@ -112,7 +111,7 @@
 
       return result;
     },
-    function forEach(callback, context){
+    forEach(callback, context){
       var len = this.length;
       if (arguments.length === 1) {
         context = this;
@@ -123,7 +122,7 @@
         callback.call(context, this[i], i, this);
       }
     },
-    function map(callback, context){
+    map(callback, context){
       var out = [];
       var len = this.length;
       if (arguments.length === 1) {
@@ -137,7 +136,7 @@
       }
       return out;
     },
-    function reduce(callback, initial){
+    reduce(callback, initial){
       var index = 0;
       if (arguments.length === 1) {
         initial = this[0];
@@ -150,7 +149,7 @@
       }
       return initial;
     },
-    function join(joiner){
+    join(joiner){
       var out = '', len = this.length;
 
       if (len === 0) {
@@ -170,7 +169,7 @@
 
       return out + this[i];
     },
-    function push(...args){
+    push(...args){
       var len = this.length,
           argsLen = args.length;
 
@@ -179,12 +178,12 @@
       }
       return len;
     },
-    function pop(){
+    pop(){
       var out = this[this.length - 1];
       this.length--;
       return out;
     },
-    function slice(start, end){
+    slice(start, end){
       var out = [], len;
 
       start = start === undefined ? 0 : +start || 0;
@@ -211,10 +210,10 @@
 
       return out;
     },
-    function toString(){
+    toString(){
       return this.join(',');
     }
-]);
+  });
 
   // ###############
   // ### Boolean ###
@@ -230,22 +229,22 @@
 
   setupConstructor(Boolean, $__BooleanProto);
 
-  defineMethods(Boolean.prototype, [
-    function toString(){
+  defineProps(Boolean.prototype, {
+    toString(){
       if ($__getNativeBrand(this) === 'Boolean') {
         return $__getPrimitiveValue(this) ? 'true' : 'false';
       } else {
         throw $__exception('not_generic', ['Boolean.prototype.toString']);
       }
     },
-    function valueOf(){
+    valueOf(){
       if ($__getNativeBrand(this) === 'Boolean') {
         return $__getPrimitiveValue(this);
       } else {
         throw $__exception('not_generic', ['Boolean.prototype.valueOf']);
       }
     }
-  ]);
+  });
 
 
   // ############
@@ -258,22 +257,22 @@
 
   setupConstructor(Date, $__DateProto);
 
-  defineMethods(Date.prototype, [
-    function toString(){
+  defineProps(Date.prototype, {
+    toString(){
       if ($__getNativeBrand(this) === 'Date') {
         return $__dateToString(this);
       } else {
         throw $__exception('not_generic', ['Date.prototype.toString']);
       }
     },
-    function valueOf(){
+    valueOf(){
       if ($__getNativeBrand(this) === 'Date') {
         return $__dateToNumber(this);
       } else {
         throw $__exception('not_generic', ['Date.prototype.valueOf']);
       }
     }
-  ]);
+  });
 
   $__wrapDateMethods(Date.prototype);
 
@@ -334,46 +333,46 @@
     POSITIVE_INFINITY: Infinity
   });
 
-  $__isFinite = function isFinite(number){
-    return typeof value === 'number'
-        && value === value
-        && value < Infinity
-        && value > -Infinity;
-  }
-
-  defineMethods(Number, [
-    function isNaN(number){
+  defineProps(Number, {
+    isNaN(number){
       return number !== number;
     },
-    $__isFinite,
-    function isInteger(value) {
+    isFinite(number){
+      return typeof value === 'number'
+          && value === value
+          && value < Infinity
+          && value > -Infinity;
+    },
+    isInteger(value) {
       return typeof value === 'number'
           && value === value
           && value > -9007199254740992
           && value < 9007199254740992
           && value | 0 === value;
     },
-    function toInteger(value){
+    toInteger(value){
       return (value / 1 || 0) | 0;
     }
-  ]);
+  });
 
-  defineMethods(Number.prototype, [
-    function toString(radix){
+  var isFinite = Number.isFinite;
+
+  defineProps(Number.prototype, {
+    toString(radix){
       if ($__getNativeBrand(this) === 'Number') {
         return $__numberToString(this, radix);
       } else {
         throw $__exception('not_generic', ['Number.prototype.toString']);
       }
     },
-    function valueOf(){
+    valueOf(){
       if ($__getNativeBrand(this) === 'Number') {
         return $__getPrimitiveValue(this);
       } else {
         throw $__exception('not_generic', ['Number.prototype.valueOf']);
       }
     },
-    function clz() {
+    clz() {
       var x = $__ToNumber(this);
       if (!x || !isFinite(x)) {
         return 32;
@@ -383,7 +382,7 @@
         return 32 - x.toString(2).length;
       }
     }
-  ]);
+  });
 
 
   function ensureObject(o, name){
@@ -414,8 +413,8 @@
 
   setupConstructor(Object, $__ObjectProto);
 
-  defineMethods(Object, [
-    function create(prototype, descriptors){
+  defineProps(Object, {
+    create(prototype, descriptors){
       if (typeof prototype !== 'object') {
         throw $__exception('proto_object_or_null', [])
       }
@@ -434,14 +433,14 @@
 
       return object;
     },
-    function defineProperty(object, key, desc){
+    defineProperty(object, key, desc){
       ensureObject(object, 'defineProperty');
       ensureDescriptor(desc);
       key = $__ToPropertyName(key);
       $__DefineOwnProperty(object, key, desc);
       return object;
     },
-    function defineProperties(object, descriptors){
+    defineProperties(object, descriptors){
       ensureObject(object, 'defineProperties');
       ensureDescriptor(descriptors);
 
@@ -453,40 +452,40 @@
 
       return object;
     },
-    function getOwnPropertyDescriptor(object, key){
+    getOwnPropertyDescriptor(object, key){
       ensureObject(object, 'getOwnPropertyDescriptor');
       key = $__ToPropertyName(key);
       return $__GetOwnProperty(object, key);
     },
-    function getOwnPropertyNames(object){
+    getOwnPropertyNames(object){
       ensureObject(object, 'getOwnPropertyNames');
       return $__Enumerate(object, false, false);
     },
-    function getPropertyDescriptor(object, key){
+    getPropertyDescriptor(object, key){
       ensureObject(object, 'getPropertyDescriptor');
       key = $__ToPropertyName(key);
       return $__GetProperty(object, key);
     },
-    function getPropertyNames(object){
+    getPropertyNames(object){
       ensureObject(object, 'getPropertyNames');
       return $__Enumerate(object, true, false);
     },
-    function getPrototypeOf(object){
+    getPrototypeOf(object){
       ensureObject(object, 'getPrototypeOf');
       return $__GetPrototype(object);
     },
-    function isExtensible(object){
+    isExtensible(object){
       ensureObject(object, 'isExtensible');
       return $__GetExtensible(object);
     },
-    function keys(object){
+    keys(object){
       ensureObject(object, 'keys');
       return $__Enumerate(object, false, true);
     }
-  ]);
+  });
 
-  defineMethods(Object.prototype, [
-    function isPrototypeOf(object){
+  defineProps(Object.prototype, {
+    isPrototypeOf(object){
       while (object) {
         object = $__GetPrototype(object);
         if (object === this) {
@@ -495,10 +494,10 @@
       }
       return false;
     },
-    function toLocaleString(){
+    toLocaleString(){
       return this.toString();
     },
-    function toString(){
+    toString(){
       if (this === undefined) {
         return '[object Undefined]';
       } else if (this === null) {
@@ -508,18 +507,18 @@
         return '[object '+$__getNativeBrand(object)+']';
       }
     },
-    function valueOf(){
+    valueOf(){
       return $__ToObject(this);
     },
-    function hasOwnProperty(key){
+    hasOwnProperty(key){
       var object = $__ToObject(this);
       return $__HasOwnProperty(object, key);
     },
-    function propertyIsEnumerable(key){
+    propertyIsEnumerable(key){
       var object = $__ToObject(this);
       return ($__GetPropertyAttributes(this, key) & E) !== 0;
     }
-  ]);
+  });
 
 
 
@@ -558,22 +557,22 @@
 
   setupConstructor(String, $__StringProto);
 
-  defineMethods(String.prototype, [
-    function toString(){
+  defineProps(String.prototype, {
+    toString(){
       if ($__getNativeBrand(this) === 'String') {
         return $__getPrimitiveValue(this);
       } else {
         throw $__exception('not_generic', ['String.prototype.toString']);
       }
     },
-    function valueOf(){
+    valueOf(){
       if ($__getNativeBrand(this) === 'String') {
         return $__getPrimitiveValue(this);
       } else {
         throw $__exception('not_generic', ['String.prototype.valueOf']);
       }
     },
-  ]);
+  });
 
 
   $__wrapStringMethods(String.prototype);
@@ -593,11 +592,11 @@
   }
   setupConstructor(Error, $__ErrorProto);
 
-  defineMethods(Error.prototype, [
-    function toString(){
+  defineProps(Error.prototype, {
+    toString(){
       return this.name + ': '+this.message;
     }
-  ]);
+  });
 
   function EvalError(message){
     this.message = message;
@@ -652,4 +651,31 @@
       return number === number && number !== Infinity && number !== -Infinity;
     }
   ]);
+
+
+  $__defineDirect(global, 'stdout', {}, 6);
+
+  defineProps(stdout, {
+    write(text, color){
+      $__write(text, color);
+    },
+    clear(){
+      $__clear();
+    },
+    backspace(count){
+      $__backspace(count);
+    }
+  });
+
+
+  $__defineDirect(global, 'console', {}, 6);
+
+  defineProps(console, {
+    log(...args){
+      for (var i=0; i < args.length; i++) {
+        stdout.write(args[i] + ' ');
+      }
+      stdout.write('\n');
+    }
+  });
 })(this)
