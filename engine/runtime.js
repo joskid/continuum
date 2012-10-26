@@ -118,9 +118,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       StrictScope           = 'Strict',
       GlobalScope           = 'Global';
 
-  var GlobalCode            = 'Global',
-      EvalCode              = 'Eval',
-      FuntionCode           = 'Function';
+  var GlobalCode            = 'elobal',
+      EvalCode              = 'eval',
+      FuntionCode           = 'function';
 
 
   // ##################################################
@@ -278,7 +278,13 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function ToCompletePropertyDescriptor(obj) {
     var desc = ToPropertyDescriptor(obj);
-    if (desc.Completion) { if (desc.Abrupt) return desc; else desc = desc.value; }
+    if (desc && desc.Completion) {
+      if (desc.Abrupt) {
+        return desc;
+      } else {
+        desc = desc.value;
+      }
+    }
 
     if (IsGenericDescriptor(desc) || IsDataDescriptor(desc)) {
       VALUE in desc    || (desc.Value = undefined);
@@ -421,6 +427,8 @@ var runtime = (function(GLOBAL, exports, undefined){
         || type === BOOLEAN
         || v.base instanceof $Object;
   }
+
+  operators.IsPropertyReference = IsPropertyReference;
 
   // ## ToObject
 
@@ -1091,7 +1099,6 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   define(EnvironmentRecord.prototype, {
     bindings: null,
-    thisValue: null,
     withBase: undefined
   });
 
@@ -1120,7 +1127,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       return lex;
     },
     function reference(name, strict){
-      return new Reference(this, name, false);
+      return new Reference(this, name, strict);
     }
   ]);
 
@@ -1208,7 +1215,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function SetMutableBinding(name, value, strict){
-
       return this.bindings.Put(name, value, strict);
     },
     function DeleteBinding(name){
@@ -1249,6 +1255,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function GlobalEnvironmentRecord(global){
     ObjectEnvironmentRecord.call(this, global);
+    this.thisValue = this.bindings;
   }
 
   inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
@@ -1634,9 +1641,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     function Call(receiver, args, isConstruct){
       if (realm !== this.Realm) {
         this.Realm.activate();
-        this.Realm.prepareContext(null);
-      } else if (!context) {
-        this.Realm.prepareContext(null);
       }
       if (this.ThisMode === 'lexical') {
         var local = NewDeclarativeEnvironment(this.Scope);
@@ -1658,9 +1662,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         var local = NewMethodEnvironment(this, receiver);
       }
 
-      var caller = context.callee || null;
+      var caller = context ? context.callee : null;
 
-      ExecutionContext.push(new ExecutionContext(context, local, this.Realm, this.Code, this, isConstruct));
+      ExecutionContext.push(new ExecutionContext(context, local, realm, this.Code, this, isConstruct));
       var status = FunctionDeclarationInstantiation(this, args, local);
       if (status && status.Abrupt) {
         ExecutionContext.pop();
@@ -1847,7 +1851,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function HasOwnProperty(key){
-      key = ToPropertyKey(key);
+      key = ToPropertyName(key);
       if (key && key.Completion) {
         if (key.Abrupt) {
           return key;
@@ -2360,7 +2364,56 @@ var runtime = (function(GLOBAL, exports, undefined){
   function ProxyCall(receiver, args){}
   function ProxyConstruct(args){}
 
+  function $PrimitiveBase(value){
+    this.PrimitiveValue = value;
+    switch (typeof value) {
+      case STRING:
+        $Object.call(this, intrinsics.StringProto);
+        this.NativeBrand = StringWrapper;
+        break;
+      case NUMBER:
+        $Object.call(this, intrinsics.NumberProto);
+        this.NativeBrand = NumberWrapper;
+        break;
+      case BOOLEAN:
+        $Object.call(this, intrinsics.BooleanProto);
+        this.NativeBrand = BooleanWrapper;
+        break;
+    }
+  }
 
+  operators.$PrimitiveBase = $PrimitiveBase;
+
+  inherit($PrimitiveBase, $Object, [
+    function SetP(receiver, key, value, strict){
+      var desc = this.GetProperty(key);
+      if (desc) {
+        if (IsDataDescriptor(desc)) {
+          return desc.Value;
+        } else if (desc.Get) {
+          if (!receiver) {
+            receiver = this.PrimitiveValue;
+          }
+
+          return desc.Get.Call(receiver, []);
+        }
+      }
+    },
+    function GetP(receiver, key) {
+      var desc = this.GetProperty(key);
+      if (desc) {
+        if (IsDataDescriptor(desc)) {
+          return desc.Value;
+        } else if (desc.Get) {
+          if (!receiver) {
+            receiver = this.PrimitiveValue;
+          }
+
+          return desc.Get.Call(receiver, []);
+        }
+      }
+    }
+  ]);
 
 
   function ExecutionContext(caller, local, realm, code, func, isConstruct){
@@ -2369,6 +2422,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     this.Code = code;
     this.LexicalEnvironment = local;
     this.VariableEnvironment = local;
+    this.Strict = code.Strict;
     this.isConstruct = !!isConstruct;
     this.callee = func && !func.Native ? func : caller ? caller.callee : null;
   }
@@ -2488,7 +2542,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
 
-      var ref = new Reference(baseValue, key, context.Strict);
+      var ref = new Reference(baseValue, key, this.Strict);
       ref.thisValue = env.GetThisBinding();
       return ref;
     },
@@ -2501,7 +2555,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function IdentifierResolution(name){
-      return GetIdentifierReference(this.LexicalEnvironment, name, this.strict);
+      return GetIdentifierReference(this.LexicalEnvironment, name, this.Strict);
     },
     function ThisResolution(){
       return this.GetThisEnvironment().GetThisBinding();
@@ -2837,14 +2891,18 @@ var runtime = (function(GLOBAL, exports, undefined){
       body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
       var code = compile(body, { natives: false, eval: true });
       ExecutionContext.push(new ExecutionContext(null, NewDeclarativeEnvironment(realm.globalEnv), realm, code));
-      return new Thunk(code).run(realm.globalEnv);
+      return new Thunk(code).run(context);
     },
     // FUNCTION PROTOTYPE
-    functionToString: function(fn){
-      if (fn.Native || !fn.Code) {
-        return nativeCode[0] + fn.properties.name + nativeCode[1];
+    functionToString: function(){
+      console.log(this);
+      if (!IsCallable(this)) {
+        return ThrowException('not_generic', ['Function.prototype.toString'])
+      }
+      if (this.Native || !this.Code) {
+        return nativeCode[0] + this.properties.name + nativeCode[1];
       } else {
-        var code = fn.Code;
+        var code = this.Code;
         return code.source.slice(code.range[0], code.range[1]);
       }
     },
@@ -3291,11 +3349,11 @@ var runtime = (function(GLOBAL, exports, undefined){
         this.state = 'paused';
         this.emit('pause');
       } else {
-        ExecutionContext.pop();
         this.executing = null;
         this.state = 'idle';
         if (result && result.Abrupt) {
           this.emit(result.type, result.value);
+          console.log(context);
         } else {
           this.emit('complete', result);
         }
@@ -3307,7 +3365,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           self = this;
 
       this.scripts.push(script);
-      ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, script.code));
+      this.prepareContext(script.code);
 
       realm.quiet = !!quiet;
 

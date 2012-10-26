@@ -409,7 +409,7 @@ var bytecode = (function(exports){
       ENUM           = new OpCode(50, 0, 'ENUM'),
       NEXT           = new OpCode(51, 1, 'NEXT'),
       STRING         = new OpCode(52, 1, 'STRING'),
-      NATIVE_CALL    = new OpCode(53, 2, 'NATIVE_CALL'),
+      NATIVE_CALL    = new OpCode(53, 0, 'NATIVE_CALL'),
       TO_OBJECT      = new OpCode(54, 0, 'TO_OBJECT'),
       SPREAD         = new OpCode(55, 1, 'SPREAD'),
       ARGS           = new OpCode(56, 0, 'ARGS'),
@@ -809,8 +809,12 @@ var bytecode = (function(exports){
       }
       this.record(DUP);
       this.record(GET);
+      this.args(node.arguments);
+      this.record(node.callee.type === 'NativeIdentifier' ? NATIVE_CALL : CALL);
+    },
+    function args(node){
       this.record(ARGS);
-      for (var i=0, item; item = node.arguments[i]; i++) {
+      for (var i=0, item; item = node[i]; i++) {
         if (item && item.type === 'SpreadElement') {
           this.visit(item.argument);
           this.record(GET);
@@ -821,7 +825,6 @@ var bytecode = (function(exports){
           this.record(ARG);
         }
       }
-      this.record(node.callee.type === 'NativeIdentifier' ? NATIVE_CALL : CALL);
     },
     function CatchClause(node){
       this.recordEntrypoint(ENTRY.hash.ENV, function(){
@@ -1080,18 +1083,7 @@ var bytecode = (function(exports){
     function NewExpression(node){
       this.visit(node.callee);
       this.record(GET);
-      this.record(ARGS);
-      for (var i=0, item; item = node.arguments[i]; i++) {
-        if (item && item.type === 'SpreadElement') {
-          this.visit(item.argument);
-          this.record(GET);
-          this.record(SPREAD_ARG);
-        } else {
-          this.visit(item);
-          this.record(GET);
-          this.record(ARG);
-        }
-      }
+      this.args(node.arguments);
       this.record(CONSTRUCT);
     },
     function ObjectExpression(node){
@@ -1112,7 +1104,7 @@ var bytecode = (function(exports){
         this.record(GET);
         this.record(PROPERTY, this.code.intern(node.key.name));
       } else {
-        var code = new Code(node.value, this.source, FUNCTYPE.hash.METHOD, false, this.code.strict);
+        var code = new Code(node.value, this.source, FUNCTYPE.hash.NORMAL, false, this.code.strict);
         this.queue(code);
         this.record(METHOD, node.kind, code, this.code.intern(node.key.name));
       }

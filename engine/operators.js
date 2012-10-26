@@ -24,7 +24,6 @@ var operators = (function(exports){
 
 
 
-
   function HasPrimitiveBase(v){
     var type = typeof v.base;
     return type === STRING || type === NUMBER || type === BOOLEAN;
@@ -49,14 +48,16 @@ var operators = (function(exports){
       var base = v.base;
 
       if (HasPrimitiveBase(v)) {
-        base = exports.ToObject(base);
+        base = new exports.$PrimitiveBase(base);
       }
 
-      if (base.Get) {
-        if ('thisValue' in v) {
-          return base.GetP(GetThisValue(v), v.name);
-        } else {
-          return base.Get(v.name);
+      if (exports.IsPropertyReference(v)) {
+        if (base.Get) {
+          if ('thisValue' in v) {
+            return base.GetP(GetThisValue(v), v.name);
+          } else {
+            return base.Get(v.name);
+          }
         }
       } else if (base.GetBindingValue) {
         return base.GetBindingValue(v.name, v.strict);
@@ -96,10 +97,6 @@ var operators = (function(exports){
     } else {
       var base = v.base;
 
-      if (HasPrimitiveBase(v)) {
-        base = exports.ToObject(base);
-      }
-
       if (v.name === '__proto__') {
         if (base.SetPrototype) {
           base.SetPrototype(w);
@@ -108,16 +105,17 @@ var operators = (function(exports){
         } else {
           console.log(v);
         }
-      } else {
-        if (base.Get) {
-          if ('thisValue' in v) {
-            return base.SetP(GetThisValue(v), v.name, w, v.strict);
-          } else {
-            return base.Put(v.name, w, v.strict);
-          }
-        } else {
-          return base.SetMutableBinding(v.name, w, v.strict);
+      } else if (exports.IsPropertyReference(v)) {
+        if (HasPrimitiveBase(v)) {
+          base = new exports.$PrimitiveBase(base);
         }
+        if ('thisValue' in v) {
+          return base.SetP(GetThisValue(v), v.name, w, v.strict);
+        } else {
+          return base.Put(v.name, w, v.strict);
+        }
+      } else {
+        return base.SetMutableBinding(v.name, w, v.strict);
       }
     }
   }
@@ -207,13 +205,24 @@ var operators = (function(exports){
   // ## ToInteger
 
   function ToInteger(argument){
-    if (argument && typeof argument === OBJECT && argument.Completion) {
+    argument = ToNumber(argument);
+
+    if (argument && argument.Completion) {
       if (argument.Abrupt) {
         return argument;
       }
       argument = argument.value;
     }
-    return ToNumber(argument) | 0;
+
+    if (argument !== argument) {
+      return 0;
+    }
+
+    if (argument === 0 || argument === Infinity || argument === -Infinity) {
+      return argument;
+    }
+
+    return argument >>> 0;;
   }
   exports.ToInteger = ToInteger;
 
@@ -242,19 +251,6 @@ var operators = (function(exports){
     return ToNumber(argument) >> 0;
   }
   exports.ToInt32 = ToInt32;
-
-  // ## ToUint32
-
-  function ToUint32(argument){
-    if (argument && typeof argument === OBJECT && argument.Completion) {
-      if (argument.Abrupt) {
-        return argument;
-      }
-      argument = argument.value;
-    }
-    return (ToNumber(argument) >>> 0) % (1 << 16);
-  }
-  exports.ToUint32 = ToUint32;
 
 
   // ## ToPropertyName
@@ -646,7 +642,7 @@ var operators = (function(exports){
       }
     }
 
-    if (IsPropertyReference(ref)) {
+    if (exports.IsPropertyReference(ref)) {
       if ('thisValue' in ref) {
         return ThrowException('super_delete_property', ref.name);
       } else {

@@ -160,7 +160,7 @@ var thunk = (function(exports){
         }
       }
 
-      d = context.initializeBindings(a.pattern, c);
+      d = context.initializeBindings(a.pattern, c, true);
       if (d && d.Abrupt) {
         error = d;
         return ƒ;

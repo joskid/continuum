@@ -5,35 +5,39 @@ Continuum is a JavaScript meta-interpeter that uses a bytecode virtual machine t
 
 # Usage
 
+http://benvie.github.com/continuum/
+
 
 
 # ES6 Implementation Status
 
 ### Already Implemented
 
-* Destructuring assignment
-* Rest Params
-* Classes and super
+* destructuring assignment
+* destructuring arguments
+* spread array initializer
+* spread arguments
+* spread destructuring
+* rest parameters
+* classes and super
 * `is` and `isnt` operators
-* Arrow functions
-* Block Scope
+* arrow functions
+* block scope
 * new Math functions
 * new Object functions
-* terse method syntax in literals
+* concise object literal method syntax
 
 ### Partially Implemented
 
 * Proxy and Reflect
 * Map, Set, WeakMap
 * Iterators and for..of
-* Spread
 * Tail call optimization
 * Templates
 
 ### Soon
 * Generators
 * Private Names
-*
 
 ### Further out
 * Proper implementation of Modules
