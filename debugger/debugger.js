@@ -20,7 +20,11 @@ var sides = { left: 0, top: 1, right: 2, bottom: 3 },
 
 
 function Component(tag){
-  this.element = _(tag);
+  if (tag instanceof Element) {
+    this.element = tag;
+  } else {
+    this.element = _(tag);
+  }
   if (this.element.classList) {
     this.classes = this.element.classList;
   }
@@ -114,7 +118,7 @@ define(Component.prototype, [
       this.styles.top = value + 'px';
     }
   },
-  function box(){
+  function bounds(){
     return this.element.getBoundingClientRect();
   },
   function getMetric(name){
@@ -207,10 +211,7 @@ function PanelOptions(o){
 }
 
 PanelOptions.prototype = {
-  anchor: 'top',
-  orient: 'vertical',
-  mainSize: 'auto',
-  crossSize: 'auto',
+  size: 'auto',
   splitter: true,
   name: null,
   label: null,
@@ -231,187 +232,150 @@ function Panel(parent, options){
     var label = _('h2');
     label.textContent = options.label;
     label.className = this.ns + 'panel-label'
-    this.element.appendChild(label);
+    this.append(label);
   }
-  this.anchor = parent ? options.anchor : null;
-  this.orient = options.orient;
-  this.mainSize = options.mainSize;
-  this.crossSize = options.crossSize;
-  this.parent = null;
-  for (var k in sides) {
-    this[k] = null;
-  }
-  this.addClass('panel');
-  this.addClass(options.orient);
-  if (!parent) {
-    this.addClass('root');
-    var rootResize = function(){
-      if (self.orient === 'vertical') {
-        self.mainCalcSize = document.body.offsetHeight;
-        self.crossCalcSize = document.body.offsetWidth;
-      } else {
-        self.mainCalcSize = document.body.offsetWidth;
-        self.crossCalcSize = document.body.offsetHeight;
-      }
-    };
-  }
-
 
   if (options.name) {
     this.name = options.name;
     this.element.id = options.name;
   }
 
-  if (options.content) {
-    this.content = options.content;
-    this.element.appendChild(this.content.element ? this.content.element : this.content);
-  } else {
-    this.content = null;
-  }
-
-
-  function readjust(){
-    rootResize();
-    self.readjust();
-  }
+  this.addClass('panel');
 
   if (parent) {
-    parent.mount(this);
-    if (options.splitter) {
-      var opposite = parent.opposite(this);
-      if (opposite && opposite.splitter === 'waiting') {
-        var orient = this.anchor === 'top' || this.anchor === 'botom' ? 'vertical' : 'horizontal';
-        opposite.splitter = this.splitter = new Splitter(opposite, this, orient);
-      } else {
-        this.splitter = 'waiting';
-      }
-    }
+    this.parent = parent;
+    this.size = options.size;
   } else {
-    document.body.appendChild(this.element);
-    window.addEventListener('resize', readjust, true);
-    setTimeout(readjust, 10);
+    this.parent = null;
+    this.addClass('root');
   }
 
-  this.forEach(function(_, side){
-    if (options[side]) {
-      options[side].anchor = side;
-      this.mount(new Panel(this, options[side]));
+
+  function append(side){
+    self[side] = Panel.from(self, options[side]);
+    self[side].anchor = side;
+    self.append(self[side]);
+    self[side].addClass(side);
+    return self[side];
+  }
+
+  if (options.content) {
+    if (options.content instanceof Element) {
+      this.content = new Component(options.content);
+    } else if (options.content instanceof Component) {
+      this.content = options.content;
     }
-  });
+    this.append(this.content);
+  } else {
+     if (options.left || options.right) {
+      this.orient = 'horizontal';
+      var first = append('left'),
+          second = append('right');
+    } else if (options.top || options.bottom) {
+      this.orient = 'vertical';
+      var first = append('top'),
+          second = append('bottom');
+    } else {
+      throw new Error('invalid options');
+    }
+
+    this.addClass(this.orient);
+    if (options.splitter) {
+      this.splitter = new Splitter(first, second, this.orient);
+    }
+  }
+
+  if (!parent) {
+    var update = function(){
+      var rect = self.bounds();
+      self.calcWidth = rect.width;
+      self.calcHeight = rect.height;
+      self.recalc();
+      self.resize();
+    };
+
+    window.addEventListener('resize', update, true);
+    document.body.appendChild(this.element);
+    var computed = getComputedStyle(this.element);
+    this.size = 1;
+    update();
+  }
+}
+
+define(Panel, [
+  function from(parent, obj){
+    if (obj instanceof Panel) {
+      return obj;
+    } else if (obj && typeof obj === 'object') {
+      return new Panel(parent, obj);
+    }
+  }
+]);
+
+function length(value, container){
+  if (value >= -1 && value <= 1) {
+    return value * container;
+  } else {
+    return value;
+  }
 }
 
 inherit(Panel, Component, [
-  function opposite(panel){
-    if (panel && panel.anchor) {
-      return this[opposites[panel.anchor]]
+  function resize(){
+    if (this.content) {
+      this.content.width(this.content.calcWidth);
+      this.content.height(this.content.calcHeight);
+      this.content.resize && this.content.resize();
+    } else if (this.orient === 'vertical') {
+      this.top.height(this.top.calcHeight);
+      this.top.resize && this.top.resize();
+      this.bottom.height(this.bottom.calcHeight);
+      this.bottom.resize && this.bottom.resize();
+    } else if (this.orient === 'horizontal') {
+      this.left.width(this.left.calcWidth);
+      this.left.resize && this.left.resize();
+      this.right.width(this.right.calcWidth);
+      this.right.resize && this.right.resize();
     }
   },
-  function mount(panel){
-    if (panel.parent === this) {
-      var side = this.find(panel);
-      if (side) {
-        if (side !== panel.mount) {
-          panel.mount = side;
-        }
-        return;
-      }
-    } else if (panel.parent) {
-      panel.parent.unmount(panel);
-    }
-
-    if (this[panel.anchor]) {
-      throw new Error('Panel already has mount at '+panel.anchor+' anchor');
-    }
-
-    this[panel.anchor] = panel;
-    panel.parent = this;
-    this.element.appendChild(panel.element);
-    panel.addClass(panel.anchor);
-    this.readjust();
-  },
-  function readjust(){
-    if (this.orient === 'vertical') {
-      var main = vert, cross = horz;
+  function recalc(){
+    if (this.content) {
+      this.content.calcWidth = this.calcWidth;
+      this.content.calcHeight = this.calcHeight;
+      this.content.recalc && this.content.recalc();
     } else {
-      var main = horz, cross = vert;
-    }
-
-    ['near', 'far'].forEach(function(axis, i, a){
-      var panel = this[main[axis]];
-      if (panel) {
-        panel.mainCalcSize = panel.mainSize;
-        if (panel.mainSize === 'auto') {
-          var other = this[main[a[1 - i]]];
-          if (other && other.mainSize === 'auto') {
-            other.mainCalcSize = panel.mainCalcSize = this.mainCalcSize / 2 | 0;
-          } else {
-            panel.mainCalcSize = this.mainCalcSize - (other ? other.mainCalcSize : 0);
-          }
-        }
-        panel.element.style[main.size] = panel.mainCalcSize + 'px';
-        this[axis] = panel.mainCalcSize;
+      if (this.orient === 'vertical') {
+        var first = 'top',
+            second = 'bottom',
+            main = 'calcHeight',
+            cross = 'calcWidth';
       } else {
-        this[axis] = 0;
+        var first = 'left',
+            second = 'right',
+            main = 'calcWidth',
+            cross = 'calcHeight';
       }
-    }, this);
 
-    ['near', 'far'].forEach(function(axis, i, a){
-      var panel = this[cross[axis]];
-      if (panel) {
-        panel.mainCalcSize = panel.mainSize;
-        if (panel.mainSize === 'auto') {
-          var other = this[cross[a[1 - i]]];
-          if (other && other.mainSize === 'auto') {
-            other.mainCalcSize = panel.mainCalcSize = this.crossCalcSize / 2 | 0;
+      if (this[first] && this[second]) {
+        this[first][cross] = this[second][cross] = this[cross];
+        if (this[first].size === 'auto' && this[second].size === 'auto') {
+          this[first][main] = this[second][main] = this[main] / 2 | 0;
+        } else {
+          if (this[first].size === 'auto') {
+            var primary = this[second];
+                second = this[first];
           } else {
-            panel.mainCalcSize = this.crossCalcSize - (other ? other.mainCalcSize : 0);
+            var primary = this[first];
+                second = this[second];
           }
+          primary[main] = length(primary.size, this[main]);
+          second[main] = this[main] - primary[main];
         }
-        panel.element.style[main.near] = this.near + 'px';
-        panel.element.style[main.far] = this.far + 'px';
-        panel.element.style[cross.size] = panel.mainCalcSize + 'px';
-      }
-    }, this);
-  },
-  function unmount(panel){
-    var anchor = this.find(panel);
-    if (anchor) {
-      this[anchor] = null;
-      this.element.removeChild(panel.element);
-      panel.removeClass(anchor);
-      return true;
-    }
-    return false;
-  },
-  function find(panel){
-    if (this[panel.mount] === panel) {
-      return panel.mount;
-    }
-    for (var k in sides) {
-      if (this[k] === panel) {
-        return k;
+        this[first].recalc && this[first].recalc();
+        this[second] && this[second].recalc && this[second].recalc();
       }
     }
-    return null;
-  },
-  function has(panel){
-    if (this[panel.mount] === panel) {
-      return true;
-    }
-    for (var k in sides) {
-      if (this[k] === panel) {
-        return true;
-      }
-    }
-    return false;
-  },
-  function forEach(callback, context){
-    context = context || this;
-    for (var k in sides) {
-      callback.call(context, this[k], k, this);
-    }
-    return this;
-  },
+  }
 ]);
 
 
@@ -485,7 +449,6 @@ var Splitter = (function(){
     this.dragger.on('grab', this.grab, this);
     this.dragger.on('drag', this.drag, this);
     this.dragger.on('drop', this.drop, this);
-    this.parent.on('change-split', this.refresh, this);
 
     var oldUpdate = updateSplitters, self = this;
     updateSplitters = function(){ self.refresh(); oldUpdate() };
@@ -519,18 +482,23 @@ var Splitter = (function(){
       if (this.lastNear !== far || this.lastFar !== lastFar) {
         this.lastNear = near;
         this.lastFar = far;
-        this.nearSize(near);
-        this.farSize(far);
+        //this.nearSize(near);
+        //this.farSize(far);
 
-        if (!silent) {
-          this.emit('change-split', {
-            change: near - far,
-            near: near,
-            far: far,
-            percent: (near / container * 100 | 0) / 100,
-            bubbles: false
-          });
-        }
+        this.near.size = near / container;
+        this.far.size = 'auto';
+        this.parent.recalc();
+        this.parent.resize();
+
+        // if (!silent) {
+        //   this.emit('change-split', {
+        //     change: near - far,
+        //     near: near,
+        //     far: far,
+        //     percent: (near / container * 100 | 0) / 100,
+        //     bubbles: false
+        //   });
+        // }
       }
     },
   ]);
@@ -1063,31 +1031,40 @@ var renderer = new debug.Renderer({
 
 var input = new InputBox,
     stdout = new Console,
-    root = _('div');
+    root = _('div'),
+    ops = _('div');
 
 root.className = 'root';
+ops.className = 'ops';
 
 
 var main = new Panel(null, {
-  anchor: 'full',
   name: 'container',
-  left: {
-    label: 'stdout',
-    name: 'output',
-    mainSize: 250,
-    content: stdout
-  },
-  right: {
-    label: 'Inspector',
-    name: 'view',
-    mainSize: 'auto',
-    content: root
+  top: {
+    left: {
+      size: 200,
+      top: {
+        size: 300,
+        label: 'Ops',
+        name: 'ops',
+        content: ops
+      },
+      bottom: {
+        label: 'stdout',
+        name: 'output',
+        content: stdout
+      },
+    },
+    right: {
+      label: 'Inspector',
+      name: 'view',
+      content: root
+    },
   },
   bottom: {
     label: 'Input',
-    anchor: 'bottom',
     name: 'input',
-    mainSize: 35,
+    size: 35,
     content: input
   }
 });
@@ -1106,7 +1083,9 @@ function runInContext(code, realm){
 }
 
 
-var realm = new Realm;
+var realm = new Realm(function(type, value){
+  console.log(type, value);
+});
 realm.on('write', stdout.append.bind(stdout));
 realm.on('clear', stdout.clear.bind(stdout));
 realm.on('backspace', stdout.backspace.bind(stdout));
