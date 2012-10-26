@@ -437,7 +437,7 @@ var operators = (function(exports){
     return a + b;
   }
 
-  function ADD(lval, rval) {
+  function ADD(rval, lval) {
     lval = ToPrimitive(lval);
     if (lval && lval.Completion) {
       if (lval.Abrupt) {
