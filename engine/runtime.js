@@ -1305,12 +1305,21 @@ var runtime = (function(GLOBAL, exports, undefined){
       return this.Prototype;
     },
     function SetPrototype(value){
-      this.Prototype = value;
+      if (typeof value === 'object') {
+        this.Prototype = value;
+        return true;
+      } else {
+        return false;
+      }
     },
     function GetExtensible(){
       return this.Extensible;
     },
     function GetOwnProperty(key){
+      if (key === '__proto__') {
+        return undefined;
+      }
+
       if (this.keys.has(key)) {
         var attrs = this.attributes[key];
         var Descriptor = attrs & A ? AccessorDescriptor : DataDescriptor;
@@ -1318,9 +1327,12 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function GetProperty(key){
+      if (key === '__proto__') {
+        return undefined;
+      }
       var desc = this.GetOwnProperty(key);
       if (desc) {
-        return desc
+        return desc;
       } else {
         var proto = this.GetPrototype();
         if (proto) {
@@ -1343,6 +1355,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function GetP(receiver, key){
+      if (key === '__proto__') {
+        return receiver.GetPrototype();
+      }
       var desc = this.GetOwnProperty(key);
       if (!desc) {
         var proto = this.GetPrototype();
@@ -1359,6 +1374,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function SetP(receiver, key, value) {
+      if (key === '__proto__') {
+        return receiver.SetPrototype(value);
+      }
       var desc = this.GetOwnProperty(key);
       if (desc) {
         if (IsAccessorDescriptor(desc)) {
@@ -1397,6 +1415,14 @@ var runtime = (function(GLOBAL, exports, undefined){
       var reject = strict
           ? function(e, a){ return ThrowException(e, a) }
           : function(e, a){ return false };
+
+      if (key === '__proto__') {
+        if (isObject(desc) && 'Value' in desc) {
+          return this.SetPrototype(desc.Value);
+        } else {
+          return false;
+        }
+      }
 
       var current = this.GetOwnProperty(key);
 
@@ -1470,7 +1496,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       return key === '__proto__' ? false : this.keys.has(key);
     },
     function HasProperty(key){
-      if (this.keys.has(key) || key === '__proto__') {
+      if (key === '__proto__' || this.keys.has(key)) {
         return true;
       } else {
         var proto = this.GetPrototype();
@@ -1821,7 +1847,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function HasOwnProperty(key){
-      key = ToString(key);
+      key = ToPropertyKey(key);
       if (key && key.Completion) {
         if (key.Abrupt) {
           return key;
@@ -2423,7 +2449,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         return result;
       }
 
-      var name = ToString(prop);
+      var name = ToPropertyName(prop);
       if (name && name.Completion) {
         if (name.Abrupt) {
           return name;

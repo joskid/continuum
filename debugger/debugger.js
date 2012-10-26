@@ -1115,12 +1115,20 @@ function Instruction(instruction, item){
         if (item.base) {
           if (item.base.bindings) {
             if (item.base.bindings.NativeBrand) {
-              item = item.base.bindings.properties[item.name];
+              if (item.name === '__proto__') {
+                item = item.base.bindings.GetPrototype();
+              } else {
+                item = item.base.bindings.properties[item.name];
+              }
             } else if (item.name in item.base.bindings) {
               item = item.base.bindings[item.name];
             }
           } else if (item.base.NativeBrand) {
-            item = item.base[item.name];
+            if (item.name === '__proto__') {
+              item = item.base.GetPrototype();
+            } else {
+              item = item.base.properties[item.name];
+            }
           }
         }
       }

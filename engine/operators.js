@@ -100,14 +100,24 @@ var operators = (function(exports){
         base = exports.ToObject(base);
       }
 
-      if (base.Get) {
-        if ('thisValue' in v) {
-          return base.SetP(GetThisValue(v), v.name, w, v.strict);
+      if (v.name === '__proto__') {
+        if (base.SetPrototype) {
+          base.SetPrototype(w);
+        } else if (base.bindings && base.bindings.SetPrototype) {
+          base.bindings.SetPrototype(w);
         } else {
-          return base.Put(v.name, w, v.strict);
+          console.log(v);
         }
       } else {
-        return base.SetMutableBinding(v.name, w, v.strict);
+        if (base.Get) {
+          if ('thisValue' in v) {
+            return base.SetP(GetThisValue(v), v.name, w, v.strict);
+          } else {
+            return base.Put(v.name, w, v.strict);
+          }
+        } else {
+          return base.SetMutableBinding(v.name, w, v.strict);
+        }
       }
     }
   }

@@ -732,8 +732,8 @@ var bytecode = (function(exports){
         if (isPattern(node.left)){
           this.destructure(node.left, node.right);
         } else {
-          this.visit(node.left)
-          this.visit(node.right)
+          this.visit(node.left);
+          this.visit(node.right);
           this.record(GET);
           this.record(PUT);
         }
