@@ -668,7 +668,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     for (var i=0; i < decls.length; i++) {
       if (decls[i].type === 'FunctionDeclaration') {
         var decl = decls[i],
-            name = decl.BoundNames[0];
+            name = decl.id.name;
 
         if (!(name in funcs)) {
           funcs[name] = true;
@@ -757,7 +757,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function InstantiateFunctionDeclaration(decl){
     var code = decl.Code;
-    var func = new $Function(NORMAL, decl.BoundNames[0], code.params, code, context.LexicalEnvironment, code.Strict);
+    var func = new $Function(NORMAL, decl.id.name, code.params, code, context.LexicalEnvironment, code.Strict);
     MakeConstructor(func);
     return func;
   }
@@ -779,7 +779,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     for (i=0; i < decls.length; i++) {
       if (decls[i].type === 'FunctionDeclaration') {
-        env.InitializeBinding(decls[i].BoundNames[0], InstantiateFunctionDeclaration(decls[i]));
+        env.InitializeBinding(decls[i].id.name, InstantiateFunctionDeclaration(decls[i]));
       }
     }
   }
@@ -3170,7 +3170,11 @@ var runtime = (function(GLOBAL, exports, undefined){
         ExecutionContext.pop();
         this.executing = null;
         this.state = 'idle';
-        this.emit('complete', result);
+        if (result && result.Abrupt) {
+          this.emit(result.type, result.value);
+        } else {
+          this.emit('complete', result);
+        }
         return result;
       }
     },
@@ -3188,10 +3192,14 @@ var runtime = (function(GLOBAL, exports, undefined){
         });
       }
 
-      TopLevelDeclarationInstantiation(script.code);
+      var status = TopLevelDeclarationInstantiation(script.code);
+      if (status && status.Abrupt) {
+        return status;
+      }
       return this.run(script.thunk);
     },
   ]);
+
 
 
   exports.Realm = Realm;
