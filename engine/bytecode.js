@@ -50,20 +50,25 @@ var bytecode = (function(exports){
   }
 
 
-
-
-
-  var BoundNames = collector({
+  var boundNamesCollector = collector({
     ObjectPattern      : visit.RECURSE,
     ArrayPattern       : visit.RECURSE,
     VariableDeclaration: visit.RECURSE,
     VariableDeclarator : visit.RECURSE,
     BlockStatement     : visit.RECURSE,
-    Property           : ['key', 'name'],
     Identifier         : ['name'],
     FunctionDeclaration: ['id', 'name'],
     ClassDeclaration   : ['id', 'name']
   });
+
+  function BoundNames(node){
+    var names = boundNamesCollector(node);
+    if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') {
+      return names.slice(1);
+    } else {
+      return names;
+    }
+  }
 
 
   var LexicalDeclarations = (function(lexical){
@@ -173,13 +178,13 @@ var bytecode = (function(exports){
     ArrayPattern: true,
   });
 
-  function Params(params, names, rest){
+  function Params(params, node, rest){
     this.length = 0;
     if (params) {
       [].push.apply(this, params);
     }
     this.Rest = rest;
-    this.BoundNames = names;
+    this.BoundNames = BoundNames(node);
     var args = collectExpectedArguments(this);
     this.ExpectedArgumentCount = args.length;
     this.ArgNames = [];
@@ -247,7 +252,7 @@ var bytecode = (function(exports){
     this.VarDeclaredNames = [];
     this.NeedsSuperBinding = ReferencesSuper(this.body);
     this.Strict = strict || isStrict(this.body);
-    this.params = new Params(node.params, BoundNames(node), node.rest);
+    this.params = new Params(node.params, node, node.rest);
     this.ops = new Operations;
     this.children = [];
 
