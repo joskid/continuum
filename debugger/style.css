@@ -17,6 +17,12 @@ h2
 .ƒconsole
 {  background: #111; white-space: pre; color: #fff; padding: 6px; overflow: hidden; height: 100% }
 
+
+#ops
+{ background: #111; color: #fff;}
+.ops
+{ overflow-y: auto; height: 100%; padding: 6px; }
+
 #input
 { background: #333; }
   #input textarea
@@ -34,15 +40,11 @@ h2
   { position: absolute; }
     .ƒpanel > *
     { box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box }
-    .ƒvertical > .ƒtop    { left: 0; right: 0; top: 0; }
-    .ƒvertical > .ƒleft   { left: 0 }
-    .ƒvertical > .ƒbottom { left: 0; right: 0; bottom: 0; }
-    .ƒvertical > .ƒright  { right: 0 }
+    .ƒtop    { left: 0; right: 0; top: 0; }
+    .ƒbottom { left: 0; right: 0; bottom: 0; }
 
-    .ƒhorizontal > .ƒtop    { top: 0 }
-    .ƒhorizontal > .ƒleft   { top: 0; bottom: 0; left: 0; }
-    .ƒhorizontal > .ƒbottom { bottom: 0 }
-    .ƒhorizontal > .ƒright  { top: 0; bottom: 0; right: 0; }
+    .ƒleft  { top: 0; bottom: 0; left: 0; }
+    .ƒright { top: 0; bottom: 0; right: 0; }
 
     .ƒsplitter.ƒtop    { border-bottom: 3px solid #789 }
     .ƒsplitter.ƒleft   { border-right: 3px solid #789 }
@@ -52,15 +54,15 @@ h2
       .ƒpanel-label
       { position: absolute; color: #9ff; right: 8px; top: 8px; text-shadow: 1px 1px 0 #266, 0 0 0 #0ff; opacity: .1;
         -webkit-transition: .3s; -moz-transition: .3s; transition: .3s }
-      .ƒpanel:hover > .ƒpanel-label
+      .ƒpanel:focus > .ƒpanel-label
       { opacity: 1; text-shadow: 1px 1px 0 #266, 0 0 15px #0ff; }
       .ƒtop > .ƒpanel-label
       { bottom: 8px; }
       .ƒbottom > .ƒpanel-label
       { top: 8px; }
 
-.ƒrow-resize {cursor: row-resize }
-.ƒcol-resize {cursor: col-resize }
+.ƒrow-resize { cursor: row-resize }
+.ƒcol-resize { cursor: col-resize }
 
 .ƒdrag-helper
 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000; }
@@ -71,6 +73,7 @@ h2
   box-shadow: 2px 2px 5px 0 rgba(0,0,0,.6);
   background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+  background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6)); }
 .ƒsplitter-vertical
 { top: 0; left: 0; width: 100%; height: 5px; cursor: row-resize; border-top-width: 1px; }
@@ -79,10 +82,12 @@ h2
 .ƒsplitter:hover
 { background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
+  background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8)); }
 .ƒsplitter.ƒdragging
 { background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
+  background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1)); }
 
 
