@@ -592,8 +592,9 @@ var runtime = (function(GLOBAL, exports, undefined){
             return ThrowException('global invalid define');
           }
         }
-        if (decl.type === 'FunctionDeclaration')
-        env.SetMutableBinding(name, InstantiateFunctionDeclaration(decl), code.Strict);
+        if (decl.type === 'FunctionDeclaration') {
+          env.SetMutableBinding(name, InstantiateFunctionDeclaration(decl), code.Strict);
+        }
       }
     }
 
@@ -1690,7 +1691,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
 
       ExecutionContext.pop();
-      return result && result.type === Return ? result.Value : result;
+      return result && result.type === Return ? result.value : result;
     },
     function Construct(args){
       var prototype = this.Get('prototype');
@@ -1768,7 +1769,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     Native: true,
   }, [
     function Call(receiver, args){
-      return this.call.apply(receiver, args);
+      "use strict";
+      console.log({ name: this.properties.name, receiver: receiver, args: args });
+      return this.call.apply(receiver, [].concat(args));
     },
     function Construct(args){
       if (this.construct) {
@@ -2369,15 +2372,15 @@ var runtime = (function(GLOBAL, exports, undefined){
     switch (typeof value) {
       case STRING:
         $Object.call(this, intrinsics.StringProto);
-        this.NativeBrand = StringWrapper;
+        this.NativeBrand = BRANDS.StringWrapper;
         break;
       case NUMBER:
         $Object.call(this, intrinsics.NumberProto);
-        this.NativeBrand = NumberWrapper;
+        this.NativeBrand = BRANDS.NumberWrapper;
         break;
       case BOOLEAN:
         $Object.call(this, intrinsics.BooleanProto);
-        this.NativeBrand = BooleanWrapper;
+        this.NativeBrand = BRANDS.BooleanWrapper;
         break;
     }
   }
@@ -2796,6 +2799,30 @@ var runtime = (function(GLOBAL, exports, undefined){
     undefined: undefined
   };
 
+  function wrapNatives(source, target){
+    Object.getOwnPropertyNames(source).forEach(function(key){
+      if (typeof source[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
+        var func = new $NativeFunction({
+          name: key,
+          length: source[key].length,
+          call: function(a, b, c, d){
+            var v = this;
+            if (v == null) {
+              try { v = source.constructor(v) }
+              catch (e) { v = new source.constructor }
+            }
+            if (v instanceof target.constructor || typeof v !== 'object') {
+              return v[key](abcd);
+            } else if (v.PrimitiveValue) {
+              return v.PrimitiveValue[key](a, b, c, d);
+            }
+          }
+        });
+        defineDirect(target, key, func, 6);
+      }
+    });
+  }
+
   var nativeCode = ['function ', '() { [native code] }'];
 
   var natives = {
@@ -2850,32 +2877,13 @@ var runtime = (function(GLOBAL, exports, undefined){
       realm.emit('backspace', count);
     },
     wrapDateMethods: function(target){
-      Object.getOwnPropertyNames(Date.prototype).forEach(function(key){
-        if (typeof Date.prototype[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
-          var func = new $NativeFunction({
-            name: key,
-            length: Date.prototype[key].length,
-            call: function(a, b, c){
-              return this.PrimitiveValue[key](a, b, c);
-            }
-          })
-          defineDirect(target, key, func, 6);
-        }
-      });
+      wrapNatives(Date.prototype, target);
     },
     wrapStringMethods: function(target){
-      Object.getOwnPropertyNames(String.prototype).forEach(function(key){
-        if (typeof String.prototype[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
-          var func = new $NativeFunction({
-            name: key,
-            length: String.prototype[key].length,
-            call: function(a, b, c){
-              return this.PrimitiveValue[key](a, b, c);
-            }
-          })
-          defineDirect(target, key, func, 6);
-        }
-      });
+      wrapNatives(String.prototype, target);
+    },
+    wrapRegExpMethods: function(target){
+      wrapNatives(RegExp.prototype, target);
     },
     // FUNCTION
     eval: function(code){
@@ -2894,7 +2902,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       return new Thunk(code).run(context);
     },
     // FUNCTION PROTOTYPE
-    functionToString: function(){
+    FunctionToString: function(){
       console.log(this);
       if (!IsCallable(this)) {
         return ThrowException('not_generic', ['Function.prototype.toString'])
@@ -2925,10 +2933,10 @@ var runtime = (function(GLOBAL, exports, undefined){
     DateCreate: function(date){
       return new $Date(date === undefined ? new Date : date);
     },
-    dateToString: function(object){
+    DateToString: function(object){
       return ''+object.PrimitiveValue;
     },
-    dateToNumber: function(object){
+    DateToNumber: function(object){
       return +object.PrimitiveValue;
     },
 
@@ -2936,7 +2944,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     NumberCreate: function(number){
       return new $Number(number);
     },
-    numberToString: function(object, radix){
+    NumberToString: function(object, radix){
       return object.PrimitiveValue.toString(radix);
     },
 
@@ -2956,12 +2964,24 @@ var runtime = (function(GLOBAL, exports, undefined){
         return this.PrimitiveValue.replace(match.PrimitiveValue, replacer);
       }
     },
-    RegExpCreate: function(regexp){
-      return new $RegExp(regexp);
+    RegExpCreate: function(regexp, pattern, flags){
+      if (typeof pattern === 'object') {
+        pattern = pattern.PrimitiveValue;
+      }
+      try {
+        var result = regexp.PrimitiveValue = new RegExp(pattern, flags);
+      } catch (e) {
+        return ThrowException('invalid_regexp', [pattern+'']);
+      }
+      defineDirect(regexp, 'global', result.global, ___);
+      defineDirect(regexp, 'ignoreCase', result.ignoreCase, ___);
+      defineDirect(regexp, 'lastIndex', result.lastIndex, __W);
+      defineDirect(regexp, 'multiline', result.multiline, ___);
+      defineDirect(regexp, 'source', result.source, ___);
+      return regexp;
     },
-    // REGEXP PROTOTYPE
-    test: function(str){
-      return this.PrimitiveValue.test(str);
+    RegExpToString: function(object, radix){
+      return object.PrimitiveValue.toString(radix);
     },
 
     // OBJECT

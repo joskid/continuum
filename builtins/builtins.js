@@ -1,4 +1,4 @@
-(function(global){
+(function(global, undefined){
   var E = 0x1,
       C = 0x2,
       W = 0x4,
@@ -260,14 +260,14 @@
   defineProps(Date.prototype, {
     toString(){
       if ($__getNativeBrand(this) === 'Date') {
-        return $__dateToString(this);
+        return $__DateToString(this);
       } else {
         throw $__exception('not_generic', ['Date.prototype.toString']);
       }
     },
     valueOf(){
       if ($__getNativeBrand(this) === 'Date') {
-        return $__dateToNumber(this);
+        return $__DateToNumber(this);
       } else {
         throw $__exception('not_generic', ['Date.prototype.valueOf']);
       }
@@ -296,7 +296,10 @@
 
   ]);
 
-  $__defineDirect($__FunctionProto, 'toString', $__functionToString, 6);
+
+  defineProps(Function.prototype, {
+    toString: $__FunctionToString
+  });
 
   // ###########
   // ### Map ###
@@ -356,7 +359,7 @@
   defineProps(Number.prototype, {
     toString(radix){
       if ($__getNativeBrand(this) === 'Number') {
-        return $__numberToString(this, radix);
+        return $__NumberToString(this, radix);
       } else {
         throw $__exception('not_generic', ['Number.prototype.toString']);
       }
@@ -522,12 +525,41 @@
   // ### RegExp ###
   // ##############
 
-  function RegExp(pattern){
-    return $__RegExpCreate($__ToString(pattern));
+  function RegExp(pattern, flags){
+    if ($__isConstructCall()) {
+      if (pattern === undefined) {
+        pattern = '';
+      } else if (typeof pattern === 'string') {
+      } else if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {
+        if (flags !== undefined) {
+          throw $__exception('regexp_flags', []);
+        }
+      } else {
+        pattern = $__ToString(pattern);
+      }
+      return $__RegExpCreate(this, pattern, flags);
+    } else {
+      if (flags === undefined && pattern) {
+        if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {
+          return pattern;
+        }
+      }
+      return new RegExp(pattern, flags);
+    }
   }
 
   setupConstructor(RegExp, $__RegExpProto);
 
+  defineProps(RegExp.prototype, {
+    toString(){
+      if ($__getNativeBrand(this) === 'RegExp') {
+        return $__RegExpToString(this);
+      } else {
+        throw $__exception('not_generic', ['RegExp.prototype.toString']);
+      }
+    }
+  });
+  $__wrapRegExpMethods(RegExp.prototype);
 
   // ###########
   // ### Set ###

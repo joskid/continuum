@@ -22,6 +22,8 @@ h2
 { background: #111; color: #fff;}
 .ƒinstructions
 { overflow-y: auto; margin: 0; padding: 6px; font-size: 70% }
+  .ƒinstruction
+  { white-space: pre }
   .ƒinstruction > div
   { display: inline-block; vertical-align: top }
   .ƒinstruction > span
