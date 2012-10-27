@@ -688,11 +688,14 @@ inherit(InputBox, Component, [
     return this;
   },
   function set(reason, value){
+    if (this.disabled) return;
     this.element.value = value;
     this.emit(reason, value);
     return this;
   },
   function emit(event, value){
+    if (this.disabled) return;
+
     var self = this;
     if (typeof value === 'string')
       value = { value: value };
@@ -706,6 +709,14 @@ inherit(InputBox, Component, [
       }
       self.element.dispatchEvent(evt);
     }, 1);
+  },
+  function disable(){
+    this.element.disabled = true;
+    this.disabled = true;
+  },
+  function enable(){
+    this.element.disabled = false;
+    this.disabled = false;
   }
 ]);
 
@@ -1097,6 +1108,23 @@ function Div(text, name){
 inherit(Div, Component, []);
 
 
+function Button(text, name){
+  Component.call(this, 'button');
+  this.addClass('button');
+  if (name) {
+    this.addClass(name);
+  }
+  this.face = this.append(new Div(text, 'button-text'));
+}
+
+inherit(Button, Component, [
+  function text(value){
+    return this.face.text(value);
+  }
+]);
+
+
+
 var typeofs = {
   string: 'StringValue',
   boolean: 'BooleanValue',
@@ -1289,29 +1317,22 @@ realm.on('clear', stdout.clear.bind(stdout));
 realm.on('backspace', stdout.backspace.bind(stdout));
 realm.on('pause', function(){
   body.addClass('paused');
-  input.disabled();
+  input.disable();
+  var overlay = new Div('', 'overlay');
+  body.append(overlay);
 
+  var unpause = body.append(new Button('Unpause', 'unpause'));
+  unpause.once('click', function(){
+    body.removeClass('paused');
+    input.enable();
+    unpause.remove();
+    overlay.remove();
+    realm.resume();
+  });
 });
 
 
 
-
-
-
-function Button(text, name){
-  Component.call(this, 'button');
-  this.addClass('button');
-  if (name) {
-    this.addClass(name);
-  }
-  this.face = this.append(new Div(text, 'button-text'));
-}
-
-inherit(Button, Component, [
-  function text(value){
-    return this.face.text(value);
-  }
-]);
 
 
 var body = new Component(document.body);
