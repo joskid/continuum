@@ -24,6 +24,10 @@ var debug = (function(exports){
     return function(){ return func.apply(null, args) }
   }
 
+  function isNegativeZero(n){
+    return n === 0 && 1 / n === -Infinity;
+  }
+
 
   function Mirror(){}
 
@@ -58,6 +62,9 @@ var debug = (function(exports){
     this.subject = subject;
     this.type = typeof subject;
     this.kind = brand(subject)+'Value';
+    if (this.type === 'number' && isNegativeZero(subject)) {
+      label = '-0';
+    }
     this.label = always(label);
   }
 
@@ -236,6 +243,9 @@ var debug = (function(exports){
   inherit(MirrorBoolean, MirrorObject, {
     kind: 'Boolean'
   }, [
+    function label(){
+      return 'Boolean('+this.subject.PrimitiveValue+')';
+    }
   ]);
 
   function MirrorDate(subject){
@@ -245,6 +255,15 @@ var debug = (function(exports){
   inherit(MirrorDate, MirrorObject, {
     kind: 'Date'
   }, [
+    function label(){
+      var date = this.subject.PrimitiveValue;
+      if (!date || date === Date.prototype || ''+date === 'Invalid Date') {
+        return 'Invalid Date';
+      } else {
+        var json = date.toJSON();
+        return json.slice(0, 10) + ' ' + json.slice(11, 19);
+      }
+    }
   ]);
 
 
@@ -341,6 +360,15 @@ var debug = (function(exports){
   inherit(MirrorNumber, MirrorObject, {
     kind: 'Number'
   }, [
+    function label(){
+      var value = this.subject.PrimitiveValue;
+      if (isNegativeZero(value)) {
+        value = '-0';
+      } else {
+        value += '';
+      }
+      return 'Number('+value+')';
+    }
   ]);
 
   function MirrorRegExp(subject){
@@ -350,6 +378,9 @@ var debug = (function(exports){
   inherit(MirrorRegExp, MirrorObject, {
     kind: 'RegExp'
   }, [
+    function label(){
+      return this.subject.PrimitiveValue+'';
+    }
   ]);
 
 
@@ -389,6 +420,9 @@ var debug = (function(exports){
       }
       return obj;
     },
+    function label(){
+      return 'String('+this.subject.PrimitiveValue+')';
+    }
   ]);
 
 

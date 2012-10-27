@@ -79,7 +79,7 @@ define(Component.prototype, [
     } else if (subject instanceof Element) {
       this.element.appendChild(subject);
     }
-    return this;
+    return subject;
   },
   function remove(subject){
     if (subject === undefined) {
@@ -208,6 +208,24 @@ if (document.body.classList) {
     ]);
   }(create(null));
 }
+
+// var handlers = {};
+
+// function registerHandler(type, handler){
+//   handlers[type] = handler
+// }
+
+// registerHandler('mouseenter', function(target, callback){
+//   target.on('mouseover', function(e){
+//     var from = window.event ? e.srcElement : e.target,
+//         to = e.relatedTarget || e.toElement;
+
+//     while (related !== from && to.nodeName !== document.body) {
+//       to = to.parentNode;
+//     }
+//   });
+// });
+// if (type === 'mouseenter') {
 
 
 function PanelOptions(o){
@@ -1219,22 +1237,84 @@ function runInContext(code, realm){
 }
 
 
-var realm = new Realm(function(type, parts){
-  if (type === 'op') {
-  } else {
-    console.log(type, parts);
-  }
-});
+var realm = new Realm;
 
 runInContext('this', realm);
 
-realm.on('op', function(parts){
-  instructions.append(new Instruction(parts[0], parts[1]));
+
+
+function Queue(){
+  this.length = 0;
+  this.back = null;
+  this.front = null;
+}
+
+Queue.prototype.append = function append(item){
+  if (this.length) {
+    this.back = this.back[1] = [item];
+  } else {
+    this.back = this.front = [item];
+  }
+  this.length++;
+};
+
+Queue.prototype.shift = function shift(){
+  if (this.length) {
+    var item = this.front[0];
+    this.front = this.front[1];
+    if (!--this.length) {
+      this.front = this.back = null;
+    }
+    return item;
+  }
+};
+
+
+var ops = new Queue;
+
+setTimeout(function trampoline(){
+  while (ops.length) {
+    var op = ops.shift();
+    instructions.append(new Instruction(op[0], op[1]));
+  }
+  setTimeout(trampoline, 50);
+}, 50);
+
+realm.on('op', function(op){
+  ops.append(op);
 });
+
 realm.on('write', stdout.append.bind(stdout));
 realm.on('clear', stdout.clear.bind(stdout));
 realm.on('backspace', stdout.backspace.bind(stdout));
+realm.on('pause', function(){
+  body.addClass('paused');
+  input.disabled();
 
+});
+
+
+
+
+
+
+function Button(text, name){
+  Component.call(this, 'button');
+  this.addClass('button');
+  if (name) {
+    this.addClass(name);
+  }
+  this.face = this.append(new Div(text, 'button-text'));
+}
+
+inherit(Button, Component, [
+  function text(value){
+    return this.face.text(value);
+  }
+]);
+
+
+var body = new Component(document.body);
 
 input.on('entry', function(evt){
   runInContext(evt.value, realm);

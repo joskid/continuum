@@ -129,7 +129,7 @@ h2
 .ƒBooleanValue   { color: #ffff87 }
 .ƒNullValue      { color: #5f5f87 }
 .ƒNumberValue    { color: #af5fff }
-.ƒStringValue    { color: #00af5f }
+.ƒStringValue    { color: #00ff5f }
 .ƒUndefinedValue { color: #5f875f }
 .ƒException      { color: #ff005f; font-weight: bold;  }
 
