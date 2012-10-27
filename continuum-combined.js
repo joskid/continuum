@@ -8606,6 +8606,7 @@ exports.thunk = (function(exports){
 
     function DEBUGGER(){
       cleanup = pauseCleanup;
+      ip++;
       return false;
     }
 
