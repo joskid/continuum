@@ -350,6 +350,21 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
+  // ## IsConstructor
+
+  function IsConstructor(argument){
+    if (argument && typeof argument === OBJECT) {
+      if (argument.Completion) {
+        if (argument.Abrupt) {
+          return argument;
+        }
+        return IsConstructor(argument.value);
+      }
+      return 'Construct' in argument;
+    } else {
+      return false;
+    }
+  }
 
   // ## MakeConstructor
 
@@ -521,9 +536,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     return new Accessor(thrower);
   }
 
-  // ## CreateStrictArgumentsObject
+  // ## CompleteStrictArgumentsObject
 
-  function CreateStrictArgumentsObject(args) {
+  function CompleteStrictArgumentsObject(args) {
     var obj = new $Arguments(args.length);
     for (var i=0; i < args.length; i++) {
       defineDirect(obj, i+'', args[i], ECW);
@@ -535,9 +550,9 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
 
-  // ## CreateMappedArgumentsObject
+  // ## CompleteMappedArgumentsObject
 
-  function CreateMappedArgumentsObject(names, env, args, func) {
+  function CompleteMappedArgumentsObject(names, env, args, func) {
     var obj = new $Arguments(args.length),
         map = new $Object,
         mapped = create(null),
@@ -575,7 +590,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         decls = code.LexicalDeclarations;
 
     for (var i=0, decl; decl = decls[i]; i++) {
-      if (decl.type === 'FunctionDeclaration' || decl.type === 'ClassDeclaration') {
+      if (decl.type === 'FunctionDeclaration') {
         var name = decl.id.name;
         if (env.HasBinding(name)) {
           env.CreateMutableBinding(name, configurable);
@@ -627,11 +642,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     for (var i=0; i < names.length; i++) {
       if (!env.HasBinding(names[i])) {
-        status = env.CreateMutableBinding(names[i]);
-        if (status && status.Abrupt) {
-          return status;
-        }
-
+        env.CreateMutableBinding(names[i]);
         if (!func.Strict) {
           env.InitializeBinding(names[i], undefined);
         }
@@ -639,10 +650,10 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
     if (func.Strict) {
-      var ao = CreateStrictArgumentsObject(args);
+      var ao = CompleteStrictArgumentsObject(args);
       status = ArgumentBindingInitialization(params, ao, env);
     } else {
-      var ao = env.arguments = CreateMappedArgumentsObject(names, env, args, func)
+      var ao = env.arguments = CompleteMappedArgumentsObject(names, env, args, func)
       status = ArgumentBindingInitialization(params, ao);
     }
 
@@ -900,7 +911,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ## NewMethodEnvironment
 
   function NewMethodEnvironment(method, receiver){
-    var lex = new MethodEnvironmentRecord(receiver, method.Home, method.MethodName);
+    var lex = new FunctionEnvironmentRecord(receiver, method.Home, method.MethodName);
     lex.outer = method.Scope;
     return lex;
   }
@@ -1108,9 +1119,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     function GetBindingValue(name, strict){},
     function SetMutableBinding(name, value, strict){},
     function DeleteBinding(name){},
-    function CreateVarBinding(name, deletable){
-      return this.CreateMutableBinding(name, deletable);
-    },
     function WithBaseObject(){
       return this.withBase;
     },
@@ -1224,14 +1232,14 @@ var runtime = (function(GLOBAL, exports, undefined){
   ]);
 
 
-  function MethodEnvironmentRecord(receiver, holder, name){
+  function FunctionEnvironmentRecord(receiver, holder, name){
     DeclarativeEnvironmentRecord.call(this);
     this.thisValue = receiver;
     this.HomeObject = holder;
     this.MethodName = name;
   }
 
-  inherit(MethodEnvironmentRecord, DeclarativeEnvironmentRecord, {
+  inherit(FunctionEnvironmentRecord, DeclarativeEnvironmentRecord, {
     HomeObject: undefined,
     MethodName: undefined,
     thisValue: undefined,
@@ -1827,7 +1835,6 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   inherit($Date, $Object, {
     NativeBrand: BRANDS.NativeDate,
-    PrimitiveValue: undefined,
   });
 
   // ###############
@@ -2118,9 +2125,16 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ### $RegExp ###
   // ###############
 
-  function $RegExp(native){
-    $Object.call(this, intrinsics.RegExpProto);
-    this.Source = native;
+  function $RegExp(primitive){
+    if (!this.properties) {
+      $Object.call(this, intrinsics.RegExpProto);
+    }
+    this.PrimitiveValue = primitive;
+    defineDirect(this, 'global', primitive.global, ___);
+    defineDirect(this, 'ignoreCase', primitive.ignoreCase, ___);
+    defineDirect(this, 'lastIndex', primitive.lastIndex, __W);
+    defineDirect(this, 'multiline', primitive.multiline, ___);
+    defineDirect(this, 'source', primitive.source, ___);
   }
 
   inherit($RegExp, $Object, {
@@ -2494,8 +2508,8 @@ var runtime = (function(GLOBAL, exports, undefined){
     function createObject(proto){
       return new $Object(proto);
     },
-    function createRegExo(pattern){
-      return new $RegExp(pattern);
+    function createRegExp(regex){
+      return new $RegExp(regex);
     },
     function popBlock(){
       this.LexicalEnvironment = this.LexicalEnvironment.outer;
@@ -2788,6 +2802,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   var primitives = {
     Date: Date.prototype,
+    RegExp: RegExp.prototype,
     String: '',
     Number: 0,
     Boolean: false
@@ -2811,8 +2826,8 @@ var runtime = (function(GLOBAL, exports, undefined){
               try { v = source.constructor(v) }
               catch (e) { v = new source.constructor }
             }
-            if (v instanceof target.constructor || typeof v !== 'object') {
-              return v[key](abcd);
+            if (v instanceof source.constructor || typeof v !== 'object') {
+              return v[key](a, b, c, d);
             } else if (v.PrimitiveValue) {
               return v.PrimitiveValue[key](a, b, c, d);
             }
@@ -2822,6 +2837,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     });
   }
+
+
+  var applybind = Function.prototype.apply.bind(Function.prototype.bind);
 
   var nativeCode = ['function ', '() { [native code] }'];
 
@@ -2930,8 +2948,8 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
 
     // DATE
-    DateCreate: function(date){
-      return new $Date(date === undefined ? new Date : date);
+    DateCreate: function(args){
+      return new $Date(new (applybind(Date, [null].concat(toInternalArray(args)))));
     },
     DateToString: function(object){
       return ''+object.PrimitiveValue;
@@ -2964,21 +2982,17 @@ var runtime = (function(GLOBAL, exports, undefined){
         return this.PrimitiveValue.replace(match.PrimitiveValue, replacer);
       }
     },
-    RegExpCreate: function(regexp, pattern, flags){
+    RegExpCreate: function(pattern, flags){
       if (typeof pattern === 'object') {
         pattern = pattern.PrimitiveValue;
       }
       try {
-        var result = regexp.PrimitiveValue = new RegExp(pattern, flags);
+        var result = new RegExp(pattern, flags);
       } catch (e) {
+        console.log(e);
         return ThrowException('invalid_regexp', [pattern+'']);
       }
-      defineDirect(regexp, 'global', result.global, ___);
-      defineDirect(regexp, 'ignoreCase', result.ignoreCase, ___);
-      defineDirect(regexp, 'lastIndex', result.lastIndex, __W);
-      defineDirect(regexp, 'multiline', result.multiline, ___);
-      defineDirect(regexp, 'source', result.source, ___);
-      return regexp;
+      return new $RegExp(result);
     },
     RegExpToString: function(object, radix){
       return object.PrimitiveValue.toString(radix);

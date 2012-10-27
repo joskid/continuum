@@ -131,7 +131,6 @@
         context = Object(this);
       }
       for (var i=0; i < len; i++) {
-        console.log(i);
         out.push(callback.call(context, this[i], i, this));
       }
       return out;
@@ -293,7 +292,6 @@
     $__call,
     $__apply,
     $__bind,
-
   ]);
 
 
@@ -537,14 +535,14 @@
       } else {
         pattern = $__ToString(pattern);
       }
-      return $__RegExpCreate(this, pattern, flags);
+      return $__RegExpCreate(pattern, flags);
     } else {
       if (flags === undefined && pattern) {
         if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {
           return pattern;
         }
       }
-      return new RegExp(pattern, flags);
+      return $__RegExpCreate(pattern, flags);
     }
   }
 
