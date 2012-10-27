@@ -269,6 +269,7 @@ var thunk = (function(exports){
     function IFEQ(){
       if (ops[ip][1] === !!stack[--sp]) {
         ip = ops[ip][0];
+        return cmds[ip];
       }
       return cmds[++ip];
     }
@@ -276,6 +277,7 @@ var thunk = (function(exports){
     function IFNE(){
       if (ops[ip][1] === !!stack[sp - 1]) {
         ip = ops[ip][0];
+        return cmds[ip];
       } else {
         sp--;
       }
@@ -319,7 +321,7 @@ var thunk = (function(exports){
 
     function JUMP(){
       ip = ops[ip][0];
-      return cmds[++ip];
+      return cmds[ip];
     }
 
     function JSR(){

@@ -958,8 +958,8 @@ var bytecode = (function(exports){
           this.record(POP);
         }
 
+        this.record(JUMP, test);
         this.adjust(op);
-        this.record(JUMP, test - 1);
         patch(this.current(), update);
       });
     },
@@ -969,12 +969,12 @@ var bytecode = (function(exports){
         this.record(REF, this.last()[0].name);
         this.visit(node.right);
         this.record(GET);
-        var update = this.current();
         this.record(ENUM);
+        var update = this.current();
         var op = this.record(NEXT);
         this.visit(node.body);
-        this.adjust(op);
         this.record(JUMP, update);
+        this.adjust(op);
         patch(this.current(), update);
       });
     },
@@ -1277,7 +1277,8 @@ var bytecode = (function(exports){
         var op = this.record(IFEQ, 0, false)
         this.visit(node.body);
         this.record(JUMP, start);
-        patch(this.adjust(op), start);
+        this.adjust(op)
+        patch(this.current(), start);
       });
     },
     function WithStatement(node){
