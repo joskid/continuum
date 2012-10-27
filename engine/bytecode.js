@@ -891,14 +891,14 @@ var bytecode = (function(exports){
     function ConditionalExpression(node){
       this.visit(node.test);
       this.record(GET);
-      var op1 = this.record(IFEQ, 0, false);
+      var test = this.record(IFEQ, 0, false);
       this.visit(node.consequent)
       this.record(GET);
-      var op2 = this.record(JUMP, 0);
-      this.adjust(op1);
+      var alt = this.record(JUMP, 0);
+      this.adjust(test);
       this.visit(node.alternate);
       this.record(GET);
-      this.adjust(op2)
+      this.adjust(alt)
     },
     function ContinueStatement(node){
       var entry = this.move(node);
@@ -1018,14 +1018,16 @@ var bytecode = (function(exports){
     function IfStatement(node){
       this.visit(node.test);
       this.record(GET);
-      var op = this.record(IFEQ, 0, false);
+      var test = this.record(IFEQ, 0, false);
       this.visit(node.consequent);
-      this.adjust(op);
 
       if (node.alternate) {
-        op = this.record(JUMP, 0);
+        var alt = this.record(JUMP, 0);
+        this.adjust(test);
         this.visit(node.alternate);
-        this.adjust(op);
+        this.adjust(alt);
+      } else {
+        this.adjust(test);
       }
     },
     function ImportDeclaration(node){},

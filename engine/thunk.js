@@ -144,6 +144,7 @@ var thunk = (function(exports){
       if (a) {
         sp--;
         ip = ops[ip][0];
+        return cmds[ip];
       }
       return cmds[++ip];
     }
@@ -564,6 +565,7 @@ var thunk = (function(exports){
 
     function THROW(){
       error = stack[--sp];
+      sp++
       return ƒ;
     }
 
@@ -629,21 +631,21 @@ var thunk = (function(exports){
     }
 
     function ƒ(){
-      for (var i = 0, entrypoint; entrypoint = code.entrances[i]; i++) {
-        if (entrypoint.begin < ip && ip <= entrypoint.end) {
-          if (entrypoint.type === ENTRY.ENV) {
+      for (var i = 0, entry; entry = code.entrances[i]; i++) {
+        if (entry.begin < ip && ip <= entry.end) {
+          if (entry.type === ENTRY.ENV) {
             context.popBlock();
           } else {
-            //sp = entrypoint.unwindStack(this);
-            if (entrypoint.type === ENTRY.FINALLY) {
+            //sp = entry.unwindStack(this);
+            if (entry.type === ENTRY.FINALLY) {
               stack[sp++] = Empty;
               stack[sp++] = error;
               stack[sp++] = ENTRY.FINALLY;
             } else {
               stack[sp++] = error;
             }
-            ip = entrypoint.end;
-            return cmds[++ip];
+            ip = entry.end;
+            return cmds[ip];
           }
         }
       }
