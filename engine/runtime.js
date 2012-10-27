@@ -1778,7 +1778,6 @@ var runtime = (function(GLOBAL, exports, undefined){
   }, [
     function Call(receiver, args){
       "use strict";
-      console.log({ name: this.properties.name, receiver: receiver, args: args });
       return this.call.apply(receiver, [].concat(args));
     },
     function Construct(args){
@@ -2921,7 +2920,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     // FUNCTION PROTOTYPE
     FunctionToString: function(){
-      console.log(this);
       if (!IsCallable(this)) {
         return ThrowException('not_generic', ['Function.prototype.toString'])
       }
