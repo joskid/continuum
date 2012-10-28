@@ -5142,6 +5142,25 @@ exports.utility = (function(exports){
     : function(f){ setTimeout(f, 1) };
 
 
+  exports.numbers = (function(cache){
+    function numbers(start, end){
+      if (!isFinite(end)) {
+        end = start;
+        start = 0;
+      }
+      var length = end - start,
+          curr;
+
+      if (end > cache.length) {
+        while (length--)
+          cache[curr = length + start] = '' + curr;
+      }
+      return cache.slice(start, end);
+    }
+
+    return numbers;
+  })([]);
+
 
   if (Object.create && !Object.create(null).toString) {
     var create = exports.create = Object.create;
@@ -5364,14 +5383,15 @@ exports.utility = (function(exports){
 
   exports.assign = assign;
 
-
-
-
   function inherit(Ctor, Super, properties, methods){
     define(Ctor, { inherits: Super });
+
     Ctor.prototype = create(Super.prototype, {
-      constructor: { configurable: true, writable: true, value: Ctor }
+      constructor: { value: Ctor,
+                     writable: true,
+                     configurable: true }
     });
+
     properties && define(Ctor.prototype, properties);
     methods && define(Ctor.prototype, methods);
     return Ctor;
@@ -5380,21 +5400,22 @@ exports.utility = (function(exports){
   exports.inherit = inherit;
 
 
-
+  var __ = partial.__ = {};
 
   function partial(f, args){
     args instanceof Array || (args = [args]);
     return function(){
-      var a = [], j=0;
-      for (var i=0; i < args.length; i++)
+      var a = [],
+          j = 0;
+
+      for (var i=0; i < args.length; i++) {
         a[i] = args[i] === __ ? arguments[j++] : args[i];
+      }
       return f.apply(this, a);
     };
   }
 
   exports.partial = partial;
-
-  var __ = partial.__ = {};
 
 
 
@@ -5406,16 +5427,18 @@ exports.utility = (function(exports){
         i = s.length;
 
     while (i--) {
-      if (s[i] === '"')
+      if (s[i] === '"') {
         doubles++;
-      else if (s[i] === "'")
+      } else if (s[i] === "'") {
         singles++;
+      }
     }
 
-    if (singles > doubles)
+    if (singles > doubles) {
       return '"' + s.replace(/"/g, '\\"') + '"';
-    else
+    } else {
       return "'" + s.replace(/'/g, "\\'") + "'";
+    }
   }
 
   exports.quotes = quotes;
@@ -5437,16 +5460,21 @@ exports.utility = (function(exports){
 
   exports.unique = unique;
 
+
+
   function toInteger(v){
     return (v / 1 || 0) | 0;
   }
 
   exports.toInteger = toInteger;
 
+
   function isNaN(number){
     return number !== number;
   }
+
   exports.isNaN = isNaN;
+
 
   function isFinite(number){
     return typeof value === 'number'
@@ -5456,6 +5484,7 @@ exports.utility = (function(exports){
   }
 
   exports.isFinite = isFinite;
+
 
   function isInteger(value) {
     return typeof value === 'number'
@@ -5467,9 +5496,22 @@ exports.utility = (function(exports){
 
   exports.isInteger = isInteger;
 
+  function uid(){
+    return Math.random().toString(36).slice(2)
+  }
+
+  exports.uid = uid;
+
+
+  var BREAK    = visit.BREAK    = new Number(1),
+      CONTINUE = visit.CONTINUE = new Number(2),
+      RECURSE  = visit.RECURSE  = new Number(3);
+
+
   function visit(root, callback){
-    var stack = [root], branded = [],
-        seen = Math.random().toString(36).slice(2);
+    var stack = [root],
+        branded = [],
+        seen = uid();
 
     while (stack.length) {
       recurse(stack.pop());
@@ -5502,21 +5544,24 @@ exports.utility = (function(exports){
   exports.visit = visit;
 
 
-  var BREAK    = visit.BREAK    = new Number(1),
-      CONTINUE = visit.CONTINUE = new Number(2),
-      RECURSE  = visit.RECURSE  = new Number(3);
 
   exports.collector = (function(){
     function path(){
       var parts = [].slice.call(arguments);
+
       for (var i=0; i < parts.length; i++) {
+
         if (typeof parts[i] === 'function') {
           return function(o){
             for (var i=0; i < parts.length; i++) {
-              if (typeof parts[i] === 'string')
-                o = o[parts[i]];
-              else if (typeof parts[i] === 'function')
-                o = parts[i](o);
+              var part = parts[i],
+                  type = typeof part;
+
+              if (type === 'string') {
+                o = o[part];
+              } else if (type === 'function') {
+                o = part(o);
+              }
             }
             return o;
           };
@@ -5524,48 +5569,46 @@ exports.utility = (function(exports){
       }
 
       return function(o){
-        for (var i=0; i < parts.length; i++)
+        for (var i=0; i < parts.length; i++) {
           o = o[parts[i]];
+        }
         return o;
       };
     }
 
 
-
     function collector(o){
       var handlers = Object.create(null);
       for (var k in o) {
-        if (o[k] instanceof Array)
-          handlers[k] = path(o[k])
-        else
-          handlers[k] = o[k];
+        handlers[k] = o[k] instanceof Array ? path(o[k]) : o[k];
       }
 
       return function(node){
         var items  = [];
+
         visit(node, function(node, parent){
-          if (!node) {
-            return CONTINUE;
-          }
+          if (!node) return CONTINUE;
+
           var handler = handlers[node.type];
-          if (handler) {
-            if (handler === true) {
-              items.push(node);
-            } else if (handler === RECURSE || handler === CONTINUE) {
-              return handler;
-            } else {
-              var item = handler(node);
-              if (item !== undefined) {
-                items.push(item);
-              }
+
+          if (handler === true) {
+            items.push(node);
+          } else if (handler === RECURSE || handler === CONTINUE) {
+            return handler;
+          } else if (typeof handler === 'function') {
+            var item = handler(node);
+            if (item !== undefined) {
+              items.push(item);
             }
           } else if (node instanceof Array) {
             return RECURSE;
           }
+
           return CONTINUE;
         });
+
         return items;
-      }
+      };
     }
 
     return collector;
@@ -5573,68 +5616,72 @@ exports.utility = (function(exports){
 
 
 
-  function Emitter(){
-    '_events' in this || define(this, '_events', create(null));
-  }
+  exports.Emitter = (function(){
+    function Emitter(){
+      '_events' in this || define(this, '_events', create(null));
+    }
 
-  exports.Emitter = Emitter;
 
-  define(Emitter.prototype, [
     function on(events, handler){
       events.split(/\s+/).forEach(function(event){
-        if (!(event in this))
+        if (!(event in this)) {
           this[event] = [];
+        }
         this[event].push(handler);
       }, this._events);
-    },
+    }
+
     function off(events, handler){
       events.split(/\s+/).forEach(function(event){
         if (event in this) {
           var index = '__index' in handler ? handler.__index : this[event].indexOf(handler);
-          if (~index)
-            this[event].splice(index, 1)
+          if (~index) {
+            this[event].splice(index, 1);
+          }
         }
       }, this._events);
-    },
+    }
+
     function once(events, handler){
-      this.on(events, function once(){
+      this.on(events, function once(val){
         this.off(events, once);
-        handler.apply(this, arguments);
+        handler.call(this, val);
       });
-    },
-    function emit(event){
-      if (this._events['*']) {
-        var handlers = this._events['*'];
-        for (var i=0; i < handlers.length; i++)
-          handlers[i].apply(this, arguments);
+    }
+
+    function emit(event, val){
+      var handlers = this._events['*'];
+
+      if (handlers) {;
+        for (var i=0; i < handlers.length; i++) {
+          handlers[i].call(this, event, val);
+        }
       }
 
-      if (this._events[event]) {
-        var args = slice.call(arguments, 1),
-            handlers = this._events[event];
-        for (var i=0; i < handlers.length; i++)
-          handlers[i].apply(this, args);
+      handlers = this._events[event];
+      if (handlers) {
+        for (var i=0; i < handlers.length; i++) {
+          handlers[i].call(this, val);
+        }
       }
     }
-  ]);
+     define(Emitter.prototype, [on, off, once, emit]);
+    return Emitter;
+  })();
 
 
 
   function Hash(){}
   Hash.prototype = create(null);
-
   exports.Hash = Hash;
 
+  exports.PropertyList = (function(){
+    function PropertyList(list){
+      this.hash = new Hash;
+      define(this, 'keys', []);
+      this.add(list);
+    }
 
-  function PropertyList(list){
-    this.hash = new Hash;
-    define(this, 'keys', []);
-    this.add(list);
-  }
-
-  exports.PropertyList = PropertyList;
-
-  define(PropertyList.prototype, [
     function add(key){
       if (typeof key === 'number')
         key += '';
@@ -5644,14 +5691,13 @@ exports.utility = (function(exports){
           this.hash[key] = this.keys.push(key) - 1;
         }
       } else if (key instanceof PropertyList) {
-        key.forEach(function(key){
-          this.add(key);
-        }, this);
+        key.forEach(this.add, this);
       } else if (key instanceof Array) {
         for (var i=0; i < key.length; i++)
           this.add(key[i]);
       }
-    },
+    }
+
     function remove(key){
       if (key in this.hash) {
         this.keys.splice(this.hash[key], 1);
@@ -5660,22 +5706,26 @@ exports.utility = (function(exports){
       } else {
         return false;
       }
-    },
+    }
+
     function has(key){
       return key in this.hash;
-    },
+    }
+
     function forEach(callback, context){
       context = context || this;
       for (var i=0; i < this.keys.length; i++)
         callback.call(context, this.keys[i], i, this);
-    },
+    }
+
     function map(callback, context){
       var out = new PropertyList;
       context = context || this;
       for (var i=0; i < this.keys.length; i++)
         out.push(callback.call(context, this.keys[i], i, this));
       return out;
-    },
+    }
+
     function filter(callback, context){
       var out = new PropertyList;
       context = context || this;
@@ -5684,49 +5734,56 @@ exports.utility = (function(exports){
           out.add(this.keys[i]);
       }
       return out;
-    },
+    }
+
     function clone(){
       return new PropertyList(this);
-    },
+    }
+
     function toArray(){
       return this.keys.slice();
-    },
-  ]);
+    }
+
+    define(PropertyList.prototype, [add, remove, has, forEach, map, filter, clone, toArray]);
+
+    return PropertyList;
+  })();
 
 
+  exports.Stack = (function(){
+    function Stack(){
+      this.empty();
+      for (var k in arguments)
+        this.record(arguments[k]);
+    }
 
-  function Stack(){
-    this.empty();
-    for (var k in arguments)
-      this.record(arguments[k]);
-  }
-
-  exports.Stack = Stack;
-
-  define(Stack.prototype, [
     function push(item){
       this.items.push(item);
       this.length++;
       this.top = item;
       return this;
-    },
+    }
+
     function pop(){
       this.length--;
       this.top = this.items[this.length - 1];
       return this.items.pop();
-    },
+    }
+
     function empty(){
       this.length = 0;
       this.items = [];
       this.top = undefined;
-    },
+    }
+
     function first(callback, context){
       var i = this.length;
       context || (context = this);
       while (i--)
         if (callback.call(context, this[i], i, this))
           return this[i];
-    },
+    }
+
     function filter(callback, context){
       var i = this.length,
           out = new Stack;
@@ -5738,42 +5795,19 @@ exports.utility = (function(exports){
 
       return out;
     }
-  ]);
 
+    define(Stack.prototype, [push, pop, empty, first, filter]);
+    return Stack;
+  })();
 
-
-  var cache = [];
-
-  function numbers(start, end){
-    if (!isFinite(end)) {
-      end = start;
-      start = 0;
+  exports.Reflection = (function(){
+    function Reflection(o){
+      if (!(this instanceof Reflection)) {
+        return new Reflection(o);
+      }
+      define(this, 'subject', o);
     }
-    var length = end - start,
-        curr;
 
-    if (end > cache.length) {
-      while (length--)
-        cache[curr = length + start] = '' + curr;
-    }
-    return cache.slice(start, end);
-  }
-
-  exports.numbers = numbers;
-
-
-
-  function Reflection(o){
-    define(this, 'subject', o);
-  }
-
-  function reflect(o){
-    return new Reflection(o);
-  }
-
-  exports.reflect = reflect;
-
-  void function(){
     function enumerate(){
       var keys = [], i = 0;
       for (keys[i++] in this.subject);
@@ -5839,7 +5873,8 @@ exports.utility = (function(exports){
     }
 
     define(Reflection.prototype, [enumerate,  keys,  brand,  proto,  copy,  inherit,  extend,  visit,  spawn]);
-  }();
+    return Reflection;
+  })();
 
 
 
@@ -8840,6 +8875,7 @@ exports.thunk = (function(exports){
 
     function RETURN(){
       completion = stack[--sp];
+      ip++;
       return false;
     }
 
@@ -8895,7 +8931,7 @@ exports.thunk = (function(exports){
     }
 
     function SUPER_CALL(){
-      a = SuperReference(false);
+      a = context.SuperReference(false);
       if (a && a.Completion) {
         if (a.Abrupt) {
           error = a;

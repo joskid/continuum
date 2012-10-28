@@ -445,6 +445,7 @@ var thunk = (function(exports){
 
     function RETURN(){
       completion = stack[--sp];
+      ip++;
       return false;
     }
 
@@ -500,7 +501,7 @@ var thunk = (function(exports){
     }
 
     function SUPER_CALL(){
-      a = SuperReference(false);
+      a = context.SuperReference(false);
       if (a && a.Completion) {
         if (a.Abrupt) {
           error = a;
