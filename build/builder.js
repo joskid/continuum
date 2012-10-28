@@ -80,7 +80,7 @@ builder.addFiles([
   '../engine/utility.js',
   '../engine/constants.js',
   '../engine/errors.js',
-  '../engine/bytecode.js',
+  '../engine/assembler.js',
   '../engine/operators.js',
   '../engine/thunk.js',
   '../engine/runtime.js',
