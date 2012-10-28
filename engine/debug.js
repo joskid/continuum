@@ -46,6 +46,7 @@ var debug = (function(exports){
     list: alwaysCall(Array),
     inheritedAttrs: alwaysCall(create, [null]),
     ownAttrs: alwaysCall(create, [null]),
+    getterAttrs: alwaysCall(create, [null]),
     isExtensible: always(null),
     isEnumerable: always(null),
     isConfigurable: always(null),
@@ -116,6 +117,16 @@ var debug = (function(exports){
         return this.getPrototype().get(key);
       }
     },
+    function getOrigin(){
+      var path = [],
+          ref = this.subject.ref;
+
+      while (ref) {
+        path.push(ref.name);
+        ref = ref.base && ref.base.ref;
+      }
+      return path.join('.');
+    },
     function getInternal(name){
       return this.subject[name];
     },
@@ -143,19 +154,19 @@ var debug = (function(exports){
       return this.subject.GetExtensible();
     },
     function isPropEnumerable(key){
-      return (this.attrs[key] & ENUMERABLE) > 0;
+      return (this.propAttributes(key) & ENUMERABLE) > 0;
     },
     function isPropConfigurable(key){
-      return (this.attrs[key] & CONFIGURABLE) > 0;
+      return (this.propAttributes(key) & CONFIGURABLE) > 0;
     },
     function isPropAccessor(key){
-      return (this.attrs[key] & ACCESSOR) > 0;
+      return (this.propAttributes(key) & ACCESSOR) > 0;
     },
     function isPropWritable(key){
       return !!(this.isPropAccessor(key) ? this.props[key].Set : this.attrs[key] & WRITABLE);
     },
     function propAttributes(key){
-      return this.attrs[key];
+      return this.hasOwn(key) ? this.attrs[key] : this.getPrototype().propAttributes(key);
     },
     function label(){
       var brand = this.subject.NativeBrand;
@@ -175,24 +186,34 @@ var debug = (function(exports){
 
       return 'Object';
     },
-    function inheritedAttrs(obj){
-      if (obj) {
-        this.getPrototype().inheritedAttrs(obj);
-        return this.ownAttrs(obj);
-      } else {
-        return this.getPrototype().inheritedAttrs(obj);
-      }
+    function inheritedAttrs(){
+      return this.ownAttrs(this.getPrototype().inheritedAttrs());
     },
-    function ownAttrs(obj){
-      obj || (obj = create(null));
+    function ownAttrs(props){
+      props || (props = create(null));
       for (var k in this.props) {
-        obj[k] = this.attrs[k];
+        props[k] = this.attrs[k];
       }
-      return obj;
+      return props;
     },
-    function list(own, hidden){
-      var props = own ? this.ownAttrs() : this.inheritedAttrs(),
-          keys = [];
+    function getterAttrs(own){
+      var inherited = this.getPrototype().getterAttrs(),
+          props = this.ownAttrs();
+
+      for (var k in props) {
+        if (own || props[k] & ACCESSOR) {
+          inherited[k] = props[k];
+        }
+      }
+      return inherited;
+    },
+    function list(hidden, own){
+      var keys = [],
+          props = own
+            ? this.ownAttrs()
+            : own === false
+              ? this.inheritedAttrs()
+              : this.getterAttrs(true);
 
       for (var k in props) {
         if (hidden || props[k] & ENUMERABLE) {
@@ -212,11 +233,15 @@ var debug = (function(exports){
   inherit(MirrorArray, MirrorObject, {
     kind: 'Array'
   }, [
-    function list(own, hidden){
-      var props = own ? this.ownAttrs() : this.inheritedAttrs(),
-          len = this.getValue('length'),
+    function list(hidden, own){
+      var keys = [],
           indexes = [],
-          keys = [];
+          len = this.getValue('length'),
+          props = own
+            ? this.ownAttrs()
+            : own === false
+              ? this.inheritedAttrs()
+              : this.getterAttrs(true);
 
       for (var i=0; i < len; i++) {
         indexes.push(i+'');
@@ -451,6 +476,8 @@ var debug = (function(exports){
     MirrorObject.prototype.isExtensible,
     MirrorObject.prototype.getPrototype,
     MirrorObject.prototype.list,
+    MirrorObject.prototype.inheritedAttrs,
+    MirrorObject.prototype.getterAttrs,
     function label(){
       return 'Proxy' + MirrorObject.prototype.label.call(this);
     },
@@ -496,15 +523,7 @@ var debug = (function(exports){
       if (this.refresh(key)) {
         return this.attrs[key];
       } else {
-        return false;
-      }
-    },
-    function inheritedAttrs(obj){
-      if (obj) {
-        this.getPrototype().inheritedAttrs(obj);
-        return this.ownAttrs(obj);
-      } else {
-        return this.getPrototype().inheritedAttrs(obj);
+        return this.getPrototype().propAttributes(key);
       }
     },
     function ownAttrs(obj){

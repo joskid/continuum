@@ -144,6 +144,9 @@ define(Component.prototype, [
       this.element.textContent = value;
       return this;
     }
+  },
+  function clear(){
+    this.innerHTML = '';
   }
 ]);
 
@@ -429,8 +432,10 @@ inherit(Dragger, Component, [
     this.emit('drag', this.calculate(e.pageX, e.pageY));
   },
   function drop(e){
-    document.body.removeChild(this.element);
-    this.emit('drop', this.calculate(e.pageX, e.pageY));
+    if (this.element.parentNode) {
+      document.body.removeChild(this.element);
+      this.emit('drop', this.calculate(e.pageX, e.pageY));
+    }
   },
   function calculate(x, y){
     var xDelta = this.x - x,
@@ -987,7 +992,7 @@ function Branch(mirror){
   this.tree.on('expand', function(e){
     if (!initialized) {
       initialized = true;
-      mirror.list(true, true).forEach(function(key){
+      mirror.list(true).forEach(function(key){
         this.append(new Property(mirror, key));
       }, this);
       this.append(new Proto(mirror));
@@ -1271,42 +1276,72 @@ runInContext('this', realm);
 
 
 
-function Queue(){
-  this.length = 0;
-  this.back = null;
-  this.front = null;
+function Queue(items){
+  this.items = items instanceof Queue ? items.items.slice(items.index) : [];
+  this.length = this.items.length;
+  this.index = 0;
 }
 
-Queue.prototype.append = function append(item){
-  if (this.length) {
-    this.back = this.back[1] = [item];
-  } else {
-    this.back = this.front = [item];
-  }
-  this.length++;
-};
-
-Queue.prototype.shift = function shift(){
-  if (this.length) {
-    var item = this.front[0];
-    this.front = this.front[1];
-    if (!--this.length) {
-      this.front = this.back = null;
+define(Queue.prototype, [
+  function append(item){
+    this.items.push(item);
+    this.length++;
+    return this;
+  },
+  function shift(){
+    if (this.length) {
+      var item = this.items[this.index];
+      this.items[this.index++] = null;
+      this.length--;
+      if (this.index === 500) {
+        this.items = this.items.slice(this.index);
+        this.index = 0;
+      }
+      return item;
     }
-    return item;
   }
-};
+]);
 
 
-var ops = new Queue;
+function Feeder(callback, context){
+  var self = this;
+  this.queue = new Queue;
+  this.active = false;
+  this.feeder = feeder;
 
-setTimeout(function trampoline(){
-  while (ops.length) {
-    var op = ops.shift();
-    instructions.append(new Instruction(op[0], op[1]));
+  function feeder(){
+    var item, i = self.queue.length;
+    if (i > 5) i = 5;
+
+    while (self.active && i--) {
+      callback.call(context, self.queue.shift());
+    }
+
+    if (!self.queue.length) {
+      self.active = false;
+    } else if (self.active) {
+      setTimeout(feeder, 15);
+    }
   }
-  setTimeout(trampoline, 50);
-}, 50);
+}
+
+define(Feeder.prototype, [
+  function append(item){
+    this.queue.append(item);
+    if (!this.active) {
+      this.active = true;
+      setTimeout(this.feeder, 15);
+    }
+    return this;
+  },
+  function pause(){
+    this.active = false;
+  }
+]);
+
+var ops = new Feeder(function(op){
+  instructions.append(new Instruction(op[0], op[1]));
+});
 
 realm.on('op', function(op){
   ops.append(op);
