@@ -14,9 +14,10 @@ h1, h2
 #masthead
 { padding: 10px; background: #046; }
   #masthead h1
-  { font-size: 36px; color: #adf; text-shadow: 3px 3px 1px #024; display: inline-block; margin-right: 15px; }
+  { font-size: 36px; color: #3af; text-shadow: 3px 3px 1px #024; display: inline-block; margin-right: 15px; }
   #masthead h3
-  { font-size: 16px; color: #09f; text-shadow: 1px 1px 1px #000; font-weight: normal; display: inline-block; }
+  { font-size: 16px; color: #fa3; text-shadow: 1px 1px 1px #000; font-weight: normal;
+    display: inline-block; vertical-align: text-bottom; margin: 0; text-shadow: 1px 1px 0 #013 }
 
 #container
 { }
