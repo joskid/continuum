@@ -1,3 +1,6 @@
 [submodule "debugger/Keyboard"]
 	path = debugger/Keyboard
 	url = https://github.com/Benvie/Keyboard.git
+[submodule "node_modules/esprima"]
+	path = node_modules/esprima
+	url = git://github.com/Benvie/esprima.git
