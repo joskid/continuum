@@ -10,10 +10,14 @@ html, body
 
 h1, h2
 { margin: 0; font-family: 'Hammersmith One'; }
-h1
-{ padding: 10px; font-size: 24px; background: #046; color: #adf; text-shadow: 3px 3px 1px #024 }
-h2
-{ font-size: 18px; }
+
+
+#masthead
+{ padding: 10px; background: #046; }
+  #masthead h1
+  { font-size: 36px; color: #adf; text-shadow: 3px 3px 1px #024; display: inline-block; margin-right: 15px; }
+  #masthead h3
+  { font-size: 16px; color: #09f; text-shadow: 1px 1px 1px #000; font-weight: normal; display: inline-block; }
 
 #container
 { }
@@ -35,9 +39,25 @@ h2
   .ƒop-name
   { text-shadow: 1px 1px 1px #000 }
 
-.ƒCOMPLETE
-{ padding-bottom: 3px; border-bottom: 1px dashed #666; margin-bottom: 3px; }
+.ƒCOMPLETE, .ƒRETURN, .ƒTHROW
+{ border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 3px; }
+  .ƒCOMPLETE
+  { color: hsl(0, 0%, 65%); border-bottom-color: hsl(0, 0%, 35%); }
+  .ƒRETURN
+  { color: hsl(280, 50%, 65%); border-bottom-color: hsl(280, 50%, 35%); }
+  .ƒTHROW
+  { color: hsl(345, 90%, 65%); border-bottom-color: hsl(345, 90%, 35%); }
 
+
+.ƒCALL, .ƒCONSTRUCT
+{ border-top: 1px solid #000; padding-top: 3px; margin-top: 3px; }
+  .ƒCALL
+  { color: hsl(180, 0%, 65%); border-top-color: hsl(180, 50%, 35%); }
+  .ƒCONSTRUCT
+  { color: hsl(200, 50%, 65%); border-top-color: hsl(200, 50%, 35%); }
+
+.ƒTHIS
+{ color: hsl(100, 50%, 75%); }
 
 .ƒbutton
 { border: 0; background: none; -webkit-appearence: none; -moz-appearence: none; font-family: 'Hammersmith One';
