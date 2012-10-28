@@ -1,6 +1,4 @@
 var utility = (function(exports){
-  var esprima = require('esprima');
-
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',
       NUMBER    = 'number',
@@ -838,22 +836,6 @@ var utility = (function(exports){
     return Reflection;
   })();
 
-
-
-
-  function parse(src, options){
-    return esprima.parse(src, options || parse.options);
-  }
-
-  exports.parse = parse;
-
-  parse.options = {
-    loc    : true,
-    range  : true,
-    raw    : false,
-    tokens : false,
-    comment: false
-  }
 
 
   function inspect(o){

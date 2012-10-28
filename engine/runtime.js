@@ -1,5 +1,6 @@
 var runtime = (function(GLOBAL, exports, undefined){
-  var errors    = require('./errors'),
+  var esprima   = require('esprima'),
+      errors    = require('./errors'),
       utility   = require('./utility'),
       assemble  = require('./assembler').assemble,
       constants = require('./constants'),
@@ -20,8 +21,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       define           = utility.define,
       copy             = utility.copy,
       inherit          = utility.inherit,
-      unique           = utility.unique,
-      parse            = utility.parse;
+      unique           = utility.unique;
 
 
   var ThrowException   = errors.ThrowException,
@@ -2914,16 +2914,23 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (typeof code !== 'string') {
         return code;
       }
-      var code = assemble(code, { natives: false, eval: true });
-      return new Thunk(code).run(context);
+      var script = new Script({
+        natives: false,
+        source: code,
+        eval: true
+      });
+      return script.thunk.run(context);
     },
     FunctionCreate: function(args){
       args = toInternalArray(args);
       var body = args.pop();
-      body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
-      var code = assemble(body, { normal: true, natives: false, eval: true });
+      var script = new Script({
+        normal: true,
+        natives: false,
+        source: '(function anonymous('+args.join(', ')+') {\n'+body+'\n})'
+      });
       ExecutionContext.push(new ExecutionContext(null, NewDeclarativeEnvironment(realm.globalEnv), realm, code));
-      return new Thunk(code).run(context);
+      return script.thunk.run(context);
     },
     // FUNCTION PROTOTYPE
     FunctionToString: function(){
@@ -3250,42 +3257,74 @@ var runtime = (function(GLOBAL, exports, undefined){
   };
 
 
+  function parse(src, options){
+    try {
+      return esprima.parse(src, options || parse.options);
+    } catch (e) {
+      return new AbruptCompletion('throw', new $Error('SyntaxError', undefined, e.message));
+    }
+  }
 
-  function Script(ast, code, name, native){
-    if (ast instanceof Script)
-      return ast;
+  parse.options = {
+    loc    : true,
+    range  : true,
+    raw    : false,
+    tokens : false,
+    comment: false
+  }
 
-    if (typeof ast === FUNCTION) {
+  function Script(options){
+    if (options instanceof Script)
+      return options;
+
+    if (typeof options === FUNCTION) {
       this.type = 'reassembled function';
-      if (!utility.fname(ast)) {
-        name || (name = 'unnamed');
-        code = '('+ast+')()';
+      if (!utility.fname(options)) {
+        options = {
+          name: 'unnamed',
+          source: '('+options+')()'
+        }
       } else {
-        name || (name = utility.fname(ast));
-        code = ast+'';
+        options = {
+          name: utility.fname(options),
+          source: options+''
+        };
       }
-      ast = null
-    } else if (typeof ast === STRING) {
-      code = ast;
-      ast = null;
+    } else if (typeof options === STRING) {
+      options = {
+        source: options
+      };
     }
 
-    if (!isObject(ast) && typeof code === STRING) {
-      ast = parse(code);
+    if (options.natives) {
+      this.natives = true;
+    }
+    if (options.eval) {
+      this.eval = true;
     }
 
-    this.code = assemble(code, { natives: !!native });
-    this.thunk = new Thunk(this.code);
-    define(this, {
-      source: code,
-      ast: ast
-    });
-    this.name = name || '';
+    if (!isObject(options.ast) && typeof options.source === STRING) {
+      this.source = options.source;
+      this.ast = parse(options.source);
+      if (this.ast.Abrupt) {
+        this.error = this.ast;
+        this.ast = null;
+      }
+    }
+
+    if (this.ast) {
+      this.bytecode = assemble(this);
+      this.thunk = new Thunk(this.bytecode);
+    }
+    this.name = options.name || '';
+    return this;
   }
 
   function ScriptFile(location){
-    var code = ScriptFile.load(location);
-    Script.call(this, null, code, location);
+    Script.call(this, {
+      source: ScriptFile.load(location),
+      name: location
+    });
   }
 
   ScriptFile.load = function load(location){
@@ -3295,15 +3334,21 @@ var runtime = (function(GLOBAL, exports, undefined){
   inherit(ScriptFile, Script);
 
   function NativeScript(source, location){
-    Script.call(this, null, source, location, true);
+    Script.call(this, {
+      source: source,
+      name: location,
+      natives: true
+    });
   }
 
   inherit(NativeScript, ScriptFile);
 
 
 
-  var builtins;
-  var realm = null,
+
+  var builtins,
+      realms = [],
+      realm = null,
       global = null,
       context = null,
       intrinsics = null;
@@ -3342,9 +3387,16 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     listener && this.on('*', listener);
 
+    this.activate();
     for (var k in builtins) {
-      this.eval(new NativeScript(builtins[k], k+'.js'), !listener);
+      var script = new NativeScript(builtins[k], k+'.js');
+      if (script.error) {
+        this.emit(script.error.type, script.error.value);
+      } else {
+        this.eval(script, !listener);
+      }
     }
+    this.deactivate();
 
     this.state = 'idle';
   }
@@ -3357,11 +3409,19 @@ var runtime = (function(GLOBAL, exports, undefined){
           realm.active = false;
           realm.emit('deactivate');
         }
+        realms.push(realm);
         realm = this;
         global = operators.global = this.global;
         intrinsics = this.intrinsics;
         this.active = true;
         this.emit('activate');
+      }
+    },
+    function deactivate(){
+      if (realm === this) {
+        this.active = false;
+        realm = realms.pop();
+        this.emit('dectivate');
       }
     },
     function prepareContext(code){
@@ -3391,23 +3451,34 @@ var runtime = (function(GLOBAL, exports, undefined){
         } else {
           this.emit('complete', result);
         }
+        this.deactivate();
         return result;
       }
     },
     function eval(subject, quiet){
-      var script = new Script(subject),
-          self = this;
+      var self = this;
+      this.activate();
+
+      var script = new Script(subject);
+
+      if (script.error) {
+        this.emit(script.error.type, script.error.value);
+        this.deactivate();
+        return script.error;
+      }
 
       this.scripts.push(script);
-      this.prepareContext(script.code);
+      this.prepareContext(script.bytecode);
 
       realm.quiet = !!quiet;
 
-      var status = TopLevelDeclarationInstantiation(script.code);
+      var status = TopLevelDeclarationInstantiation(script.bytecode);
       if (status && status.Abrupt) {
+        this.emit(status.type, status.value);
         return status;
+      } else {
+        return this.run(script.thunk);
       }
-      return this.run(script.thunk);
     },
   ]);
 

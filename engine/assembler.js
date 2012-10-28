@@ -9,7 +9,6 @@ var assembler = (function(exports){
       assign    = utility.assign,
       create    = utility.create,
       copy      = utility.copy,
-      parse     = utility.parse,
       decompile = utility.decompile,
       inherit   = utility.inherit,
       ownKeys   = utility.keys,
@@ -478,13 +477,12 @@ var assembler = (function(exports){
   });
 
   define(Assembler.prototype, [
-    function assemble(source){
+    function assemble(node, source){
       this.pending = new Stack;
       this.levels = new Stack;
       this.jumps = new Stack;
       this.labels = null;
 
-      var node = parse(source);
       if (this.options.normal)
         node = node.body[0].expression;
 
@@ -1271,9 +1269,9 @@ var assembler = (function(exports){
     });
 
 
-  function assemble(code, options){
+  function assemble(options){
     var assembler = new Assembler(assign({ normal: false }, options));
-    return assembler.assemble(code);
+    return assembler.assemble(options.ast, options.source);
   }
 
   exports.assemble = assemble;
