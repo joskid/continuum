@@ -6639,8 +6639,10 @@ exports.assembler = (function(exports){
 
   function BoundNames(node){
     var names = boundNamesCollector(node);
-    if (node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') {
+    if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') {
       return names.slice(1);
+    } else if (node.type === 'FunctionExpression') {
+      return node.id ? names.slice(1) : names;
     } else {
       return names;
     }
