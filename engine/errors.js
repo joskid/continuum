@@ -188,6 +188,7 @@ var errors = (function(errors, messages, exports){
   },
   RangeError: {
     invalid_array_length           : ["Invalid array length"],
+    invalid_repeat_count           : ["Invalid repeat count"],
     stack_overflow                 : ["Maximum call stack size exceeded"],
     invalid_time_value             : ["Invalid time value"],
   },
