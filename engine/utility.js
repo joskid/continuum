@@ -36,6 +36,7 @@ var utility = (function(exports){
 
     return toSource.call(func).match(/^\n?function\s?(\w*)?_?\(/)[1];
   }
+  exports.fname = fname;
 
   function isObject(v){
     return typeof v === OBJECT ? v !== null : typeof v === FUNCTION;
@@ -416,16 +417,16 @@ var utility = (function(exports){
 
 
   function visit(root, callback){
-    var stack = [root],
+    var queue = new Queue([root]),
         branded = [],
-        seen = uid();
+        tag = uid();
 
-    while (stack.length) {
-      recurse(stack.pop());
+    while (queue.length) {
+      recurse(queue.shift());
     }
 
     for (var i=0; i < branded.length; i++) {
-      delete branded[i][seen];
+      delete branded[i][tag];
     }
 
     function recurse(node){
@@ -434,14 +435,14 @@ var utility = (function(exports){
         var key = keys[i],
             item = node[key];
 
-        if (isObject(item) && !hasOwn.call(item, seen)) {
-          item[seen] = true;
+        if (isObject(item) && !hasOwn.call(tag, tag)) {
+          item[tag] = true;
           branded.push(item);
           var result = callback(item, node);
           if (result === visit.RECURSE) {
-            stack.push(item);
+            queue.push(item);
           } else if (result === visit.BREAK) {
-            return stack = [];
+            return queue.empty();
           }
         }
       }
@@ -527,7 +528,6 @@ var utility = (function(exports){
     function Emitter(){
       '_events' in this || define(this, '_events', create(null));
     }
-
 
     function on(events, handler){
       events.split(/\s+/).forEach(function(event){
@@ -706,6 +706,61 @@ var utility = (function(exports){
     define(Stack.prototype, [push, pop, empty, first, filter]);
     return Stack;
   })();
+
+  var Queue = exports.Queue = (function(){
+    function Queue(items){
+      if (isObject(items)) {
+        if (items instanceof Queue) {
+          items = items.items.slice(items.front);
+        } else if (items instanceof Array) {
+          items = items.slice();
+        } else if (items.length) {
+          items = slice.call(items);
+        } else {
+          items = [items];
+        }
+      } else if (items != null) {
+        items = [items];
+      }
+      this.items = items || [];
+      this.length = items.length;
+      this.index = 0;
+    }
+
+    function push(item){
+      this.items.push(item);
+      this.length++;
+      return this;
+    }
+
+    function shift(){
+      if (this.length) {
+        var item = this.items[this.index];
+        this.items[this.index++] = null;
+        this.length--;
+        if (this.index === 500) {
+          this.items = this.items.slice(this.index);
+          this.index = 0;
+        }
+        return item;
+      }
+    }
+
+    function empty(){
+      this.length = 0;
+      this.index = 0;
+      this.items = [];
+      return this;
+    }
+
+    function front(){
+      return this.items[this.index];
+    }
+
+    define(Queue.prototype, [push, empty, front, shift]);
+    return Queue;
+  })();
+
 
   exports.Reflection = (function(){
     function Reflection(o){

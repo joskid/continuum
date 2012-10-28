@@ -1,7 +1,7 @@
 var runtime = (function(GLOBAL, exports, undefined){
   var errors    = require('./errors'),
       utility   = require('./utility'),
-      compile   = require('./bytecode').compile,
+      assemble  = require('./assembler').assemble,
       constants = require('./constants'),
       operators = require('./operators');
 
@@ -21,7 +21,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       copy             = utility.copy,
       inherit          = utility.inherit,
       unique           = utility.unique,
-      decompile        = utility.decompile,
       parse            = utility.parse;
 
 
@@ -636,29 +635,43 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ## FunctionDeclarationInstantiation
 
   function FunctionDeclarationInstantiation(func, args, env) {
-    var params = func.FormalParameters,
-        names = params.BoundNames,
-        status;
+    var formals = func.FormalParameters,
+        params = formals.BoundNames;
 
-    for (var i=0; i < names.length; i++) {
-      if (!env.HasBinding(names[i])) {
-        env.CreateMutableBinding(names[i]);
+    for (var i=0; i < params.length; i++) {
+      if (!env.HasBinding(params[i])) {
+        env.CreateMutableBinding(params[i]);
         if (!func.Strict) {
-          env.InitializeBinding(names[i], undefined);
+          env.InitializeBinding(params[i], undefined);
         }
       }
     }
 
     if (func.Strict) {
       var ao = CompleteStrictArgumentsObject(args);
-      status = ArgumentBindingInitialization(params, ao, env);
+      var status = ArgumentBindingInitialization(formals, ao, env);
     } else {
-      var ao = env.arguments = CompleteMappedArgumentsObject(names, env, args, func)
-      status = ArgumentBindingInitialization(params, ao);
+      var ao = env.arguments = CompleteMappedArgumentsObject(params, env, args, func)
+      var status = ArgumentBindingInitialization(formals, ao);
     }
 
     if (status && status.Abrupt) {
       return status;
+    }
+
+    var decls = func.Code.LexicalDeclarations;
+
+    for (var i=0, decl; decl = decls[i]; i++) {
+      var names = decl.BoundNames;
+      for (var j=0; j < names.length; j++) {
+        if (!env.HasBinding(names[j])) {
+          if (decl.IsConstantDeclaration) {
+            env.CreateImmutableBinding(names[j]);
+          } else {
+            env.CreateMutableBinding(names[j], false);
+          }
+        }
+      }
     }
 
     if (!env.HasBinding(ARGUMENTS)) {
@@ -678,7 +691,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
-    var decls = func.Code.LexicalDeclarations;
     var funcs = create(null);
 
     for (var i=0; i < decls.length; i++) {
@@ -791,9 +803,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
-    for (i=0; i < decls.length; i++) {
-      if (decls[i].type === 'FunctionDeclaration') {
-        env.InitializeBinding(decls[i].id.name, InstantiateFunctionDeclaration(decls[i]));
+    for (i=0, decl; decl = decls[i]; i++) {
+      if (decl.type === 'FunctionDeclaration') {
+        env.InitializeBinding(decl.id.name, InstantiateFunctionDeclaration(decl));
       }
     }
   }
@@ -908,9 +920,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     return lex;
   }
 
-  // ## NewMethodEnvironment
+  // ## NewFunctionEnvironment
 
-  function NewMethodEnvironment(method, receiver){
+  function NewFunctionEnvironment(method, receiver){
     var lex = new FunctionEnvironmentRecord(receiver, method.Home, method.MethodName);
     lex.outer = method.Scope;
     return lex;
@@ -1130,11 +1142,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     function GetThisBinding(){},
     function GetSuperBase(){},
-    function childScope(){
-      var lex = new DeclarativeEnvironmentRecord;
-      lex.outer = this;
-      return lex;
-    },
     function reference(name, strict){
       return new Reference(this, name, strict);
     }
@@ -1668,7 +1675,7 @@ var runtime = (function(GLOBAL, exports, undefined){
             }
           }
         }
-        var local = NewMethodEnvironment(this, receiver);
+        var local = NewFunctionEnvironment(this, receiver);
       }
 
       var caller = context ? context.callee : null;
@@ -2474,9 +2481,12 @@ var runtime = (function(GLOBAL, exports, undefined){
     function initializeBindings(pattern, value, lexical){
       return BindingInitialization(pattern, value, lexical ? this.LexicalEnvironment : undefined);
     },
+    function popBlock(){
+      this.LexicalEnvironment = this.LexicalEnvironment.outer;
+    },
     function pushBlock(code){
-      var env = this.LexicalEnvironment = this.LexicalEnvironment.childScope();
-      return BlockDeclarationInstantiation(code, env);
+      this.LexicalEnvironment = NewDeclarativeEnvironment(this.LexicalEnvironment);
+      return BlockDeclarationInstantiation(code, this.LexicalEnvironment);
     },
     function pushClass(def, superclass){
       return ClassDefinitionEvaluation(def.pattern, superclass, def.ctor, def.methods);
@@ -2489,7 +2499,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     function defineMethod(kind, obj, key, code){
       return PropertyDefinitionEvaluation(kind, obj, key, code);
     },
-    function createFunction(code, name){
+    function createFunction(name, code){
       if (name) {
         var env = NewDeclarativeEnvironment(this.LexicalEnvironment);
         env.CreateImmutableBinding(name);
@@ -2497,8 +2507,8 @@ var runtime = (function(GLOBAL, exports, undefined){
         var env = this.LexicalEnvironment;
       }
       var func = new $Function(code.Type, name, code.params, code, env, code.Strict);
-      name && env.InitializeBinding(name, func);
       MakeConstructor(func);
+      name && env.InitializeBinding(name, func);
       return func;
     },
     function createArray(len){
@@ -2509,9 +2519,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     function createRegExp(regex){
       return new $RegExp(regex);
-    },
-    function popBlock(){
-      this.LexicalEnvironment = this.LexicalEnvironment.outer;
     },
     function Element(prop, base){
       var result = CheckObjectCoercible(base);
@@ -2589,7 +2596,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     function EvaluateCall(ref, func, args){
       if (typeof func !== OBJECT || !IsCallable(func)) {
-        return ThrowException('called_non_callable', func);
+        return ThrowException('called_non_callable', [ref.name]);
       }
 
       if (ref instanceof Reference) {
@@ -2907,14 +2914,14 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (typeof code !== 'string') {
         return code;
       }
-      var code = compile(code, { natives: false, eval: true });
+      var code = assemble(code, { natives: false, eval: true });
       return new Thunk(code).run(context);
     },
     FunctionCreate: function(args){
       args = toInternalArray(args);
       var body = args.pop();
       body = '(function anonymous('+args.join(', ')+') {\n'+body+'\n})';
-      var code = compile(body, { natives: false, eval: true });
+      var code = assemble(body, { normal: true, natives: false, eval: true });
       ExecutionContext.push(new ExecutionContext(null, NewDeclarativeEnvironment(realm.globalEnv), realm, code));
       return new Thunk(code).run(context);
     },
@@ -2987,7 +2994,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       try {
         var result = new RegExp(pattern, flags);
       } catch (e) {
-        console.log(e);
         return ThrowException('invalid_regexp', [pattern+'']);
       }
       return new $RegExp(result);
@@ -3250,7 +3256,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       return ast;
 
     if (typeof ast === FUNCTION) {
-      this.type = 'recompiled function';
+      this.type = 'reassembled function';
       if (!utility.fname(ast)) {
         name || (name = 'unnamed');
         code = '('+ast+')()';
@@ -3268,11 +3274,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       ast = parse(code);
     }
 
-    if (!code && isObject(ast)) {
-      code = decompile(ast);
-    }
-
-    this.code = compile(code, { natives: !!native });
+    this.code = assemble(code, { natives: !!native });
     this.thunk = new Thunk(this.code);
     define(this, {
       source: code,
