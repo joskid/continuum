@@ -2664,7 +2664,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         return array;
       }
       if (typeof target !== 'object') {
-        return ThrowException('called_on_non_object', typeof target);
+        return ThrowException('spread_non_object', typeof target);
       }
 
       var len = ToUint32(target.Get('length'));
