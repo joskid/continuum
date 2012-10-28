@@ -203,7 +203,7 @@ var assembler = (function(exports){
     define(this, {
       body: body,
       source: source,
-      LexicalDeclarations: LexicalDeclarations(body.body),
+      LexicalDeclarations: LexicalDeclarations(body),
       createOperation: function(args){
         var op =  new Instruction(args);
         this.ops.push(op);
@@ -513,7 +513,9 @@ var assembler = (function(exports){
         if (this.code.eval || this.code.global){
           record(COMPLETE);
         } else {
-          if (this.Type !== FUNCTYPE.ARROW) {
+          if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
+            record(GET);
+          } else {
             record(UNDEFINED);
           }
           record(RETURN);

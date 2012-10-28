@@ -1827,12 +1827,11 @@ parseYieldExpression: true
 
         if (token.type === Token.Identifier) {
 
-            key = lookahead2();
+            id = parseObjectPropertyKey();
 
             // Property Assignment: Getter and Setter.
 
-            if (token.value === 'get' && key.type === Token.Identifier) {
-                id = parseObjectPropertyKey();
+            if (token.value === 'get' && !(match(':') || match('('))) {
                 key = parseObjectPropertyKey();
                 expect('(');
                 expect(')');
@@ -1842,8 +1841,7 @@ parseYieldExpression: true
                     value: parsePropertyFunction({ generator: false }),
                     kind: 'get'
                 };
-            } else if (token.value === 'set' && key.type === Token.Identifier) {
-                id = parseObjectPropertyKey();
+            } else if (token.value === 'set' && !(match(':') || match('('))) {
                 key = parseObjectPropertyKey();
                 expect('(');
                 token = lookahead();
@@ -1856,7 +1854,6 @@ parseYieldExpression: true
                     kind: 'set'
                 };
             } else {
-                id = parseObjectPropertyKey();
                 if (match(':')) {
                     lex();
                     return {
@@ -6779,7 +6776,7 @@ exports.assembler = (function(exports){
     define(this, {
       body: body,
       source: source,
-      LexicalDeclarations: LexicalDeclarations(body.body),
+      LexicalDeclarations: LexicalDeclarations(body),
       createOperation: function(args){
         var op =  new Instruction(args);
         this.ops.push(op);
@@ -7089,7 +7086,9 @@ exports.assembler = (function(exports){
         if (this.code.eval || this.code.global){
           record(COMPLETE);
         } else {
-          if (this.Type !== FUNCTYPE.ARROW) {
+          if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
+            record(GET);
+          } else {
             record(UNDEFINED);
           }
           record(RETURN);
