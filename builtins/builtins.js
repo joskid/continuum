@@ -584,6 +584,23 @@
   setupConstructor(String, $__StringProto);
 
   defineProps(String.prototype, {
+    repeat(count){
+      var s = $__ToString(this),
+          n = $__ToInteger(count),
+          o = '';
+
+      if (n <= 1 || n === Infinity || n === -Infinity) {
+        throw $__exception('invalid_repeat_count', []);
+      }
+
+      while (n > 0) {
+        n & 1 && (o += s);
+        n >>= 1;
+        s += s;
+      }
+
+      return o;
+    },
     toString(){
       if ($__getNativeBrand(this) === 'String') {
         return $__getPrimitiveValue(this);
