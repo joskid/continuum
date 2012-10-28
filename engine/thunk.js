@@ -53,15 +53,13 @@ var thunk = (function(exports){
 
 
   function Thunk(code){
-    var opcodes = [
-      ARRAY, ARRAY_DONE, BINARY, BLOCK, BLOCK_EXIT, CALL, CASE, CLASS_DECL,
-      CLASS_EXPR, CONST, CONSTRUCT, DEBUGGER, DEFAULT, DUP, ELEMENT,
-      FUNCTION, GET, IFEQ, IFNE, INDEX, JSR, JUMP, LET, LITERAL,
-      MEMBER, METHOD, OBJECT, POP, SAVE, POPN, PROPERTY, PUT,
-      REGEXP, REF, RETURN, COMPLETE, ROTATE, RUN, SUPER_CALL, SUPER_ELEMENT,
-      SUPER_GUARD, SUPER_MEMBER, THIS, THROW, UNARY, UNDEFINED, UPDATE, VAR, WITH,
-      NATIVE_REF, ENUM, NEXT, STRING, NATIVE_CALL, TO_OBJECT, SPREAD, ARGS, ARG, SPREAD_ARG
-    ];
+    var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
+      CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT,
+      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, JSR, JUMP, LET,
+      LITERAL, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, NEXT, OBJECT, POP,
+      POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
+      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, THIS,
+      THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
 
     var thunk = this,
         ops = code.ops,
@@ -106,11 +104,6 @@ var thunk = (function(exports){
 
     function BLOCK(){
       context.pushBlock(ops[ip][0]);
-      return cmds[++ip];
-    }
-
-    function BLOCK_EXIT(){
-      context.popBlock();
       return cmds[++ip];
     }
 
@@ -212,6 +205,7 @@ var thunk = (function(exports){
     function DEBUGGER(){
       cleanup = pauseCleanup;
       ip++;
+      console.log(context, thunk);
       return false;
     }
 
@@ -249,8 +243,7 @@ var thunk = (function(exports){
     }
 
     function FUNCTION(){
-      c = context.createFunction(ops[ip][1], code.lookup(ops[ip][0]));
-      stack[sp++] = c;
+      stack[sp++] = context.createFunction(ops[ip][0], ops[ip][1]);
       return cmds[++ip];
     }
 
@@ -571,10 +564,6 @@ var thunk = (function(exports){
       return ƒ;
     }
 
-    function TO_OBJECT(){
-
-    }
-
     function UNARY(){
       a = UnaryOp(UNARYOPS[ops[ip][0]], stack[--sp]);
       if (a && a.Completion) {
@@ -610,6 +599,11 @@ var thunk = (function(exports){
         }
       }
       stack[sp++] = a;
+      return cmds[++ip];
+    }
+
+    function UPSCOPE(){
+      context.popBlock();
       return cmds[++ip];
     }
 
