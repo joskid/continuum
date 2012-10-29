@@ -143,7 +143,7 @@ var thunk = (function(exports){
     }
     function CLASS_DECL(){
       a = ops[ip][0];
-      b = ops[ip][1] ? stack[--sp] : undefined;
+      b = a.superClass ? stack[--sp] : undefined;
       c = context.pushClass(a, b);
       if (c && c.Completion) {
         if (c.Abrupt) {
@@ -163,8 +163,9 @@ var thunk = (function(exports){
     }
 
     function CLASS_EXPR(){
-      b = ops[ip][1] ? stack[--sp] : undefined;
-      a = context.pushClass(ops[ip][0], b);
+      a = ops[ip][0];
+      b = a.superClass ? stack[--sp] : undefined;
+      a = context.pushClass(a, b);
       if (a && a.Completion) {
         if (a.Abrupt) {
           error = a;
