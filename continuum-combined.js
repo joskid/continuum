@@ -5733,6 +5733,7 @@ exports.utility = (function(exports){
     }
 
     function recurse(node){
+      if (!isObject(node)) return;
       var keys = ownKeys(node);
       for (var i=0; i < keys.length; i++) {
         var key = keys[i],
@@ -8925,7 +8926,7 @@ exports.thunk = (function(exports){
     }
     function CLASS_DECL(){
       a = ops[ip][0];
-      b = ops[ip][1] ? stack[--sp] : undefined;
+      b = a.superClass ? stack[--sp] : undefined;
       c = context.pushClass(a, b);
       if (c && c.Completion) {
         if (c.Abrupt) {
@@ -8945,8 +8946,9 @@ exports.thunk = (function(exports){
     }
 
     function CLASS_EXPR(){
-      b = ops[ip][1] ? stack[--sp] : undefined;
-      a = context.pushClass(ops[ip][0], b);
+      a = ops[ip][0];
+      b = a.superClass ? stack[--sp] : undefined;
+      a = context.pushClass(a, b);
       if (a && a.Completion) {
         if (a.Abrupt) {
           error = a;
@@ -10231,6 +10233,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           superclass = superclass.value;
         }
       }
+
       if (superclass === null) {
         superproto = null;
         superctor = intrinsics.FunctionProto;
@@ -11302,7 +11305,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         } else {
           var instance = new $Object;
         }
-        instance.ConstructorName = this.properties.name;
+        instance.ConstructorName = this.properties.get('name');
         var result = this.construct.apply(instance, args);
       } else {
         var result = this.call.apply(undefined, args);
@@ -11318,7 +11321,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     this.BoundArgs = boundArgs;
     defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
     defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-    defineDirect(this, 'length', getDirect(target, 'length'));
+    defineDirect(this, 'length', getDirect(target, 'length'), ___);
   }
 
   inherit($BoundFunction, $Function, [
@@ -11408,7 +11411,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     },
     function Enumerate(includePrototype, onlyEnumerable){
       var props = $Object.prototype.Enumerate.call(this, includePrototype, onlyEnumerable);
-      return unique(numbers(this.PrimitiveValue.length).concat(props.toArray()));
+      return unique(numbers(this.PrimitiveValue.length).concat(props));
     }
   ]);
 
@@ -12437,8 +12440,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         natives: false,
         source: '(function anonymous('+args.join(', ')+') {\n'+body+'\n})'
       });
-      ExecutionContext.push(new ExecutionContext(null, NewDeclarativeEnvironment(realm.globalEnv), realm, code));
-      return script.thunk.run(context);
+      var ctx = new ExecutionContext(null, NewDeclarativeEnvironment(realm.globalEnv), realm, script.bytecode);
+      ExecutionContext.push(ctx);
+      return script.thunk.run(ctx);
     },
     // FUNCTION PROTOTYPE
     FunctionToString: function(){
@@ -12549,7 +12553,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     },
     GetPropertyAttributes: function(obj, key){
-      return obj.properties.getAttributes(key);
+      return obj.properties.getAttribute(key);
     },
     HasOwnProperty: function(obj, key){
       return obj.HasOwnProperty(key);
@@ -12935,9 +12939,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         this.emit('dectivate');
       }
     },
-    function prepareContext(code){
-      ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, code));
-    },
     function resume(){
       if (this.executing) {
         this.emit('resume');
@@ -12966,10 +12967,16 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         return result;
       }
     },
+    function prepare(bytecode){
+      ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, bytecode));
+      var status = TopLevelDeclarationInstantiation(bytecode);
+      if (status && status.Abrupt) {
+        this.emit(status.type, status.value);
+        return status;
+      }
+    },
     function eval(subject, quiet){
-      var self = this;
       this.activate();
-
       var script = new Script(subject);
 
       if (script.error) {
@@ -12978,18 +12985,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         return script.error;
       }
 
-      this.scripts.push(script);
-      this.prepareContext(script.bytecode);
-
       realm.quiet = !!quiet;
-
-      var status = TopLevelDeclarationInstantiation(script.bytecode);
-      if (status && status.Abrupt) {
-        this.emit(status.type, status.value);
-        return status;
-      } else {
-        return this.run(script.thunk);
-      }
+      this.scripts.push(script);
+      return this.prepare(script.bytecode) || this.run(script.thunk);
     },
   ]);
 
