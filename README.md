@@ -10,7 +10,7 @@ Documentation coming soon.
 
 For now use the debugger interface at http://benvie.github.com/continuum.
 
-![screenshot](https://raw.github.com/Benvie/continuum/master/docs/screenshot.png)]
+![screenshot](https://raw.github.com/Benvie/continuum/gh-pages/docs/screenshot.png)
 
 
 # ES6 Implementation Status
