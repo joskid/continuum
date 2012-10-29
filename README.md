@@ -1,12 +1,16 @@
 # Continuum - A JavaScript Virtual Machine Built in JavaScript
 
-Continuum is a JavaScript meta-interpeter that uses a bytecode virtual machine to host an ES6 ECMAScript runtime in ES3 and ES5 browsers and other JS engines (yes, ES6 in IE6 and 7). It is still a work in progress but it is fully usable right now.
+Continuum is a JavaScript virtual machine built in JavaScript. It assembles bytecode from sourcecode and executes it an ES6 runtime environment. The code of the VM is written in ES3 level JavaScript, which means it can run in browsers as old as IE6. (though currently it's only been tested in IE9+ and there's probably some kinks to work out in older IE's).
 
+**ES6 is still an unfinished specification so by ES6 I'm referring to somewhat of a movning target*
 
 # Usage
 
-http://benvie.github.com/continuum/
+Documentation coming soon.
 
+For now use the debugger interface at http://benvie.github.com/continuum.
+
+![screenshot](https://raw.github.com/Benvie/continuum/master/docs/screenshot.png)]
 
 
 # ES6 Implementation Status
@@ -25,7 +29,9 @@ http://benvie.github.com/continuum/
 * block scope
 * new Math functions
 * new Object functions
+* new String functions
 * concise object literal method syntax
+* __proto__ (not as special accessor on Object.prototype yet though)
 
 ### Partially Implemented
 
@@ -36,8 +42,10 @@ http://benvie.github.com/continuum/
 * Templates
 
 ### Soon
+* Comprhensions
 * Generators
 * Private Names
+* Partial implementation of Modules
 
 ### Further out
 * Proper implementation of Modules
