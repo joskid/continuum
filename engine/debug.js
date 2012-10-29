@@ -11,9 +11,6 @@ var debug = (function(exports){
       WRITABLE = constants.ATTRIBUTES.WRITABLE,
       ACCESSOR = constants.ATTRIBUTES.ACCESSOR;
 
-  var Continuum = require('./runtime').Continuum
-
-
 
   function always(value){
     return function(){ return value };
@@ -98,7 +95,6 @@ var debug = (function(exports){
   function MirrorObject(subject){
     subject.__introspected = this;
     this.subject = subject;
-    this.attrs = subject.attributes;
     this.props = subject.properties;
   }
 
@@ -109,23 +105,14 @@ var debug = (function(exports){
     props: null
   }, [
     function get(key){
-      if (this.isPropAccessor(key)) {
-        return introspect(this.subject.Get(key));
-      } else if (key in this.props) {
-        return introspect(this.props[key]);
-      } else {
+      var prop = this.props.getProperty(key);
+      if (!prop) {
         return this.getPrototype().get(key);
+      } else if (prop[2] & ACCESSOR) {
+        return introspect(this.subject.Get(key));
+      } else {
+        return introspect(prop[1]);
       }
-    },
-    function getOrigin(){
-      var path = [],
-          ref = this.subject.ref;
-
-      while (ref) {
-        path.push(ref.name);
-        ref = ref.base && ref.base.ref;
-      }
-      return path.join('.');
     },
     function getInternal(name){
       return this.subject[name];
@@ -138,17 +125,13 @@ var debug = (function(exports){
     },
     function hasOwn(key){
       if (this.props) {
-        return key in this.props;
+        return this.props.has(key);
       } else {
         return false;
       }
     },
     function has(key){
-      if (this.props) {
-        return key in this.props ? true : this.getPrototype().has(key);
-      } else {
-        return false;
-      }
+      return this.hasOwn(key) || this.getPrototype().has(key);
     },
     function isExtensible(key){
       return this.subject.GetExtensible();
@@ -163,10 +146,16 @@ var debug = (function(exports){
       return (this.propAttributes(key) & ACCESSOR) > 0;
     },
     function isPropWritable(key){
-      return !!(this.isPropAccessor(key) ? this.props[key].Set : this.attrs[key] & WRITABLE);
+      var prop = this.props.get(key);
+      if (prop) {
+        return !!(prop[2] & ACCESSOR ? prop[1].Set : prop[2] & WRITABLE);
+      } else {
+        return this.subject.GetExtensible();
+      }
     },
     function propAttributes(key){
-      return this.hasOwn(key) ? this.attrs[key] : this.getPrototype().propAttributes(key);
+      var prop = this.props.getProperty(key);
+      return prop ? prop[2] : this.getPrototype().propAttributes(key);
     },
     function label(){
       var brand = this.subject.NativeBrand;
@@ -183,7 +172,6 @@ var debug = (function(exports){
         }
       }
 
-
       return 'Object';
     },
     function inheritedAttrs(){
@@ -191,9 +179,9 @@ var debug = (function(exports){
     },
     function ownAttrs(props){
       props || (props = create(null));
-      for (var k in this.props) {
-        props[k] = this.attrs[k];
-      }
+      this.props.forEach(function(prop){
+        props[prop[0]] = prop[2];
+      });
       return props;
     },
     function getterAttrs(own){
@@ -323,7 +311,7 @@ var debug = (function(exports){
     kind: 'Function',
   }, [
     function getName(){
-      return this.subject.properties.name;
+      return this.props.get('name');
     },
     function getParams(){
       var params = this.subject.FormalParameters;
@@ -429,20 +417,19 @@ var debug = (function(exports){
     function get(key){
       if (key < this.props.length && key >= 0) {
         return this.subject.PrimitiveValue[key];
-      } else if (this.isPropAccessor(key)) {
-        return introspect(this.subject.Get(key));
       } else {
-        return introspect(this.props[key]);
+        return MirrorObject.prototype.get.call(this, key);
       }
     },
     function ownAttrs(obj){
+      var len = this.props.get('length');
       obj || (obj = create(null));
-      for (var i=0; i < this.props.length; i++) {
+      for (var i=0; i < len; i++) {
         obj[i] = 1;
       }
-      for (var k in this.props) {
-        obj[k] = this.attrs[k];
-      }
+      this.props.forEach(function(prop){
+        props[prop[0]] = prop[2];
+      });
       return obj;
     },
     function label(){
@@ -467,6 +454,8 @@ var debug = (function(exports){
     if ('Call' in subject) {
       this.type = 'function';
     }
+    this.attrs = create(null)
+    this.props = create(null)
     this.kind = introspect(subject.Target).kind;
   }
 
@@ -483,7 +472,7 @@ var debug = (function(exports){
     },
     function get(key){
       this.refresh(key);
-      return introspect(this.props[key]);
+      return introspect(this.props.get(key));
     },
     function hasOwn(key){
       return this.refresh(key);

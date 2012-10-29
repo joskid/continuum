@@ -14,14 +14,14 @@ h1, h2
 #masthead
 { padding: 10px; background: #046; }
   #masthead h1
-  { font-size: 36px; color: #3af; text-shadow: 3px 3px 1px #024; display: inline-block; margin-right: 15px; }
+  { font-size: 36px; color: #3aa; text-shadow: 3px 3px 1px #024; display: inline-block; margin-right: 15px; }
   #masthead h3
   { font-size: 16px; color: #fa3; text-shadow: 1px 1px 1px #000; font-weight: normal;
     display: inline-block; vertical-align: text-bottom; margin: 0; text-shadow: 1px 1px 0 #013 }
 
 #github
 { display: block; position: absolute; top: 8px; right: 8px; padding: 8px 15px; background: #068;
-  color: #aff; text-shadow: 1px 1px 1px #046; text-decoration: none; border-radius: 4px / 10px; }
+  color: #aaf; text-shadow: 1px 1px 1px #046; text-decoration: none; border-radius: 4px / 10px; }
 #github:hover
 { background: #09c; color: #fff; box-shadow: inset 0 0 20px #6bf; text-shadow: 1px 1px 1px #000; }
 
@@ -112,16 +112,16 @@ h1, h2
     .ƒleft  { top: 0; bottom: 0; left: 0; }
     .ƒright { top: 0; bottom: 0; right: 0; }
 
-    .ƒsplitter.ƒtop    { border-bottom: 3px solid #789 }
-    .ƒsplitter.ƒleft   { border-right: 3px solid #789 }
-    .ƒsplitter.ƒbottom { border-top: 3px solid #789 }
-    .ƒsplitter.ƒright  { border-left: 3px solid #789 }
+    .ƒsplitter.ƒtop    { border-bottom: 3px solid #688 }
+    .ƒsplitter.ƒleft   { border-right: 3px solid #688 }
+    .ƒsplitter.ƒbottom { border-top: 3px solid #688 }
+    .ƒsplitter.ƒright  { border-left: 3px solid #688 }
 
       .ƒpanel-label
-      { position: absolute; color: #9ff; right: 8px; text-shadow: 1px 1px 0 #266, 0 0 0 #0ff; opacity: .1;
+      { position: absolute; color: #8ff; right: 8px; text-shadow: 1px 1px 0 #066, 0 0 0 #0ff; opacity: .1;
         -webkit-transition: .3s; -moz-transition: .3s; transition: .3s }
       .ƒpanel:focus > .ƒpanel-label
-      { opacity: 1; text-shadow: 1px 1px 0 #266, 0 0 15px #0ff; }
+      { opacity: 1; text-shadow: 1px 1px 0 #066, 0 0 15px #0ff; }
       .ƒtop > .ƒpanel-label
       { bottom: 8px; }
       .ƒbottom > .ƒpanel-label
@@ -135,7 +135,7 @@ h1, h2
 
 
 .ƒsplitter
-{ position: absolute; z-index: 10000; border: 0 solid hsla(200, 50%, 20%, 1);
+{ position: absolute; z-index: 1000; border: 0 solid #068;
   box-shadow: 2px 2px 5px 0 rgba(0,0,0,.6);
   background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
@@ -163,69 +163,67 @@ h1, h2
 { display: block; }
   .ƒproperty
   {}
+    .ƒkey, .ƒbranch, .ƒleaf
+    { display: inline-block; }
     .ƒkey
-    { display: inline-block; margin-right: 15px; vertical-align: top }
+    { margin-right: 15px; vertical-align: top }
     .ƒbranch
-    { display: inline-block; }
+    {}
     .ƒleaf
-    { display: inline-block; }
+    {}
       .ƒbranch > .ƒlabel:hover
       { text-decoration: underline; cursor: pointer; }
 
 
+.ƒBooleanValue   { color: #ff8 } /* hsl( 60, 100%, 77%) */
+.ƒNullValue      { color: #668 } /* hsl(240,  14%, 47%) */
+.ƒNumberValue    { color: #a6f } /* hsl(267, 100%, 70%) */
+.ƒStringValue    { color: #0f6 } /* hsl(144, 100%, 50%) */
+.ƒUndefinedValue { color: #686 } /* hsl(120,  14%, 47%) */
 
-.Circular { color: #af8700 }
-.More     { color: #d78700 }
-.Curly    { color: #ffd700 }
-.Square   { color: #ff00af }
-.Accessor { color: #ffd700 }
-.Node     { color: #d7ff00 }
+.ƒArray          { color: #f68 } /* hsl(347, 100%, 70%) */
+.ƒBoolean        { color: #af6 } /* hsl( 93, 100%, 70%) */
+.ƒDate           { color: #0a0 } /* hsl(120, 100%, 33%) */
+.ƒError          { color: #f06 } /* hsl(336, 100%, 50%) */
+.ƒFunction       { color: #6af } /* hsl(213, 100%, 70%) */
+.ƒJSON           { color: #fc8 } /* hsl( 34, 100%, 77%) */
+.ƒGlobal         { color: #8a0 } /* hsl( 72, 100%, 33%) */
+.ƒMap            { color: #f60 } /* hsl( 24, 100%, 50%) */
+.ƒMath           { color: #fc8 } /* hsl( 34, 100%, 77%) */
+.ƒNumber         { color: #a0f } /* hsl(280, 100%, 50%) */
+.ƒObject         { color: #ffa } /* hsl( 60, 100%, 83%) */
+.ƒRegExp         { color: #6c0 } /* hsl( 90, 100%, 40%) */
+.ƒSet            { color: #fa6 } /* hsl( 27, 100%, 70%) */
+.ƒString         { color: #0af } /* hsl(200, 100%, 50%) */
+.ƒWeakMap        { color: #fa0 } /* hsl( 40, 100%, 50%) */
 
-.ƒBooleanValue   { color: #ffff87 }
-.ƒNullValue      { color: #5f5f87 }
-.ƒNumberValue    { color: #af5fff }
-.ƒStringValue    { color: #00ff5f }
-.ƒUndefinedValue { color: #5f875f }
-.ƒException      { color: #ff005f; font-weight: bold;  }
+.ƒProto          { color: #a08 } /* hsl(312, 100%, 33%) */
+.ƒConstructor    { color: #0af } /* hsl(200, 100%, 50%) */
+.ƒOperator       { color: #0ff } /* hsl(180, 100%, 50%) */
+.ƒException      { color: #f06 } /* hsl(336, 100%, 50%) */
 
-.ƒParams { font-style: italic; color: #0087ff }
-  .ƒParams:before { content: '(';}
-  .ƒParams:after { content: ')'; }
-  .ƒParams:before,
-  .ƒParams:after,
-  .ƒParam:after { color: #87d7ff }
+.ƒParams         { color: #08f } /* hsl(208, 100%, 50%) */
+.ƒParams:before  { color: #8cf } /* hsl(206, 100%, 77%) */
+.ƒParams:after   { color: #8cf } /* hsl(206, 100%, 77%) */
+.ƒParam:after    { color: #8cf } /* hsl(206, 100%, 77%) */
+
+.ƒECW            { color: #ccc } /* hsl(  0,   0%, 80%) */
+.ƒE_W            { color: #ccf } /* hsl(240, 100%, 90%) */
+.ƒ__W            { color: #88a } /* hsl(240,  17%, 60%) */
+.ƒ_CW            { color: #666 } /* hsl(  0,   0%, 40%) */
+.ƒEC_            { color: #ff8 } /* hsl( 60, 100%, 77%) */
+.ƒE__            { color: #0fc } /* hsl(168, 100%, 50%) */
+.ƒ_C_            { color: #660 } /* hsl( 60, 100%, 20%) */
+.ƒ___            { color: #088 } /* hsl(180, 100%, 27%) */
+.ƒ__A            { color: #860 } /* hsl( 45, 100%, 27%) */
+.ƒE_A            { color: #fc8 } /* hsl( 34, 100%, 77%) */
+.ƒ_CA            { color: #868 } /* hsl(300,  14%, 47%) */
+.ƒECA            { color: #fc0 } /* hsl( 48, 100%, 50%) */
+
+.ƒParams    { font-style: italic }
+.ƒException { font-weight: bold }
+
+.ƒParams:before { content: '(';}
+.ƒParams:after  { content: ')'; }
   .ƒParam:after { content: ', ' }
   .ƒParam:last-child:after { content: '' }
-
-.ƒArray    { color: #ff5f87 }
-.ƒBoolean  { color: #afff5f }
-.ƒDate     { color: #00af00 }
-.ƒError    { color: #ff005f }
-.ƒFunction { color: #5fafff }
-.ƒJSON     { color: #ffccaa }
-.ƒGlobal   { color: #66aa00 }
-.ƒMap      { color: #ff5f00 }
-.ƒMath     { color: #ffccaa }
-.ƒNumber   { color: #af00ff }
-.ƒObject   { color: #ffff77 }
-.ƒRegExp   { color: #5fd700 }
-.ƒSet      { color: #ffaf5f }
-.ƒString   { color: #00af5f }
-.ƒWeakMap  { color: #ffaf00 }
-
-.ƒProto       { color: #ff00af }
-.ƒConstructor { color: #00afff }
-.ƒOperator    { color: #00ffff }
-
-.ƒECW { color: #d7d7d7 }
-.ƒE_W { color: #d7d7ff }
-.ƒ__W { color: #8787af }
-.ƒ_CW { color: #5f5f5f }
-.ƒEC_ { color: #ffff87 }
-.ƒE__ { color: #00ffd7 }
-.ƒ_C_ { color: #5f5f00 }
-.ƒ___ { color: #008787 }
-.ƒ__A { color: #885f00 }
-.ƒE_A { color: #ffd787 }
-.ƒ_CA { color: #885f87 }
-.ƒECA { color: #ffd700 }

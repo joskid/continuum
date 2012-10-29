@@ -580,33 +580,85 @@ var utility = (function(exports){
   Hash.prototype = create(null);
   exports.Hash = Hash;
 
-  exports.PropertyList = (function(){
-    function PropertyList(list){
+
+  var PropertyList = exports.PropertyList = (function(){
+    function PropertyList(){
       this.hash = new Hash;
-      define(this, 'keys', []);
-      this.add(list);
+      this.props = [];
+      this.holes = 0;
+      this.length = 0;
     }
 
-    function add(key){
-      if (typeof key === 'number')
-        key += '';
-
-      if (typeof key === 'string') {
-        if (!(key in this.hash)) {
-          this.hash[key] = this.keys.push(key) - 1;
-        }
-      } else if (key instanceof PropertyList) {
-        key.forEach(this.add, this);
-      } else if (key instanceof Array) {
-        for (var i=0; i < key.length; i++)
-          this.add(key[i]);
+    function get(key){
+      var index = this.hash[key];
+      if (index !== undefined) {
+        return this.props[index][1];
       }
     }
 
+    function getAttribute(key){
+      var index = this.hash[key];
+      if (index !== undefined) {
+        return this.props[index][2];
+      } else {
+        return null;
+      }
+    }
+
+    function getProperty(key){
+      var index = this.hash[key];
+      if (index !== undefined) {
+        return this.props[index];
+      } else {
+        return null;
+      }
+    }
+
+    function set(key, value, attr){
+      var index = this.hash[key],
+          prop;
+
+      if (index === undefined) {
+        index = this.hash[key] = this.props.length;
+        prop = this.props[index] = [key, value, 0];
+        this.length++;
+      } else {
+        prop = this.props[index];
+        prop[1] = value;
+      }
+
+      if (attr !== undefined) {
+        prop[2] = attr;
+      }
+      return true;
+    }
+
+    function setAttribute(key, attr){
+      var index = this.hash[key];
+      if (index !== undefined) {
+        this.props[index][2] = attr;
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    function setProperty(prop){
+      var key = prop[0],
+          index = this.hash[key];
+      if (index === undefined) {
+        index = this.hash[key] = this.props.length;
+      }
+      this.props[index] = prop;
+    }
+
     function remove(key){
-      if (key in this.hash) {
-        this.keys.splice(this.hash[key], 1);
-        delete this.hash[key];
+      var index = this.hash[key];
+      if (index !== undefined) {
+        this.hash[key] = undefined;
+        this.props[index] = undefined;
+        this.holes++;
+        this.length--;
         return true;
       } else {
         return false;
@@ -614,45 +666,127 @@ var utility = (function(exports){
     }
 
     function has(key){
-      return key in this.hash;
+      return this.hash[key] !== undefined;
+    }
+
+    function hasAttribute(key, mask){
+      var attr = this.getAttribute(key);
+      if (attr !== null) {
+        return (attr & mask) > 0;
+      }
+    }
+
+    function compact(){
+      var props = this.props,
+          len = props.length,
+          index = 0,
+          prop;
+
+      this.hash = new Hash;
+      this.props = [];
+      this.holes = 0;
+
+      for (var i=0; i < len; i++) {
+        if (prop = props[i]) {
+          this.props[index] = prop;
+          this.hash[prop[0]] = index++;
+        }
+      }
     }
 
     function forEach(callback, context){
+      var index = 0;
       context = context || this;
-      for (var i=0; i < this.keys.length; i++)
-        callback.call(context, this.keys[i], i, this);
+      for (var i=0, prop; i < this.props.length; i++) {
+        if (prop = this.props[i]) {
+          callback.call(context, prop, index++, this);
+        }
+      }
     }
 
     function map(callback, context){
-      var out = new PropertyList;
+      var out = [],
+          len = this.props.length,
+          index = 0,
+          prop;
+
       context = context || this;
-      for (var i=0; i < this.keys.length; i++)
-        out.push(callback.call(context, this.keys[i], i, this));
+
+      for (var i=0; i < len; i++) {
+        if (prop = this.props[i]) {
+          out[index] = callback.call(context, prop, index++, this);
+        }
+      }
+
+      return out;
+    }
+
+    function translate(callback, context){
+      var out = new PropertyList;
+
+      out.length = this.length;
+      context = context || this;
+
+      this.forEach(function(prop, index){
+        prop = callback.call(context, prop, index, this);
+        out.props[index] = prop;
+        out.hash[prop[0]] = index;
+      });
+
       return out;
     }
 
     function filter(callback, context){
-      var out = new PropertyList;
+      var out = new PropertyList,
+          index = 0;
+
       context = context || this;
-      for (var i=0; i < this.keys.length; i++) {
-        if (callback.call(context, this.keys[i], i, this))
-          out.add(this.keys[i]);
-      }
+
+      this.forEach(function(prop, i){
+        if (callback.call(context, prop, i, this)) {
+          out.props[index] = prop;
+          out.hash[prop[0]] = index++;
+        }
+      });
+
       return out;
     }
 
-    function clone(){
-      return new PropertyList(this);
+    function clone(deep){
+      return this.translate(function(prop, i){
+        return deep ? prop.slice() : prop;
+      });
     }
 
-    function toArray(){
-      return this.keys.slice();
+    function keys(){
+      return this.map(function(prop){
+        return prop[0];
+      });
     }
 
-    define(PropertyList.prototype, [add, remove, has, forEach, map, filter, clone, toArray]);
+    function values(){
+      return this.map(function(prop){
+        return prop[1];
+      });
+    }
 
+    function items(){
+      return this.map(function(prop){
+        return prop.slice();
+      });
+    }
+
+    function merge(list){
+      list.forEach(this.setProperty, this);
+    }
+
+    define(PropertyList.prototype, [
+      get, getAttribute, getProperty, set, setAttribute, setProperty, remove, has, hasAttribute,
+      compact, forEach, map, translate,  filter, clone, keys, values, items, merge
+    ]);
     return PropertyList;
   })();
+
 
 
   exports.Stack = (function(){
