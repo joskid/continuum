@@ -101,7 +101,8 @@ h1, h2
 .root
 { background: #000; color: #fff; width: 100%; height: 100%; overflow-y: auto; padding: 15px; }
 
-.ƒroot { top: 50px; left: 0; right: 0; bottom: 0; }
+.ƒroot
+{ top: 50px; left: 0; right: 0; bottom: 0; }
   .ƒpanel
   { position: absolute; }
     .ƒpanel > *
@@ -135,7 +136,7 @@ h1, h2
 
 
 .ƒsplitter
-{ position: absolute; z-index: 1000; border: 0 solid #068;
+{ position: absolute; z-index: 10000; border: 0 solid #068;
   box-shadow: 2px 2px 5px 0 rgba(0,0,0,.6);
   background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
