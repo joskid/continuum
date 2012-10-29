@@ -428,6 +428,7 @@ var utility = (function(exports){
     }
 
     function recurse(node){
+      if (!isObject(node)) return;
       var keys = ownKeys(node);
       for (var i=0; i < keys.length; i++) {
         var key = keys[i],
