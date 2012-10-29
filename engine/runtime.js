@@ -2268,7 +2268,15 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   inherit($Error, $Object, {
     NativeBrand: BRANDS.NativeError
-  });
+  }, [
+    function setLocation(loc){
+      setDirect(this, 'line', loc.start.line);
+      setDirect(this, 'column', loc.start.column);
+    },
+    function setCode(code){
+      setDirect(this, 'code', code);
+    }
+  ]);
 
 
 
@@ -2927,7 +2935,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         natives: false,
         source: '(function anonymous('+args.join(', ')+') {\n'+body+'\n})'
       });
-      var ctx = new ExecutionContext(null, NewDeclarativeEnvironment(realm.globalEnv), realm, script.bytecode);
+      var ctx = new ExecutionContext(context, NewDeclarativeEnvironment(realm.globalEnv), realm, script.bytecode);
       ExecutionContext.push(ctx);
       return script.thunk.run(ctx);
     },
@@ -3481,5 +3489,13 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   exports.Realm = Realm;
+
+  exports.builtins = {
+    $Object: $Object
+  };
+  for (var k in $builtins) {
+    exports.builtins['$'+k] = $builtins[k];
+  }
+
   return exports;
 })((0,eval)('this'), typeof module !== 'undefined' ? module.exports : {});
