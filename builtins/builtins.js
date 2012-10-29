@@ -382,7 +382,7 @@
 
   function ensureObject(o, name){
     var type = typeof o;
-    if (type === 'object' ? o !== null : type === 'function') {
+    if (type === 'object' ? o === null : type !== 'function') {
       throw $__exception('called_on_non_object', [name]);
     }
   }
