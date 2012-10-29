@@ -5885,33 +5885,85 @@ exports.utility = (function(exports){
   Hash.prototype = create(null);
   exports.Hash = Hash;
 
-  exports.PropertyList = (function(){
-    function PropertyList(list){
+
+  var PropertyList = exports.PropertyList = (function(){
+    function PropertyList(){
       this.hash = new Hash;
-      define(this, 'keys', []);
-      this.add(list);
+      this.props = [];
+      this.holes = 0;
+      this.length = 0;
     }
 
-    function add(key){
-      if (typeof key === 'number')
-        key += '';
-
-      if (typeof key === 'string') {
-        if (!(key in this.hash)) {
-          this.hash[key] = this.keys.push(key) - 1;
-        }
-      } else if (key instanceof PropertyList) {
-        key.forEach(this.add, this);
-      } else if (key instanceof Array) {
-        for (var i=0; i < key.length; i++)
-          this.add(key[i]);
+    function get(key){
+      var index = this.hash[key];
+      if (index !== undefined) {
+        return this.props[index][1];
       }
     }
 
+    function getAttribute(key){
+      var index = this.hash[key];
+      if (index !== undefined) {
+        return this.props[index][2];
+      } else {
+        return null;
+      }
+    }
+
+    function getProperty(key){
+      var index = this.hash[key];
+      if (index !== undefined) {
+        return this.props[index];
+      } else {
+        return null;
+      }
+    }
+
+    function set(key, value, attr){
+      var index = this.hash[key],
+          prop;
+
+      if (index === undefined) {
+        index = this.hash[key] = this.props.length;
+        prop = this.props[index] = [key, value, 0];
+        this.length++;
+      } else {
+        prop = this.props[index];
+        prop[1] = value;
+      }
+
+      if (attr !== undefined) {
+        prop[2] = attr;
+      }
+      return true;
+    }
+
+    function setAttribute(key, attr){
+      var index = this.hash[key];
+      if (index !== undefined) {
+        this.props[index][2] = attr;
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    function setProperty(prop){
+      var key = prop[0],
+          index = this.hash[key];
+      if (index === undefined) {
+        index = this.hash[key] = this.props.length;
+      }
+      this.props[index] = prop;
+    }
+
     function remove(key){
-      if (key in this.hash) {
-        this.keys.splice(this.hash[key], 1);
-        delete this.hash[key];
+      var index = this.hash[key];
+      if (index !== undefined) {
+        this.hash[key] = undefined;
+        this.props[index] = undefined;
+        this.holes++;
+        this.length--;
         return true;
       } else {
         return false;
@@ -5919,45 +5971,127 @@ exports.utility = (function(exports){
     }
 
     function has(key){
-      return key in this.hash;
+      return this.hash[key] !== undefined;
+    }
+
+    function hasAttribute(key, mask){
+      var attr = this.getAttribute(key);
+      if (attr !== null) {
+        return (attr & mask) > 0;
+      }
+    }
+
+    function compact(){
+      var props = this.props,
+          len = props.length,
+          index = 0,
+          prop;
+
+      this.hash = new Hash;
+      this.props = [];
+      this.holes = 0;
+
+      for (var i=0; i < len; i++) {
+        if (prop = props[i]) {
+          this.props[index] = prop;
+          this.hash[prop[0]] = index++;
+        }
+      }
     }
 
     function forEach(callback, context){
+      var index = 0;
       context = context || this;
-      for (var i=0; i < this.keys.length; i++)
-        callback.call(context, this.keys[i], i, this);
+      for (var i=0, prop; i < this.props.length; i++) {
+        if (prop = this.props[i]) {
+          callback.call(context, prop, index++, this);
+        }
+      }
     }
 
     function map(callback, context){
-      var out = new PropertyList;
+      var out = [],
+          len = this.props.length,
+          index = 0,
+          prop;
+
       context = context || this;
-      for (var i=0; i < this.keys.length; i++)
-        out.push(callback.call(context, this.keys[i], i, this));
+
+      for (var i=0; i < len; i++) {
+        if (prop = this.props[i]) {
+          out[index] = callback.call(context, prop, index++, this);
+        }
+      }
+
+      return out;
+    }
+
+    function translate(callback, context){
+      var out = new PropertyList;
+
+      out.length = this.length;
+      context = context || this;
+
+      this.forEach(function(prop, index){
+        prop = callback.call(context, prop, index, this);
+        out.props[index] = prop;
+        out.hash[prop[0]] = index;
+      });
+
       return out;
     }
 
     function filter(callback, context){
-      var out = new PropertyList;
+      var out = new PropertyList,
+          index = 0;
+
       context = context || this;
-      for (var i=0; i < this.keys.length; i++) {
-        if (callback.call(context, this.keys[i], i, this))
-          out.add(this.keys[i]);
-      }
+
+      this.forEach(function(prop, i){
+        if (callback.call(context, prop, i, this)) {
+          out.props[index] = prop;
+          out.hash[prop[0]] = index++;
+        }
+      });
+
       return out;
     }
 
-    function clone(){
-      return new PropertyList(this);
+    function clone(deep){
+      return this.translate(function(prop, i){
+        return deep ? prop.slice() : prop;
+      });
     }
 
-    function toArray(){
-      return this.keys.slice();
+    function keys(){
+      return this.map(function(prop){
+        return prop[0];
+      });
     }
 
-    define(PropertyList.prototype, [add, remove, has, forEach, map, filter, clone, toArray]);
+    function values(){
+      return this.map(function(prop){
+        return prop[1];
+      });
+    }
 
+    function items(){
+      return this.map(function(prop){
+        return prop.slice();
+      });
+    }
+
+    function merge(list){
+      list.forEach(this.setProperty, this);
+    }
+
+    define(PropertyList.prototype, [
+      get, getAttribute, getProperty, set, setAttribute, setProperty, remove, has, hasAttribute,
+      compact, forEach, map, translate,  filter, clone, keys, values, items, merge
+    ]);
     return PropertyList;
   })();
+
 
 
   exports.Stack = (function(){
@@ -9510,34 +9644,35 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   function defineDirect(o, key, value, attrs){
-    o.properties[key] = value;
-    o.attributes[key] = attrs;
-    o.keys.add(key);
+    o.properties.set(key, value, attrs);
   }
 
   function deleteDirect(o, key){
-    delete o.properties[key];
-    delete o.attributes[key];
-    o.keys.remove(key);
+    o.properties.remove(key);
   }
 
   function hasDirect(o, key){
-    return key in o.properties;
+    if (o) {
+      return o.properties.has(key) || hasDirect(o.GetPrototype(), key);
+    } else {
+      return false;
+    }
   }
 
   function hasOwnDirect(o, key){
-    return o.keys.has(key);
+    return o.properties.has(key);
   }
 
   function setDirect(o, key, value){
-    o.properties[key] = value;
-    if (!(key in o.attributes))
-      o.attributes[key] = ECW;
-    o.keys.add(key);
+    if (o.properties.has(key)) {
+      o.properties.set(key, value);
+    } else {
+      o.properties.set(key, value, ECW);
+    }
   }
 
   function getDirect(o, key){
-    return o.properties[key];
+    return o.properties.get(key);
   }
 
 
@@ -10674,9 +10809,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     if (proto === undefined)
       proto = intrinsics.ObjectProto;
     this.Prototype = proto;
-    this.properties = new Hash;
-    this.attributes = new Hash;
-    define(this, 'keys', new PropertyList);
+    this.properties = new PropertyList;
     $Object.tag(this);
     hide(this, 'Prototype');
     hide(this, 'attributes');
@@ -10718,10 +10851,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         return undefined;
       }
 
-      if (this.keys.has(key)) {
-        var attrs = this.attributes[key];
-        var Descriptor = attrs & A ? AccessorDescriptor : DataDescriptor;
-        return new Descriptor(this.properties[key], attrs);
+      var prop = this.properties.getProperty(key);
+      if (prop) {
+        var Descriptor = prop[2] & A ? AccessorDescriptor : DataDescriptor;
+        return new Descriptor(prop[1], prop[2]);
       }
     },
     function GetProperty(key){
@@ -10829,13 +10962,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           return reject('define_disallowed', []);
         } else {
           if (IsGenericDescriptor(desc) || IsDataDescriptor(desc)) {
-            this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
-            this.properties[key] = desc.Value;
+            this.properties.set(key, desc.Value, desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2));
           } else {
-            this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | A;
-            this.properties[key] = new Accessor(desc.Get, desc.Set);
+            this.properties.set(key, new Accessor(desc.Get, desc.Set), desc.Enumerable | (desc.Configurable << 1) | A);
           }
-          this.keys.add(key);
           return true;
         }
       } else {
@@ -10866,35 +10996,39 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         CONFIGURABLE in desc || (desc.Configurable = current.Configurable);
         ENUMERABLE in desc || (desc.Enumerable = current.Enumerable);
 
+        var prop = this.properties.getProperty(key);
+
         if (IsAccessorDescriptor(desc)) {
-          this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | A;
+          prop[2] = desc.Enumerable | (desc.Configurable << 1) | A;
           if (IsDataDescriptor(current)) {
-            this.properties[key] = new Accessor(desc.Get, desc.Set);
+            prop[1] = new Accessor(desc.Get, desc.Set);
           } else {
-            if (SET in desc)
-              this.properties[key].Set = desc.Set;
-            if (GET in desc)
-              this.properties[key].Get = desc.Get;
+            if (SET in desc) {
+              prop[1].Set = desc.Set;
+            }
+            if (GET in desc) {
+              prop[1].Get = desc.Get;
+            }
           }
         } else {
           if (IsAccessorDescriptor(current)) {
             current.Writable = true;
           }
           WRITABLE in desc || (desc.Writable = current.Writable);
-          if ('Value' in desc)
-            this.properties[key] = desc.Value;
-          this.attributes[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
+          if ('Value' in desc) {
+            prop[1] = desc.Value;
+          }
+          prop[2] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
         }
 
-        this.keys.add(key);
         return true;
       }
     },
     function HasOwnProperty(key){
-      return key === '__proto__' ? false : this.keys.has(key);
+      return key === '__proto__' ? false : this.properties.has(key);
     },
     function HasProperty(key){
-      if (key === '__proto__' || this.keys.has(key)) {
+      if (key === '__proto__' || this.properties.has(key)) {
         return true;
       } else {
         var proto = this.GetPrototype();
@@ -10908,12 +11042,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     function Delete(key, strict){
       if (key === '__proto__') {
         return false;
-      } else if (!this.keys.has(key)) {
+      } else if (!this.properties.has(key)) {
         return true;
-      } else if (this.attributes[key] & C) {
-        delete this.properties[key];
-        delete this.attributes[key];
-        this.keys.remove(key);
+      } else if (this.properties.hasAttribute(key, C)) {
+        this.properties.remove(key);
         return true;
       } else if (strict) {
         return ThrowException('strict_delete', []);
@@ -10923,21 +11055,21 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     },
     function Enumerate(includePrototype, onlyEnumerable){
       if (onlyEnumerable) {
-        var props = this.keys.filter(function(key){
-          return this.attributes[key] & E;
+        var props = this.properties.filter(function(prop){
+          return prop[2] & E;
         }, this);
       } else {
-        var props = this.keys.clone();
+        var props = this.properties.clone();
       }
 
       if (includePrototype) {
         var proto = this.GetPrototype();
         if (proto) {
-          props.add(proto.Enumerate(includePrototype, onlyEnumerable));
+          props.merge(proto.Enumerate(includePrototype, onlyEnumerable));
         }
       }
 
-      return props.toArray();
+      return props.keys();
     },
     function DefaultValue(hint){
       var order = hint === 'String' ? ['toString', 'valueOf'] : ['valueOf', 'toString'];
@@ -11096,7 +11228,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       if (this.NativeConstructor) {
         instance.NativeBrand = prototype.NativeBrand;
       }
-      instance.ConstructorName = this.properties.name;
+      instance.ConstructorName = this.properties.get('name');
       var result = this.Call(instance, args, true);
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -11160,7 +11292,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }, [
     function Call(receiver, args){
       "use strict";
-      return this.call.apply(receiver, [].concat(args));
+      var result = this.call.apply(receiver, [].concat(args));
+      return result && result.type === Return ? result.value : result;
     },
     function Construct(args){
       if (this.construct) {
@@ -11170,10 +11303,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           var instance = new $Object;
         }
         instance.ConstructorName = this.properties.name;
-        return this.construct.apply(instance, args);
+        var result = this.construct.apply(instance, args);
       } else {
-        return this.call.apply(undefined, args);
+        var result = this.call.apply(undefined, args);
       }
+      return result && result.type === Return ? result.value : result;
     }
   ]);
 
@@ -11554,7 +11688,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   });
 
   function $MappedArguments(map, args){
-    this.attributes = args.attributes;
     this.properties = args.properties;
     this.Prototype = args.Prototype;
     define(this, 'keys', args.keys);
@@ -12313,7 +12446,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         return ThrowException('not_generic', ['Function.prototype.toString'])
       }
       if (this.Native || !this.Code) {
-        return nativeCode[0] + this.properties.name + nativeCode[1];
+        return nativeCode[0] + this.properties.get('name') + nativeCode[1];
       } else {
         var code = this.Code;
         return code.source.slice(code.range[0], code.range[1]);
@@ -12416,7 +12549,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     },
     GetPropertyAttributes: function(obj, key){
-      return obj.attributes[key];
+      return obj.properties.getAttributes(key);
     },
     HasOwnProperty: function(obj, key){
       return obj.HasOwnProperty(key);
@@ -12880,9 +13013,6 @@ exports.debug = (function(exports){
       WRITABLE = constants.ATTRIBUTES.WRITABLE,
       ACCESSOR = constants.ATTRIBUTES.ACCESSOR;
 
-  var Continuum = require('./runtime').Continuum
-
-
 
   function always(value){
     return function(){ return value };
@@ -12967,7 +13097,6 @@ exports.debug = (function(exports){
   function MirrorObject(subject){
     subject.__introspected = this;
     this.subject = subject;
-    this.attrs = subject.attributes;
     this.props = subject.properties;
   }
 
@@ -12978,23 +13107,14 @@ exports.debug = (function(exports){
     props: null
   }, [
     function get(key){
-      if (this.isPropAccessor(key)) {
-        return introspect(this.subject.Get(key));
-      } else if (key in this.props) {
-        return introspect(this.props[key]);
-      } else {
+      var prop = this.props.getProperty(key);
+      if (!prop) {
         return this.getPrototype().get(key);
+      } else if (prop[2] & ACCESSOR) {
+        return introspect(this.subject.Get(key));
+      } else {
+        return introspect(prop[1]);
       }
-    },
-    function getOrigin(){
-      var path = [],
-          ref = this.subject.ref;
-
-      while (ref) {
-        path.push(ref.name);
-        ref = ref.base && ref.base.ref;
-      }
-      return path.join('.');
     },
     function getInternal(name){
       return this.subject[name];
@@ -13007,17 +13127,13 @@ exports.debug = (function(exports){
     },
     function hasOwn(key){
       if (this.props) {
-        return key in this.props;
+        return this.props.has(key);
       } else {
         return false;
       }
     },
     function has(key){
-      if (this.props) {
-        return key in this.props ? true : this.getPrototype().has(key);
-      } else {
-        return false;
-      }
+      return this.hasOwn(key) || this.getPrototype().has(key);
     },
     function isExtensible(key){
       return this.subject.GetExtensible();
@@ -13032,10 +13148,16 @@ exports.debug = (function(exports){
       return (this.propAttributes(key) & ACCESSOR) > 0;
     },
     function isPropWritable(key){
-      return !!(this.isPropAccessor(key) ? this.props[key].Set : this.attrs[key] & WRITABLE);
+      var prop = this.props.get(key);
+      if (prop) {
+        return !!(prop[2] & ACCESSOR ? prop[1].Set : prop[2] & WRITABLE);
+      } else {
+        return this.subject.GetExtensible();
+      }
     },
     function propAttributes(key){
-      return this.hasOwn(key) ? this.attrs[key] : this.getPrototype().propAttributes(key);
+      var prop = this.props.getProperty(key);
+      return prop ? prop[2] : this.getPrototype().propAttributes(key);
     },
     function label(){
       var brand = this.subject.NativeBrand;
@@ -13052,7 +13174,6 @@ exports.debug = (function(exports){
         }
       }
 
-
       return 'Object';
     },
     function inheritedAttrs(){
@@ -13060,9 +13181,9 @@ exports.debug = (function(exports){
     },
     function ownAttrs(props){
       props || (props = create(null));
-      for (var k in this.props) {
-        props[k] = this.attrs[k];
-      }
+      this.props.forEach(function(prop){
+        props[prop[0]] = prop[2];
+      });
       return props;
     },
     function getterAttrs(own){
@@ -13192,7 +13313,7 @@ exports.debug = (function(exports){
     kind: 'Function',
   }, [
     function getName(){
-      return this.subject.properties.name;
+      return this.props.get('name');
     },
     function getParams(){
       var params = this.subject.FormalParameters;
@@ -13298,20 +13419,19 @@ exports.debug = (function(exports){
     function get(key){
       if (key < this.props.length && key >= 0) {
         return this.subject.PrimitiveValue[key];
-      } else if (this.isPropAccessor(key)) {
-        return introspect(this.subject.Get(key));
       } else {
-        return introspect(this.props[key]);
+        return MirrorObject.prototype.get.call(this, key);
       }
     },
     function ownAttrs(obj){
+      var len = this.props.get('length');
       obj || (obj = create(null));
-      for (var i=0; i < this.props.length; i++) {
+      for (var i=0; i < len; i++) {
         obj[i] = 1;
       }
-      for (var k in this.props) {
-        obj[k] = this.attrs[k];
-      }
+      this.props.forEach(function(prop){
+        props[prop[0]] = prop[2];
+      });
       return obj;
     },
     function label(){
@@ -13336,6 +13456,8 @@ exports.debug = (function(exports){
     if ('Call' in subject) {
       this.type = 'function';
     }
+    this.attrs = create(null)
+    this.props = create(null)
     this.kind = introspect(subject.Target).kind;
   }
 
@@ -13352,7 +13474,7 @@ exports.debug = (function(exports){
     },
     function get(key){
       this.refresh(key);
-      return introspect(this.props[key]);
+      return introspect(this.props.get(key));
     },
     function hasOwn(key){
       return this.refresh(key);
@@ -13645,7 +13767,7 @@ exports.debug = (function(exports){
 })(typeof module !== 'undefined' ? module.exports : {});
 
 
-exports.builtins.builtins = "(function(global, undefined){\n  var E = 0x1,\n      C = 0x2,\n      W = 0x4,\n      A = 0x8;\n\n\n  function defineMethods(obj, props){\n    for (var i in props) {\n      $__defineDirect(obj, props[i].name, props[i], 6);\n      $__markAsNative(props[i]);\n      $__deleteDirect(props[i], 'prototype');\n    }\n  }\n\n  function defineProps(obj, props){\n    for (var name in props) {\n      var prop = props[name];\n      $__defineDirect(obj, name, prop, 6);\n      if (typeof prop === 'function') {\n        $__defineDirect(prop, 'name', name, 0);\n        $__markAsNative(prop);\n        $__deleteDirect(prop, 'prototype');\n      }\n    }\n  }\n\n  function defineConstants(obj, props){\n    for (var k in props) {\n      $__defineDirect(obj, k, props[k], 0);\n    }\n  }\n\n\n  function setupConstructor(ctor, proto){\n    $__defineDirect(ctor, 'prototype', proto, 0);\n    $__defineDirect(ctor.prototype, 'constructor', ctor, 0);\n    $__defineDirect(global, ctor.name, ctor, 6);\n    $__markAsNativeConstructor(ctor);\n  }\n\n\n\n $__EmptyClass = function constructor(...args){ super(...args) };\n\n  // #############\n  // ### Array ###\n  // #############\n\n  function Array(...values){\n    if (values.length === 1 && typeof values[0] === 'number') {\n      var out = [];\n      out.length = values[0];\n      return out;\n    } else {\n      return values;\n    }\n  }\n\n  setupConstructor(Array, $__ArrayProto);\n\n\n  defineProps(Array, {\n    isArray(array){\n      return $__getNativeBrand(array) === 'Array';\n    },\n    from(iterable){\n      var out = [];\n      iterable = Object(iterable);\n\n      for (var i = 0, len = iterable.length >>> 0; i < len; i++) {\n        if (i in iterable) {\n          out[i] = iterable[i];\n        }\n      }\n\n      return out;\n    }\n  });\n\n  defineProps(Array.prototype, {\n    filter(callback){\n      if (this == null) {\n        throw $__exception('called_on_null_or_undefined', ['Array.prototype.filter']);\n      }\n\n      var array = $__ToObject(this),\n          length = $__ToUint32(this.length);\n\n      var receiver = this;\n\n      if (typeof receiver !== 'object') {\n        receiver = $__ToObject(receiver);\n      }\n\n      var result = [],\n          count = 0;\n\n      for (var i = 0; i < length; i++) {\n        if (i in array) {\n          var element = array[i];\n          if ($__callFunction(callback, receiver, [element, i, array])) {\n            result[count++] = element;\n          }\n        }\n      }\n\n      return result;\n    },\n    forEach(callback, context){\n      var len = this.length;\n      if (arguments.length === 1) {\n        context = this;\n      } else {\n        context = $__ToObject(this);\n      }\n      for (var i=0; i < len; i++) {\n        callback.call(context, this[i], i, this);\n      }\n    },\n    map(callback, context){\n      var out = [];\n      var len = this.length;\n      if (arguments.length === 1) {\n        context = this;\n      } else {\n        context = Object(this);\n      }\n      for (var i=0; i < len; i++) {\n        out.push(callback.call(context, this[i], i, this));\n      }\n      return out;\n    },\n    reduce(callback, initial){\n      var index = 0;\n      if (arguments.length === 1) {\n        initial = this[0];\n        index++;\n      }\n      for (; index < this.length; i++) {\n        if (i in this) {\n          initial = callback.call(this, initial, this[o], this);\n        }\n      }\n      return initial;\n    },\n    join(separator){\n      var out = '', len = this.length;\n\n      if (len === 0) {\n        return out;\n      }\n\n      if (arguments.length === 0) {\n        separator = ',';\n      } else if (typeof separator !== 'string') {\n        separator = $__ToString(separator);\n      }\n\n      len--;\n      for (var i=0; i < len; i++) {\n        out += this[i] + separator;\n      }\n\n      return out + this[i];\n    },\n    push(...values){\n      var len = this.length,\n          valuesLen = values.length;\n\n      for (var i=0; i < valuesLen; i++) {\n        this[len++] = values[i];\n      }\n      return len;\n    },\n    pop(){\n      var out = this[this.length - 1];\n      this.length--;\n      return out;\n    },\n    slice(start, end){\n      var out = [], len;\n\n      start = start === undefined ? 0 : +start || 0;\n      end = end === undefined ? this.length - 1 : +end || 0;\n\n      if (start < 0) {\n        start += this.length;\n      }\n\n      if (end < 0) {\n        end += this.length;\n      } else if (end >= this.length) {\n        end = this.length - 1;\n      }\n\n      if (start > end || end < start || start === end) {\n        return [];\n      }\n\n      len = start - end;\n      for (var i=0; i < len; i++) {\n        out[i] = this[i + start];\n      }\n\n      return out;\n    },\n    toString(){\n      return this.join(',');\n    }\n  });\n\n  // ###############\n  // ### Boolean ###\n  // ###############\n\n  function Boolean(value){\n    value = $__ToBoolean(value);\n    if ($__isConstructCall()) {\n      return $__BooleanCreate(value);\n    } else {\n      return value;\n    }\n  }\n\n  setupConstructor(Boolean, $__BooleanProto);\n\n  defineProps(Boolean.prototype, {\n    toString(){\n      if ($__getNativeBrand(this) === 'Boolean') {\n        return $__getPrimitiveValue(this) ? 'true' : 'false';\n      } else {\n        throw $__exception('not_generic', ['Boolean.prototype.toString']);\n      }\n    },\n    valueOf(){\n      if ($__getNativeBrand(this) === 'Boolean') {\n        return $__getPrimitiveValue(this);\n      } else {\n        throw $__exception('not_generic', ['Boolean.prototype.valueOf']);\n      }\n    }\n  });\n\n\n  // ############\n  // ### Date ###\n  // ############\n\n  function Date(...values){\n    return $__DateCreate(values);\n  }\n\n  setupConstructor(Date, $__DateProto);\n\n  defineProps(Date.prototype, {\n    toString(){\n      if ($__getNativeBrand(this) === 'Date') {\n        return $__DateToString(this);\n      } else {\n        throw $__exception('not_generic', ['Date.prototype.toString']);\n      }\n    },\n    valueOf(){\n      if ($__getNativeBrand(this) === 'Date') {\n        return $__DateToNumber(this);\n      } else {\n        throw $__exception('not_generic', ['Date.prototype.valueOf']);\n      }\n    }\n  });\n\n  $__wrapDateMethods(Date.prototype);\n\n\n  // ################\n  // ### Function ###\n  // ################\n\n  function Function(...args){\n    return $__FunctionCreate(args);\n  }\n\n  $__defineDirect($__FunctionProto, 'name', 'Empty', 0);\n\n  setupConstructor(Function, $__FunctionProto);\n\n  defineMethods(Function.prototype, [\n    $__call,\n    $__apply,\n    $__bind,\n  ]);\n\n\n  defineProps(Function.prototype, {\n    toString: $__FunctionToString\n  });\n\n  // ###########\n  // ### Map ###\n  // ###########\n\n  function Map(iterable){}\n  setupConstructor(Map, $__MapProto);\n\n\n  // ##############\n  // ### Number ###\n  // ##############\n\n  function Number(value){\n    value = $__ToNumber(value);\n    if ($__isConstructCall()) {\n      return $__NumberCreate(value);\n    } else {\n      return value;\n    }\n  }\n  setupConstructor(Number, $__NumberProto);\n\n  defineConstants(Number, {\n    EPSILON: 2.220446049250313e-16,\n    MAX_INTEGER: 9007199254740992,\n    MAX_VALUE: 1.7976931348623157e+308,\n    MIN_VALUE: 5e-324,\n    NaN: NaN,\n    NEGATIVE_INFINITY: -Infinity,\n    POSITIVE_INFINITY: Infinity\n  });\n\n  defineProps(Number, {\n    isNaN(number){\n      return number !== number;\n    },\n    isFinite(number){\n      return typeof value === 'number'\n          && value === value\n          && value < Infinity\n          && value > -Infinity;\n    },\n    isInteger(value) {\n      return typeof value === 'number'\n          && value === value\n          && value > -9007199254740992\n          && value < 9007199254740992\n          && value | 0 === value;\n    },\n    toInteger(value){\n      return (value / 1 || 0) | 0;\n    }\n  });\n\n  var isFinite = Number.isFinite;\n\n  defineProps(Number.prototype, {\n    toString(radix){\n      if ($__getNativeBrand(this) === 'Number') {\n        return $__NumberToString(this, radix);\n      } else {\n        throw $__exception('not_generic', ['Number.prototype.toString']);\n      }\n    },\n    valueOf(){\n      if ($__getNativeBrand(this) === 'Number') {\n        return $__getPrimitiveValue(this);\n      } else {\n        throw $__exception('not_generic', ['Number.prototype.valueOf']);\n      }\n    },\n    clz() {\n      var x = $__ToNumber(this);\n      if (!x || !isFinite(x)) {\n        return 32;\n      } else {\n        x = x < 0 ? x + 1 | 0 : x | 0;\n        x -= (x / 0x100000000 | 0) * 0x100000000;\n        return 32 - x.toString(2).length;\n      }\n    }\n  });\n\n\n  function ensureObject(o, name){\n    var type = typeof o;\n    if (type === 'object' ? o === null : type !== 'function') {\n      throw $__exception('called_on_non_object', [name]);\n    }\n  }\n\n  function ensureDescriptor(o){\n    if (o === null || typeof o !== 'object') {\n      throw $__exception('property_desc_object', [typeof o])\n    }\n  }\n\n  // ##############\n  // ### Object ###\n  // ##############\n\n  function Object(value){\n    if ($__isConstructCall()) {\n      return {};\n    } else if (value == null) {\n      return {};\n    } else {\n      return $__ToObject(value);\n    }\n  }\n\n  setupConstructor(Object, $__ObjectProto);\n\n\n  defineProps(Object, {\n    create(prototype, properties){\n      if (typeof prototype !== 'object') {\n        throw $__exception('proto_object_or_null', [])\n      }\n\n      var object = $__ObjectCreate(prototype);\n\n      if (properties !== undefined) {\n        ensureDescriptor(properties);\n\n        for (var k in descs) {\n          var desc = properties[k];\n          ensureDescriptor(desc);\n          $__DefineOwnProperty(object, key, desc);\n        }\n      }\n\n      return object;\n    },\n    defineProperty(object, key, property){\n      ensureObject(object, 'defineProperty');\n      ensureDescriptor(property);\n      key = $__ToPropertyName(key);\n      $__DefineOwnProperty(object, key, property);\n      return object;\n    },\n    defineProperties(object, properties){\n      ensureObject(object, 'defineProperties');\n      ensureDescriptor(properties);\n\n      for (var key in properties) {\n        var desc = properties[key];\n        ensureDescriptor(desc);\n        $__DefineOwnProperty(object, key, desc);\n      }\n\n      return object;\n    },\n    freeze(object){\n      ensureObject(object, 'freeze');\n      var props = $__Enumerate(object, false, false);\n\n      for (var i=0; i < props.length; i++) {\n        var desc = $__GetOwnProperty(object, props[i]);\n        if (desc.configurable) {\n          desc.configurable = false;\n          if ('writable' in desc) {\n            desc.writable = false;\n          }\n          $__DefineOwnProperty(object, props[i], desc);\n        }\n      }\n\n      $__SetExtensible(object, false);\n      return object;\n    },\n    getOwnPropertyDescriptor(object, key){\n      ensureObject(object, 'getOwnPropertyDescriptor');\n      key = $__ToPropertyName(key);\n      return $__GetOwnProperty(object, key);\n    },\n    getOwnPropertyNames(object){\n      ensureObject(object, 'getOwnPropertyNames');\n      return $__Enumerate(object, false, false);\n    },\n    getPropertyDescriptor(object, key){\n      ensureObject(object, 'getPropertyDescriptor');\n      key = $__ToPropertyName(key);\n      return $__GetProperty(object, key);\n    },\n    getPropertyNames(object){\n      ensureObject(object, 'getPropertyNames');\n      return $__Enumerate(object, true, false);\n    },\n    getPrototypeOf(object){\n      ensureObject(object, 'getPrototypeOf');\n      return $__GetPrototype(object);\n    },\n    isExtensible(object){\n      ensureObject(object, 'isExtensible');\n      return $__GetExtensible(object);\n    },\n    keys(object){\n      ensureObject(object, 'keys');\n      return $__Enumerate(object, false, true);\n    }\n  });\n\n\n  defineProps(Object.prototype, {\n    toString(){\n      if (this === undefined) {\n        return '[object Undefined]';\n      } else if (this === null) {\n        return '[object Null]';\n      } else {\n        return '[object '+$__getNativeBrand($__ToObject(this))+']';\n      }\n    },\n    isPrototypeOf(object){\n      while (object) {\n        object = $__GetPrototype(object);\n        if (object === this) {\n          return true;\n        }\n      }\n      return false;\n    },\n    toLocaleString(){\n      return this.toString();\n    },\n    valueOf(){\n      return $__ToObject(this);\n    },\n    hasOwnProperty(key){\n      var object = $__ToObject(this);\n      return $__HasOwnProperty(object, key);\n    },\n    propertyIsEnumerable(key){\n      var object = $__ToObject(this);\n      return ($__GetPropertyAttributes(this, key) & E) !== 0;\n    }\n  });\n\n\n\n  // ##############\n  // ### RegExp ###\n  // ##############\n\n  function RegExp(pattern, flags){\n    if ($__isConstructCall()) {\n      if (pattern === undefined) {\n        pattern = '';\n      } else if (typeof pattern === 'string') {\n      } else if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {\n        if (flags !== undefined) {\n          throw $__exception('regexp_flags', []);\n        }\n      } else {\n        pattern = $__ToString(pattern);\n      }\n      return $__RegExpCreate(pattern, flags);\n    } else {\n      if (flags === undefined && pattern) {\n        if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {\n          return pattern;\n        }\n      }\n      return $__RegExpCreate(pattern, flags);\n    }\n  }\n\n  setupConstructor(RegExp, $__RegExpProto);\n\n  defineProps(RegExp.prototype, {\n    toString(){\n      if ($__getNativeBrand(this) === 'RegExp') {\n        return $__RegExpToString(this);\n      } else {\n        throw $__exception('not_generic', ['RegExp.prototype.toString']);\n      }\n    }\n  });\n  $__wrapRegExpMethods(RegExp.prototype);\n\n  // ###########\n  // ### Set ###\n  // ###########\n\n  function Set(iterable){}\n  setupConstructor(Set, $__SetProto);\n\n\n\n  // ##############\n  // ### String ###\n  // ##############\n\n  function String(string){\n    string = arguments.length ? $__ToString(string) : '';\n    if ($__isConstructCall()) {\n      return $__StringCreate(string);\n    } else {\n      return string;\n    }\n  }\n\n  setupConstructor(String, $__StringProto);\n\n  defineProps(String.prototype, {\n    repeat(count){\n      var s = $__ToString(this),\n          n = $__ToInteger(count),\n          o = '';\n\n      if (n <= 1 || n === Infinity || n === -Infinity) {\n        throw $__exception('invalid_repeat_count', []);\n      }\n\n      while (n > 0) {\n        n & 1 && (o += s);\n        n >>= 1;\n        s += s;\n      }\n\n      return o;\n    },\n    toString(){\n      if ($__getNativeBrand(this) === 'String') {\n        return $__getPrimitiveValue(this);\n      } else {\n        throw $__exception('not_generic', ['String.prototype.toString']);\n      }\n    },\n    valueOf(){\n      if ($__getNativeBrand(this) === 'String') {\n        return $__getPrimitiveValue(this);\n      } else {\n        throw $__exception('not_generic', ['String.prototype.valueOf']);\n      }\n    },\n  });\n\n\n  $__wrapStringMethods(String.prototype);\n\n\n  // ###############\n  // ### WeakMap ###\n  // ###############\n\n  function WeakMap(iterable){}\n  setupConstructor(WeakMap, $__WeakMapProto);\n\n\n\n  function Error(message){\n    this.message = message;\n  }\n  setupConstructor(Error, $__ErrorProto);\n\n  defineProps(Error.prototype, {\n    toString(){\n      return this.name + ': '+this.message;\n    }\n  });\n\n  function EvalError(message){\n    this.message = message;\n  }\n  setupConstructor(EvalError, $__EvalErrorProto);\n\n  function RangeError(message){\n    this.message = message;\n  }\n  setupConstructor(RangeError, $__RangeErrorProto);\n\n  function ReferenceError(message){\n    this.message = message;\n  }\n  setupConstructor(ReferenceError, $__ReferenceErrorProto);\n\n  function SyntaxError(message){\n    this.message = message;\n  }\n  setupConstructor(SyntaxError, $__SyntaxErrorProto);\n\n  function TypeError(message){\n    this.message = message;\n  }\n  setupConstructor(TypeError, $__TypeErrorProto);\n\n  function URIError(message){\n    this.message = message;\n  }\n  setupConstructor(URIError, $__URIErrorProto);\n\n\n  $__defineDirect(global, 'Math', $__MathCreate(), 6);\n  $__defineDirect(global, 'JSON', $__JSONCreate(), 6);\n\n\n  defineMethods(global, [\n    $__parseInt,\n    $__parseFloat,\n    $__decodeURI,\n    $__encodeURI,\n    $__decodeURIComponent,\n    $__encodeURIComponent,\n    $__escape,\n    $__eval,\n    function isNaN(number){\n      number = $__ToNumber(number);\n      return number !== number;\n    },\n    function isFinite(number){\n      number = $__ToNumber(number);\n      return number === number && number !== Infinity && number !== -Infinity;\n    }\n  ]);\n\n\n  $__defineDirect(global, 'stdout', {}, 6);\n\n  defineProps(stdout, {\n    write(text, color){\n      $__write(text, color);\n    },\n    clear(){\n      $__clear();\n    },\n    backspace(count){\n      $__backspace(count);\n    }\n  });\n\n\n  $__defineDirect(global, 'console', {}, 6);\n\n  defineProps(console, {\n    log(...values){\n      for (var i=0; i < values.length; i++) {\n        stdout.write(values[i] + ' ');\n      }\n      stdout.write('\\n');\n    }\n  });\n})(this)\n"
+exports.builtins.builtins = "(function(global, undefined){\n  var E = 0x1,\n      C = 0x2,\n      W = 0x4,\n      A = 0x8;\n\n\n  function defineMethods(obj, props){\n    for (var i in props) {\n      $__defineDirect(obj, props[i].name, props[i], 6);\n      $__markAsNative(props[i]);\n      $__deleteDirect(props[i], 'prototype');\n    }\n  }\n\n  function defineProps(obj, props){\n    for (var name in props) {\n      var prop = props[name];\n      $__defineDirect(obj, name, prop, 6);\n      if (typeof prop === 'function') {\n        $__defineDirect(prop, 'name', name, 0);\n        $__markAsNative(prop);\n        $__deleteDirect(prop, 'prototype');\n      }\n    }\n  }\n\n  function defineConstants(obj, props){\n    for (var k in props) {\n      $__defineDirect(obj, k, props[k], 0);\n    }\n  }\n\n\n  function setupConstructor(ctor, proto){\n    $__defineDirect(ctor, 'prototype', proto, 0);\n    $__defineDirect(ctor.prototype, 'constructor', ctor, 0);\n    $__defineDirect(global, ctor.name, ctor, 6);\n    $__markAsNativeConstructor(ctor);\n  }\n\n\n\n $__EmptyClass = function constructor(...args){ super(...args) };\n\n  // #############\n  // ### Array ###\n  // #############\n\n  function Array(...values){\n    if (values.length === 1 && typeof values[0] === 'number') {\n      var out = [];\n      out.length = values[0];\n      return out;\n    } else {\n      return values;\n    }\n  }\n\n  setupConstructor(Array, $__ArrayProto);\n\n\n  defineProps(Array, {\n    isArray(array){\n      return $__getNativeBrand(array) === 'Array';\n    },\n    from(iterable){\n      var out = [];\n      iterable = Object(iterable);\n\n      for (var i = 0, len = iterable.length >>> 0; i < len; i++) {\n        if (i in iterable) {\n          out[i] = iterable[i];\n        }\n      }\n\n      return out;\n    }\n  });\n\n  defineProps(Array.prototype, {\n    filter(callback){\n      if (this == null) {\n        throw $__exception('called_on_null_or_undefined', ['Array.prototype.filter']);\n      }\n\n      var array = $__ToObject(this),\n          length = $__ToUint32(this.length);\n\n      var receiver = this;\n\n      if (typeof receiver !== 'object') {\n        receiver = $__ToObject(receiver);\n      }\n\n      var result = [],\n          count = 0;\n\n      for (var i = 0; i < length; i++) {\n        if (i in array) {\n          var element = array[i];\n          if ($__callFunction(callback, receiver, [element, i, array])) {\n            result[count++] = element;\n          }\n        }\n      }\n\n      return result;\n    },\n    forEach(callback, context){\n      var len = this.length;\n      if (arguments.length === 1) {\n        context = this;\n      } else {\n        context = $__ToObject(this);\n      }\n      for (var i=0; i < len; i++) {\n        callback.call(context, this[i], i, this);\n      }\n    },\n    map(callback, context){\n      var out = [];\n      var len = this.length;\n      if (arguments.length === 1) {\n        context = this;\n      } else {\n        context = Object(this);\n      }\n      for (var i=0; i < len; i++) {\n        out.push(callback.call(context, this[i], i, this));\n      }\n      return out;\n    },\n    reduce(callback, initial){\n      var index = 0;\n      if (arguments.length === 1) {\n        initial = this[0];\n        index++;\n      }\n      for (; index < this.length; i++) {\n        if (i in this) {\n          initial = callback.call(this, initial, this[o], this);\n        }\n      }\n      return initial;\n    },\n    join(separator){\n      var out = '', len = this.length;\n\n      if (len === 0) {\n        return out;\n      }\n\n      if (arguments.length === 0) {\n        separator = ',';\n      } else if (typeof separator !== 'string') {\n        separator = $__ToString(separator);\n      }\n\n      len--;\n      for (var i=0; i < len; i++) {\n        out += this[i] + separator;\n      }\n\n      return out + this[i];\n    },\n    push(...values){\n      var len = this.length,\n          valuesLen = values.length;\n\n      for (var i=0; i < valuesLen; i++) {\n        this[len++] = values[i];\n      }\n      return len;\n    },\n    pop(){\n      var out = this[this.length - 1];\n      this.length--;\n      return out;\n    },\n    slice(start, end){\n      var out = [], len;\n\n      start = start === undefined ? 0 : +start || 0;\n      end = end === undefined ? this.length - 1 : +end || 0;\n\n      if (start < 0) {\n        start += this.length;\n      }\n\n      if (end < 0) {\n        end += this.length;\n      } else if (end >= this.length) {\n        end = this.length - 1;\n      }\n\n      if (start > end || end < start || start === end) {\n        return [];\n      }\n\n      len = start - end;\n      for (var i=0; i < len; i++) {\n        out[i] = this[i + start];\n      }\n\n      return out;\n    },\n    toString(){\n      return this.join(',');\n    }\n  });\n\n  // ###############\n  // ### Boolean ###\n  // ###############\n\n  function Boolean(value){\n    value = $__ToBoolean(value);\n    if ($__isConstructCall()) {\n      return $__BooleanCreate(value);\n    } else {\n      return value;\n    }\n  }\n\n  setupConstructor(Boolean, $__BooleanProto);\n\n  defineProps(Boolean.prototype, {\n    toString(){\n      if ($__getNativeBrand(this) === 'Boolean') {\n        return $__getPrimitiveValue(this) ? 'true' : 'false';\n      } else {\n        throw $__exception('not_generic', ['Boolean.prototype.toString']);\n      }\n    },\n    valueOf(){\n      if ($__getNativeBrand(this) === 'Boolean') {\n        return $__getPrimitiveValue(this);\n      } else {\n        throw $__exception('not_generic', ['Boolean.prototype.valueOf']);\n      }\n    }\n  });\n\n\n  // ############\n  // ### Date ###\n  // ############\n\n  function Date(...values){\n    return $__DateCreate(values);\n  }\n\n  setupConstructor(Date, $__DateProto);\n\n  defineProps(Date.prototype, {\n    toString(){\n      if ($__getNativeBrand(this) === 'Date') {\n        return $__DateToString(this);\n      } else {\n        throw $__exception('not_generic', ['Date.prototype.toString']);\n      }\n    },\n    valueOf(){\n      if ($__getNativeBrand(this) === 'Date') {\n        return $__DateToNumber(this);\n      } else {\n        throw $__exception('not_generic', ['Date.prototype.valueOf']);\n      }\n    }\n  });\n\n  $__wrapDateMethods(Date.prototype);\n\n\n  // ################\n  // ### Function ###\n  // ################\n\n  function Function(...args){\n    return $__FunctionCreate(args);\n  }\n\n  $__defineDirect($__FunctionProto, 'name', 'Empty', 0);\n\n  setupConstructor(Function, $__FunctionProto);\n\n  defineMethods(Function.prototype, [\n    $__call,\n    $__apply,\n    $__bind,\n  ]);\n\n\n  defineProps(Function.prototype, {\n    toString: $__FunctionToString\n  });\n\n  // ###########\n  // ### Map ###\n  // ###########\n\n  function Map(iterable){}\n  setupConstructor(Map, $__MapProto);\n\n\n  // ##############\n  // ### Number ###\n  // ##############\n\n  function Number(value){\n    value = $__ToNumber(value);\n    if ($__isConstructCall()) {\n      return $__NumberCreate(value);\n    } else {\n      return value;\n    }\n  }\n  setupConstructor(Number, $__NumberProto);\n\n  defineConstants(Number, {\n    EPSILON: 2.220446049250313e-16,\n    MAX_INTEGER: 9007199254740992,\n    MAX_VALUE: 1.7976931348623157e+308,\n    MIN_VALUE: 5e-324,\n    NaN: NaN,\n    NEGATIVE_INFINITY: -Infinity,\n    POSITIVE_INFINITY: Infinity\n  });\n\n  defineProps(Number, {\n    isNaN(number){\n      return number !== number;\n    },\n    isFinite(number){\n      return typeof value === 'number'\n          && value === value\n          && value < Infinity\n          && value > -Infinity;\n    },\n    isInteger(value) {\n      return typeof value === 'number'\n          && value === value\n          && value > -9007199254740992\n          && value < 9007199254740992\n          && value | 0 === value;\n    },\n    toInteger(value){\n      return (value / 1 || 0) | 0;\n    }\n  });\n\n  var isFinite = Number.isFinite;\n\n  defineProps(Number.prototype, {\n    toString(radix){\n      if ($__getNativeBrand(this) === 'Number') {\n        return $__NumberToString(this, radix);\n      } else {\n        throw $__exception('not_generic', ['Number.prototype.toString']);\n      }\n    },\n    valueOf(){\n      if ($__getNativeBrand(this) === 'Number') {\n        return $__getPrimitiveValue(this);\n      } else {\n        throw $__exception('not_generic', ['Number.prototype.valueOf']);\n      }\n    },\n    clz() {\n      var x = $__ToNumber(this);\n      if (!x || !isFinite(x)) {\n        return 32;\n      } else {\n        x = x < 0 ? x + 1 | 0 : x | 0;\n        x -= (x / 0x100000000 | 0) * 0x100000000;\n        return 32 - x.toString(2).length;\n      }\n    }\n  });\n\n\n  function ensureObject(o, name){\n    var type = typeof o;\n    if (type === 'object' ? o === null : type !== 'function') {\n      throw $__exception('called_on_non_object', [name]);\n    }\n  }\n\n  function ensureDescriptor(o){\n    if (o === null || typeof o !== 'object') {\n      throw $__exception('property_desc_object', [typeof o])\n    }\n  }\n\n  // ##############\n  // ### Object ###\n  // ##############\n\n  function Object(value){\n    if ($__isConstructCall()) {\n      return {};\n    } else if (value == null) {\n      return {};\n    } else {\n      return $__ToObject(value);\n    }\n  }\n\n  setupConstructor(Object, $__ObjectProto);\n\n\n  defineProps(Object, {\n    create(prototype, properties){\n      if (typeof prototype !== 'object') {\n        throw $__exception('proto_object_or_null', [])\n      }\n\n      var object = $__ObjectCreate(prototype);\n\n      if (properties !== undefined) {\n        ensureDescriptor(properties);\n\n        for (var k in descs) {\n          var desc = properties[k];\n          ensureDescriptor(desc);\n          $__DefineOwnProperty(object, key, desc);\n        }\n      }\n\n      return object;\n    },\n    defineProperty(object, key, property){\n      ensureObject(object, 'defineProperty');\n      ensureDescriptor(property);\n      key = $__ToPropertyName(key);\n      $__DefineOwnProperty(object, key, property);\n      return object;\n    },\n    defineProperties(object, properties){\n      ensureObject(object, 'defineProperties');\n      ensureDescriptor(properties);\n\n      for (var key in properties) {\n        var desc = properties[key];\n        ensureDescriptor(desc);\n        $__DefineOwnProperty(object, key, desc);\n      }\n\n      return object;\n    },\n    freeze(object){\n      ensureObject(object, 'freeze');\n      var props = $__Enumerate(object, false, false);\n\n      for (var i=0; i < props.length; i++) {\n        var desc = $__GetOwnProperty(object, props[i]);\n        if (desc.configurable) {\n          desc.configurable = false;\n          if ('writable' in desc) {\n            desc.writable = false;\n          }\n          $__DefineOwnProperty(object, props[i], desc);\n        }\n      }\n\n      $__SetExtensible(object, false);\n      return object;\n    },\n    getOwnPropertyDescriptor(object, key){\n      ensureObject(object, 'getOwnPropertyDescriptor');\n      key = $__ToPropertyName(key);\n      return $__GetOwnProperty(object, key);\n    },\n    getOwnPropertyNames(object){\n      ensureObject(object, 'getOwnPropertyNames');\n      return $__Enumerate(object, false, false);\n    },\n    getPropertyDescriptor(object, key){\n      ensureObject(object, 'getPropertyDescriptor');\n      key = $__ToPropertyName(key);\n      return $__GetProperty(object, key);\n    },\n    getPropertyNames(object){\n      ensureObject(object, 'getPropertyNames');\n      return $__Enumerate(object, true, false);\n    },\n    getPrototypeOf(object){\n      ensureObject(object, 'getPrototypeOf');\n      return $__GetPrototype(object);\n    },\n    isExtensible(object){\n      ensureObject(object, 'isExtensible');\n      return $__GetExtensible(object);\n    },\n    isFrozen(object){\n      ensureObject(object, 'isFrozen');\n      if ($__GetExtensible(object)) {\n        return false;\n      }\n\n      var props = $__Enumerate(object, false, false);\n\n      for (var i=0; i < props.length; i++) {\n        var desc = $__GetOwnProperty(object, props[i]);\n        if (desc) {\n          if (desc.configurable || 'writable' in desc && desc.writable) {\n            return false;\n          }\n        }\n      }\n\n      return true;\n    },\n    isSealed(object){\n      ensureObject(object, 'isSealed');\n      if ($__GetExtensible(object)) {\n        return false;\n      }\n\n      var props = $__Enumerate(object, false, false);\n\n      for (var i=0; i < props.length; i++) {\n        var desc = $__GetOwnProperty(object, props[i]);\n        if (desc && desc.configurable) {\n          return false;\n        }\n      }\n\n      return true;\n    },\n    keys(object){\n      ensureObject(object, 'keys');\n      return $__Enumerate(object, false, true);\n    },\n    preventExtensions(object){\n      ensureObject(object, 'preventExtensions');\n      $__SetExtensible(object, false);\n      return object;\n    }\n  });\n\n\n  defineProps(Object.prototype, {\n    toString(){\n      if (this === undefined) {\n        return '[object Undefined]';\n      } else if (this === null) {\n        return '[object Null]';\n      } else {\n        return '[object '+$__getNativeBrand($__ToObject(this))+']';\n      }\n    },\n    isPrototypeOf(object){\n      while (object) {\n        object = $__GetPrototype(object);\n        if (object === this) {\n          return true;\n        }\n      }\n      return false;\n    },\n    toLocaleString(){\n      return this.toString();\n    },\n    valueOf(){\n      return $__ToObject(this);\n    },\n    hasOwnProperty(key){\n      var object = $__ToObject(this);\n      return $__HasOwnProperty(object, key);\n    },\n    propertyIsEnumerable(key){\n      var object = $__ToObject(this);\n      return ($__GetPropertyAttributes(this, key) & E) !== 0;\n    }\n  });\n\n\n\n  // ##############\n  // ### RegExp ###\n  // ##############\n\n  function RegExp(pattern, flags){\n    if ($__isConstructCall()) {\n      if (pattern === undefined) {\n        pattern = '';\n      } else if (typeof pattern === 'string') {\n      } else if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {\n        if (flags !== undefined) {\n          throw $__exception('regexp_flags', []);\n        }\n      } else {\n        pattern = $__ToString(pattern);\n      }\n      return $__RegExpCreate(pattern, flags);\n    } else {\n      if (flags === undefined && pattern) {\n        if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {\n          return pattern;\n        }\n      }\n      return $__RegExpCreate(pattern, flags);\n    }\n  }\n\n  setupConstructor(RegExp, $__RegExpProto);\n\n  defineProps(RegExp.prototype, {\n    toString(){\n      if ($__getNativeBrand(this) === 'RegExp') {\n        return $__RegExpToString(this);\n      } else {\n        throw $__exception('not_generic', ['RegExp.prototype.toString']);\n      }\n    }\n  });\n  $__wrapRegExpMethods(RegExp.prototype);\n\n  // ###########\n  // ### Set ###\n  // ###########\n\n  function Set(iterable){}\n  setupConstructor(Set, $__SetProto);\n\n\n\n  // ##############\n  // ### String ###\n  // ##############\n\n  function String(string){\n    string = arguments.length ? $__ToString(string) : '';\n    if ($__isConstructCall()) {\n      return $__StringCreate(string);\n    } else {\n      return string;\n    }\n  }\n\n  setupConstructor(String, $__StringProto);\n\n  defineProps(String.prototype, {\n    repeat(count){\n      var s = $__ToString(this),\n          n = $__ToInteger(count),\n          o = '';\n\n      if (n <= 1 || n === Infinity || n === -Infinity) {\n        throw $__exception('invalid_repeat_count', []);\n      }\n\n      while (n > 0) {\n        n & 1 && (o += s);\n        n >>= 1;\n        s += s;\n      }\n\n      return o;\n    },\n    toString(){\n      if ($__getNativeBrand(this) === 'String') {\n        return $__getPrimitiveValue(this);\n      } else {\n        throw $__exception('not_generic', ['String.prototype.toString']);\n      }\n    },\n    valueOf(){\n      if ($__getNativeBrand(this) === 'String') {\n        return $__getPrimitiveValue(this);\n      } else {\n        throw $__exception('not_generic', ['String.prototype.valueOf']);\n      }\n    },\n  });\n\n\n  $__wrapStringMethods(String.prototype);\n\n\n  // ###############\n  // ### WeakMap ###\n  // ###############\n\n  function WeakMap(iterable){}\n  setupConstructor(WeakMap, $__WeakMapProto);\n\n\n\n  function Error(message){\n    this.message = message;\n  }\n  setupConstructor(Error, $__ErrorProto);\n\n  defineProps(Error.prototype, {\n    toString(){\n      return this.name + ': '+this.message;\n    }\n  });\n\n  function EvalError(message){\n    this.message = message;\n  }\n  setupConstructor(EvalError, $__EvalErrorProto);\n\n  function RangeError(message){\n    this.message = message;\n  }\n  setupConstructor(RangeError, $__RangeErrorProto);\n\n  function ReferenceError(message){\n    this.message = message;\n  }\n  setupConstructor(ReferenceError, $__ReferenceErrorProto);\n\n  function SyntaxError(message){\n    this.message = message;\n  }\n  setupConstructor(SyntaxError, $__SyntaxErrorProto);\n\n  function TypeError(message){\n    this.message = message;\n  }\n  setupConstructor(TypeError, $__TypeErrorProto);\n\n  function URIError(message){\n    this.message = message;\n  }\n  setupConstructor(URIError, $__URIErrorProto);\n\n\n  $__defineDirect(global, 'Math', $__MathCreate(), 6);\n  $__defineDirect(global, 'JSON', $__JSONCreate(), 6);\n\n\n  defineMethods(global, [\n    $__parseInt,\n    $__parseFloat,\n    $__decodeURI,\n    $__encodeURI,\n    $__decodeURIComponent,\n    $__encodeURIComponent,\n    $__escape,\n    $__eval,\n    function isNaN(number){\n      number = $__ToNumber(number);\n      return number !== number;\n    },\n    function isFinite(number){\n      number = $__ToNumber(number);\n      return number === number && number !== Infinity && number !== -Infinity;\n    }\n  ]);\n\n\n  $__defineDirect(global, 'stdout', {}, 6);\n\n  defineProps(stdout, {\n    write(text, color){\n      $__write(text, color);\n    },\n    clear(){\n      $__clear();\n    },\n    backspace(count){\n      $__backspace(count);\n    }\n  });\n\n\n  $__defineDirect(global, 'console', {}, 6);\n\n  defineProps(console, {\n    log(...values){\n      for (var i=0; i < values.length; i++) {\n        stdout.write(values[i] + ' ');\n      }\n      stdout.write('\\n');\n    }\n  });\n})(this)\n"
 
 
 
