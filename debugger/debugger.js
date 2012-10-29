@@ -607,7 +607,8 @@ InputBoxOptions.prototype = {
   hint: '',
   spellcheck: false,
   'class': 'input',
-  tag: 'textarea'
+  tag: 'textarea',
+  autofocus: false
 };
 
 
@@ -636,6 +637,10 @@ function InputBox(options){
     e.preventDefault();
     self.next();
   });
+
+  if (options.autofocus) {
+    this.element.focus();
+  }
 
   if (options.hint) {
     this.element.value = options.hint;
@@ -1217,63 +1222,6 @@ inherit(Instructions, Component, [
   }
 ]);
 
-var input = new InputBox,
-    stdout = new Console,
-    root = _('div'),
-    instructions = new Instructions;
-
-root.className = 'root';
-
-
-var main = new Panel(null, {
-  name: 'container',
-  top: {
-    left: {
-      size: 250,
-      top: {
-        size: .7,
-        label: 'Instructions',
-        name: 'instructions',
-        content: instructions
-      },
-      bottom: {
-        label: 'stdout',
-        name: 'output',
-        content: stdout
-      },
-    },
-    right: {
-      label: 'Inspector',
-      name: 'view',
-      content: root
-    },
-  },
-  bottom: {
-    label: 'Input',
-    name: 'input',
-    size: 35,
-    content: input
-  }
-});
-
-
-function runInContext(code, realm){
-  if (root.firstChild) {
-    root.removeChild(root.firstChild);
-  }
-  var result = renderer.render(realm.eval(code));
-  root.appendChild(result.element);
-  if (result.tree) {
-    result.tree.expand();
-  }
-  return result;
-}
-
-
-var realm = new Realm;
-
-runInContext('this', realm);
-
 
 
 function Queue(items){
@@ -1339,6 +1287,69 @@ define(Feeder.prototype, [
   }
 ]);
 
+
+
+
+
+var input = new InputBox({ hint: 'Enter code to run...', autofocus: true }),
+    stdout = new Console,
+    root = _('div'),
+    instructions = new Instructions;
+
+root.className = 'root';
+
+
+var main = new Panel(null, {
+  name: 'container',
+  top: {
+    left: {
+      size: 250,
+      top: {
+        size: .7,
+        label: 'Instructions',
+        name: 'instructions',
+        content: instructions
+      },
+      bottom: {
+        label: 'stdout',
+        name: 'output',
+        content: stdout
+      },
+    },
+    right: {
+      label: 'Inspector',
+      name: 'view',
+      content: root
+    },
+  },
+  bottom: {
+    label: 'Input',
+    name: 'input',
+    size: 35,
+    content: input
+  }
+});
+
+
+function runInContext(code, realm){
+  if (root.firstChild) {
+    root.removeChild(root.firstChild);
+  }
+  var result = renderer.render(realm.eval(code));
+  root.appendChild(result.element);
+  if (result.tree) {
+    result.tree.expand();
+  }
+  return result;
+}
+
+
+var realm = new Realm;
+
+runInContext('this', realm);
+
+
+
 var ops = new Feeder(function(op){
   instructions.append(new Instruction(op[0], op[1]));
 });
@@ -1376,8 +1387,6 @@ input.on('entry', function(evt){
   runInContext(evt.value, realm);
 });
 
-
-input.element.focus();
 
 })(this, continuum.Realm, continuum.constants, continuum.utility, continuum.debug);
 delete continuum
