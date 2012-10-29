@@ -646,6 +646,21 @@ var thunk = (function(exports){
           }
         }
       }
+      if (error) {
+        if (error.Abrupt) {
+          var err = error.value;
+        } else {
+          var err = error;
+        }
+
+        if (err && err.setLocation) {
+          var range = code.ops[ip].range,
+              loc = code.ops[ip].loc;
+
+          err.setLocation(loc);
+          err.setCode(code.source.slice(range[0], range[1]));
+        }
+      }
       completion = error;
       return false;
     }

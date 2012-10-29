@@ -342,6 +342,8 @@ var assembler = (function(exports){
 
   function Operation(op, a, b, c, d){
     this.op = op;
+    this.loc = currentNode.loc;
+    this.range = currentNode.range;
     for (var i=0; i < op.params; i++) {
       this[i] = arguments[i + 1];
     }
@@ -531,9 +533,15 @@ var assembler = (function(exports){
     }
   ]);
 
+  var currentNode;
   function recurse(node){
     if (node) {
+      var lastNode = currentNode;
+      currentNode = node;
       handlers[node.type](node);
+      if (lastNode) {
+        currentNode = lastNode;
+      }
     }
   }
 
@@ -544,6 +552,7 @@ var assembler = (function(exports){
   function record(){
     return context.code.createOperation(arguments);
   }
+
 
   function current(){
     return context.code.ops.length;
@@ -578,10 +587,14 @@ var assembler = (function(exports){
     context.jumps.pop();
   }
 
-  function lexical(callback){
+  function lexical(type, callback){
+    if (typeof type === 'function') {
+      callback = type;
+      type = ENTRY.ENV;
+    }
     var begin = current();
     callback();
-    context.code.entrances.push(new Unwinder(ENTRY.ENV, begin, current()));
+    context.code.entrances.push(new Unwinder(type, begin, current()));
   }
 
   function move(node){
@@ -1164,7 +1177,7 @@ var assembler = (function(exports){
   }
 
   function TryStatement(node){
-    lexical(TRYCATCH, function(){
+    lexical(ENTRY.TRYCATCH, function(){
       recurse(node.block);
     });
     var count = node.handlers.length,
