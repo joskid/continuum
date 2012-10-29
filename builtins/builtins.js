@@ -493,9 +493,50 @@
       ensureObject(object, 'isExtensible');
       return $__GetExtensible(object);
     },
+    isFrozen(object){
+      ensureObject(object, 'isFrozen');
+      if ($__GetExtensible(object)) {
+        return false;
+      }
+
+      var props = $__Enumerate(object, false, false);
+
+      for (var i=0; i < props.length; i++) {
+        var desc = $__GetOwnProperty(object, props[i]);
+        if (desc) {
+          if (desc.configurable || 'writable' in desc && desc.writable) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    },
+    isSealed(object){
+      ensureObject(object, 'isSealed');
+      if ($__GetExtensible(object)) {
+        return false;
+      }
+
+      var props = $__Enumerate(object, false, false);
+
+      for (var i=0; i < props.length; i++) {
+        var desc = $__GetOwnProperty(object, props[i]);
+        if (desc && desc.configurable) {
+          return false;
+        }
+      }
+
+      return true;
+    },
     keys(object){
       ensureObject(object, 'keys');
       return $__Enumerate(object, false, true);
+    },
+    preventExtensions(object){
+      ensureObject(object, 'preventExtensions');
+      $__SetExtensible(object, false);
+      return object;
     }
   });
 
