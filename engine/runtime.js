@@ -2488,7 +2488,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       return BindingInitialization(pattern, value, lexical ? this.LexicalEnvironment : undefined);
     },
     function popBlock(){
+      var block = this.LexicalEnvironment;
       this.LexicalEnvironment = this.LexicalEnvironment.outer;
+      return block;
     },
     function pushBlock(code){
       this.LexicalEnvironment = NewDeclarativeEnvironment(this.LexicalEnvironment);
@@ -3454,7 +3456,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         this.state = 'idle';
         if (result && result.Abrupt) {
           this.emit(result.type, result.value);
-          console.log(context);
+          //console.log(context);
         } else {
           this.emit('complete', result);
         }

@@ -23,7 +23,9 @@ var thunk = (function(exports){
       AST       = constants.AST.array,
       Pause     = constants.SYMBOLS.Pause,
       Empty     = constants.SYMBOLS.Empty,
-      Resume    = constants.SYMBOLS.Resume
+      Resume    = constants.SYMBOLS.Resume;
+
+  var AbruptCompletion = require('./errors').AbruptCompletion;
 
   function Desc(v){ this.Value = v }
   Desc.prototype.Configurable = true;
@@ -560,8 +562,7 @@ var thunk = (function(exports){
     }
 
     function THROW(){
-      error = stack[--sp];
-      sp++
+      error = new AbruptCompletion('throw', stack[--sp]);
       return ƒ;
     }
 
@@ -631,45 +632,55 @@ var thunk = (function(exports){
       for (var i = 0, entry; entry = code.entrances[i]; i++) {
         if (entry.begin < ip && ip <= entry.end) {
           if (entry.type === ENTRY.ENV) {
-            context.popBlock();
+            trace(context.popBlock());
           } else {
+
             //sp = entry.unwindStack(this);
             if (entry.type === ENTRY.FINALLY) {
               stack[sp++] = Empty;
               stack[sp++] = error;
               stack[sp++] = ENTRY.FINALLY;
+              ip = entry.end;
+              return cmds[ip];
             } else {
               stack[sp++] = error;
             }
-            ip = entry.end;
-            return cmds[ip];
           }
         }
       }
       if (error) {
-        if (error.Abrupt) {
-          var err = error.value;
-        } else {
-          var err = error;
-        }
 
-        if (err && err.setLocation) {
+        if (error.value && error.value.setLocation) {
           var range = code.ops[ip].range,
               loc = code.ops[ip].loc;
 
-          err.setLocation(loc);
-          err.setCode(code.source.slice(range[0], range[1]));
+          error.value.setLocation(loc);
+          error.value.setCode(code.source.slice(range[0], range[1]));
+          if (stacktrace) {
+            if (error.value.trace) {
+              [].push.apply(error.value.trace, stacktrace);
+            } else {
+              error.value.trace = stacktrace;
+            }
+            error.value.context || (error.value.context = context);
+          }
         }
       }
       completion = error;
       return false;
     }
 
+
+    function trace(unwound){
+      stacktrace || (stacktrace = []);
+      stacktrace.push(unwound);
+    }
+
     function normalPrepare(){
       stack = [];
       ip = 0;
       sp = 0;
-      completion = error = a = b = c = d = undefined;
+      stacktrace = completion = error = a = b = c = d = undefined;
     }
 
     function normalExecute(){
@@ -688,8 +699,10 @@ var thunk = (function(exports){
           realm = context.realm;
 
       while (f) {
-        realm.emit('op', [ops[ip], stack[sp - 1]]);
-        f = f();
+        if (f) {
+          realm.emit('op', [ops[ip], stack[sp - 1]]);
+          f = f();
+        }
       }
     }
 
@@ -725,7 +738,7 @@ var thunk = (function(exports){
     }
 
 
-    var completion, stack, ip, sp, error, a, b, c, d, ctx, context;
+    var completion, stack, ip, sp, error, a, b, c, d, ctx, context, stacktrace;
 
     var prepare = normalPrepare,
         execute = normalExecute,

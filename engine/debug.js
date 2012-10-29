@@ -331,6 +331,12 @@ var debug = (function(exports){
   }, [
     function getError(){
       return this.getValue('name') + ': ' + this.getValue('message');
+    },
+    function trace(){
+      return this.subject.trace;
+    },
+    function context(){
+      return this.subject.context;
     }
   ]);
 
