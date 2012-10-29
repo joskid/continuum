@@ -182,6 +182,7 @@ h1, h2
 .ƒStringValue    { color: #0f6 } /* hsl(144, 100%, 50%) */
 .ƒUndefinedValue { color: #686 } /* hsl(120,  14%, 47%) */
 
+.ƒArguments      { color: #ff0 } /* hsl( 60, 100%, 50%) */
 .ƒArray          { color: #f68 } /* hsl(347, 100%, 70%) */
 .ƒBoolean        { color: #af6 } /* hsl( 93, 100%, 70%) */
 .ƒDate           { color: #0a0 } /* hsl(120, 100%, 33%) */

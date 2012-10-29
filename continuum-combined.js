@@ -13214,6 +13214,16 @@ exports.debug = (function(exports){
   ]);
 
 
+  function MirrorArguments(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  inherit(MirrorArguments, MirrorObject, {
+    kind: 'Arguments'
+  }, [
+  ]);
+
+
   function MirrorArray(subject){
     MirrorObject.call(this, subject);
   }
@@ -13554,21 +13564,22 @@ exports.debug = (function(exports){
 
 
   var brands = {
-    Array   : MirrorArray,
-    Boolean : MirrorBoolean,
-    Date    : MirrorDate,
-    Error   : MirrorError,
-    Function: MirrorFunction,
-    global  : MirrorGlobal,
-    JSON    : MirrorJSON,
-    Map     : MirrorMap,
-    Math    : MirrorMath,
-    Map     : MirrorMap,
-    Number  : MirrorNumber,
-    RegExp  : MirrorRegExp,
-    Set     : MirrorSet,
-    String  : MirrorString,
-    WeakMap : MirrorWeakMap
+    Arguments: MirrorArguments,
+    Array    : MirrorArray,
+    Boolean  : MirrorBoolean,
+    Date     : MirrorDate,
+    Error    : MirrorError,
+    Function : MirrorFunction,
+    global   : MirrorGlobal,
+    JSON     : MirrorJSON,
+    Map      : MirrorMap,
+    Math     : MirrorMath,
+    Map      : MirrorMap,
+    Number   : MirrorNumber,
+    RegExp   : MirrorRegExp,
+    Set      : MirrorSet,
+    String   : MirrorString,
+    WeakMap  : MirrorWeakMap
   };
 
   var _Null        = new MirrorValue(null, 'null'),
@@ -13663,13 +13674,13 @@ exports.debug = (function(exports){
     }
   }
 
+  var label = function(mirror){
+    return mirror.label();
+  };
+
   Renderer.prototype = {
-    Unknown: function(mirror){
-      return 'unknown!?';
-    },
-    BooleanValue: function(mirror){
-      return mirror.label();
-    },
+    Unknown: label,
+    BooleanValue: label,
     StringValue: function(mirror){
       return utility.quotes(mirror.subject);
     },
@@ -13677,60 +13688,29 @@ exports.debug = (function(exports){
       var label = mirror.label();
       return label === 'number' ? mirror.subject : label;
     },
-    UndefinedValue: function(mirror){
-      return mirror.label();
-    },
-    NullValue: function(mirror){
-      return mirror.label();
-    },
+    UndefinedValue: label,
+    NullValue: label,
     Thrown: function(mirror){
       return mirror.getError();
     },
-    Array: function(mirror){
-      return mirror.label();
-    },
-    Boolean: function(mirror){
-      return mirror.label();
-    },
-    Date: function(mirror){
-      return mirror.label();
-    },
+    Arguments: label,
+    Array: label,
+    Boolean: label,
+    Date: label,
     Error: function(mirror){
       return mirror.getValue('name') + ': ' + mirror.getValue('message');
     },
-    Function: function(mirror){
-      return mirror.label();
-    },
-    Global: function(mirror){
-      return mirror.label();
-    },
-    JSON: function(mirror){
-      return mirror.label();
-    },
-    Map: function(mirror){
-      return mirror.label();
-    },
-    Math: function(mirror){
-      return mirror.label();
-    },
-    Object: function(mirror){
-      return mirror.label();
-    },
-    Number: function(mirror){
-      return mirror.label();
-    },
-    RegExp: function(mirror){
-      return mirror.label();
-    },
-    Set: function(mirror){
-      return mirror.label();
-    },
-    String: function(mirror){
-      return mirror.label();
-    },
-    WeakMap: function(mirror){
-      return mirror.label();
-    }
+    Function: label,
+    Global: label,
+    JSON: label,
+    Map: label,
+    Math: label,
+    Object: label,
+    Number: label,
+    RegExp: label,
+    Set: label,
+    String: label,
+    WeakMap: label
   };
 
   define(Renderer.prototype, [
