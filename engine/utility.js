@@ -696,9 +696,13 @@ var utility = (function(exports){
     }
 
     function forEach(callback, context){
-      var index = 0;
+      var len = this.props.length,
+          index = 0,
+          prop;
+
       context = context || this;
-      for (var i=0, prop; i < this.props.length; i++) {
+
+      for (var i=0; i < len; i++) {
         if (prop = this.props[i]) {
           callback.call(context, prop, index++, this);
         }

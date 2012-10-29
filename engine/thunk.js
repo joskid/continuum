@@ -165,16 +165,16 @@ var thunk = (function(exports){
     function CLASS_EXPR(){
       a = ops[ip][0];
       b = a.superClass ? stack[--sp] : undefined;
-      a = context.pushClass(a, b);
-      if (a && a.Completion) {
-        if (a.Abrupt) {
-          error = a;
+      c = context.pushClass(a, b);
+      if (c && c.Completion) {
+        if (c.Abrupt) {
+          error = c;
           return ƒ;
         } else {
-          a = a.value;
+          c = c.value;
         }
       }
-      stack[sp++] = a;
+      stack[sp++] = c;
       return cmds[++ip];
     }
 

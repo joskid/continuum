@@ -425,25 +425,32 @@ var debug = (function(exports){
     kind: 'String'
   }, [
     function get(key){
-      if (key < this.props.length && key >= 0) {
+      if (key < this.props.get('length') && key >= 0) {
         return this.subject.PrimitiveValue[key];
       } else {
         return MirrorObject.prototype.get.call(this, key);
       }
     },
-    function ownAttrs(obj){
+    function ownAttrs(props){
       var len = this.props.get('length');
-      obj || (obj = create(null));
+      props || (props = create(null));
       for (var i=0; i < len; i++) {
-        obj[i] = 1;
+        props[i] = 1;
       }
       this.props.forEach(function(prop){
         props[prop[0]] = prop[2];
       });
-      return obj;
+      return props;
+    },
+    function propAttributes(key){
+      if (key < this.props.get('length') && key >= 0) {
+        return 1;
+      } else {
+        return MirrorObject.prototype.propAttributes.call(this, key);
+      }
     },
     function label(){
-      return 'String('+this.subject.PrimitiveValue+')';
+      return 'String('+utility.quotes(this.subject.PrimitiveValue)+')';
     }
   ]);
 
@@ -525,21 +532,21 @@ var debug = (function(exports){
         return this.getPrototype().propAttributes(key);
       }
     },
-    function ownAttrs(obj){
+    function ownAttrs(props){
       var key, keys = this.subject.GetOwnPropertyNames();
 
-      obj || (obj = create(null));
+      props || (props = create(null));
       this.props = create(null);
       this.attrs = create(null);
 
       for (var i=0; i < keys.length; i++) {
         key = keys[i];
         if (this.refresh(key)) {
-          obj[key] = this.attrs[key];
+          props[key] = this.attrs[key];
         }
       }
 
-      return obj;
+      return props;
     },
     function refresh(key){
       if (!(key in this.attrs)) {

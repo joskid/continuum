@@ -6001,9 +6001,13 @@ exports.utility = (function(exports){
     }
 
     function forEach(callback, context){
-      var index = 0;
+      var len = this.props.length,
+          index = 0,
+          prop;
+
       context = context || this;
-      for (var i=0, prop; i < this.props.length; i++) {
+
+      for (var i=0; i < len; i++) {
         if (prop = this.props[i]) {
           callback.call(context, prop, index++, this);
         }
@@ -8948,16 +8952,16 @@ exports.thunk = (function(exports){
     function CLASS_EXPR(){
       a = ops[ip][0];
       b = a.superClass ? stack[--sp] : undefined;
-      a = context.pushClass(a, b);
-      if (a && a.Completion) {
-        if (a.Abrupt) {
-          error = a;
+      c = context.pushClass(a, b);
+      if (c && c.Completion) {
+        if (c.Abrupt) {
+          error = c;
           return ƒ;
         } else {
-          a = a.value;
+          c = c.value;
         }
       }
-      stack[sp++] = a;
+      stack[sp++] = c;
       return cmds[++ip];
     }
 
@@ -13425,25 +13429,32 @@ exports.debug = (function(exports){
     kind: 'String'
   }, [
     function get(key){
-      if (key < this.props.length && key >= 0) {
+      if (key < this.props.get('length') && key >= 0) {
         return this.subject.PrimitiveValue[key];
       } else {
         return MirrorObject.prototype.get.call(this, key);
       }
     },
-    function ownAttrs(obj){
+    function ownAttrs(props){
       var len = this.props.get('length');
-      obj || (obj = create(null));
+      props || (props = create(null));
       for (var i=0; i < len; i++) {
-        obj[i] = 1;
+        props[i] = 1;
       }
       this.props.forEach(function(prop){
         props[prop[0]] = prop[2];
       });
-      return obj;
+      return props;
+    },
+    function propAttributes(key){
+      if (key < this.props.get('length') && key >= 0) {
+        return 1;
+      } else {
+        return MirrorObject.prototype.propAttributes.call(this, key);
+      }
     },
     function label(){
-      return 'String('+this.subject.PrimitiveValue+')';
+      return 'String('+utility.quotes(this.subject.PrimitiveValue)+')';
     }
   ]);
 
@@ -13525,21 +13536,21 @@ exports.debug = (function(exports){
         return this.getPrototype().propAttributes(key);
       }
     },
-    function ownAttrs(obj){
+    function ownAttrs(props){
       var key, keys = this.subject.GetOwnPropertyNames();
 
-      obj || (obj = create(null));
+      props || (props = create(null));
       this.props = create(null);
       this.attrs = create(null);
 
       for (var i=0; i < keys.length; i++) {
         key = keys[i];
         if (this.refresh(key)) {
-          obj[key] = this.attrs[key];
+          props[key] = this.attrs[key];
         }
       }
 
-      return obj;
+      return props;
     },
     function refresh(key){
       if (!(key in this.attrs)) {
