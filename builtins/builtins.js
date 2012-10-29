@@ -5,8 +5,6 @@
       A = 0x8;
 
 
-
-
   function defineMethods(obj, props){
     for (var i in props) {
       $__defineDirect(obj, props[i].name, props[i], 6);
@@ -49,13 +47,13 @@
   // ### Array ###
   // #############
 
-  function Array(...args){
-    if (args.length === 1 && typeof args[0] === 'number') {
+  function Array(...values){
+    if (values.length === 1 && typeof values[0] === 'number') {
       var out = [];
-      out.length = args[0];
+      out.length = values[0];
       return out;
     } else {
-      return args;
+      return values;
     }
   }
 
@@ -79,8 +77,6 @@
       return out;
     }
   });
-
-
 
   defineProps(Array.prototype, {
     filter(callback){
@@ -148,7 +144,7 @@
       }
       return initial;
     },
-    join(joiner){
+    join(separator){
       var out = '', len = this.length;
 
       if (len === 0) {
@@ -156,24 +152,24 @@
       }
 
       if (arguments.length === 0) {
-        joiner = ',';
-      } else if (typeof joiner !== 'string') {
-        joiner = $__ToString(joiner);
+        separator = ',';
+      } else if (typeof separator !== 'string') {
+        separator = $__ToString(separator);
       }
 
       len--;
       for (var i=0; i < len; i++) {
-        out += this[i] + joiner;
+        out += this[i] + separator;
       }
 
       return out + this[i];
     },
-    push(...args){
+    push(...values){
       var len = this.length,
-          argsLen = args.length;
+          valuesLen = values.length;
 
-      for (var i=0; i < argsLen; i++) {
-        this[len++] = args[i];
+      for (var i=0; i < valuesLen; i++) {
+        this[len++] = values[i];
       }
       return len;
     },
@@ -218,11 +214,12 @@
   // ### Boolean ###
   // ###############
 
-  function Boolean(arg){
+  function Boolean(value){
+    value = $__ToBoolean(value);
     if ($__isConstructCall()) {
-      return $__BooleanCreate($__ToBoolean(arg));
+      return $__BooleanCreate(value);
     } else {
-      return $__ToBoolean(arg);
+      return value;
     }
   }
 
@@ -250,8 +247,8 @@
   // ### Date ###
   // ############
 
-  function Date(...args){
-    return $__DateCreate(args);
+  function Date(...values){
+    return $__DateCreate(values);
   }
 
   setupConstructor(Date, $__DateProto);
@@ -311,11 +308,12 @@
   // ### Number ###
   // ##############
 
-  function Number(arg){
+  function Number(value){
+    value = $__ToNumber(value);
     if ($__isConstructCall()) {
-      return $__NumberCreate(+arg);
+      return $__NumberCreate(value);
     } else {
-      return $__ToNumber(arg);
+      return value;
     }
   }
   setupConstructor(Number, $__NumberProto);
@@ -383,13 +381,14 @@
 
 
   function ensureObject(o, name){
-    if (o === null || typeof o !== 'object') {
+    var type = typeof o;
+    if (type === 'object' ? o !== null : type === 'function') {
       throw $__exception('called_on_non_object', [name]);
     }
   }
 
   function ensureDescriptor(o){
-    if (o === null || typeof desc !== 'object') {
+    if (o === null || typeof o !== 'object') {
       throw $__exception('property_desc_object', [typeof o])
     }
   }
@@ -398,31 +397,32 @@
   // ### Object ###
   // ##############
 
-  function Object(obj){
+  function Object(value){
     if ($__isConstructCall()) {
       return {};
-    } else if (obj == null) {
+    } else if (value == null) {
       return {};
     } else {
-      return $__ToObject(obj);
+      return $__ToObject(value);
     }
   }
 
   setupConstructor(Object, $__ObjectProto);
 
+
   defineProps(Object, {
-    create(prototype, descriptors){
+    create(prototype, properties){
       if (typeof prototype !== 'object') {
         throw $__exception('proto_object_or_null', [])
       }
 
       var object = $__ObjectCreate(prototype);
 
-      if (descriptors !== undefined) {
-        ensureDescriptor(descriptors);
+      if (properties !== undefined) {
+        ensureDescriptor(properties);
 
         for (var k in descs) {
-          var desc = descriptors[k];
+          var desc = properties[k];
           ensureDescriptor(desc);
           $__DefineOwnProperty(object, key, desc);
         }
@@ -430,23 +430,41 @@
 
       return object;
     },
-    defineProperty(object, key, desc){
+    defineProperty(object, key, property){
       ensureObject(object, 'defineProperty');
-      ensureDescriptor(desc);
+      ensureDescriptor(property);
       key = $__ToPropertyName(key);
-      $__DefineOwnProperty(object, key, desc);
+      $__DefineOwnProperty(object, key, property);
       return object;
     },
-    defineProperties(object, descriptors){
+    defineProperties(object, properties){
       ensureObject(object, 'defineProperties');
-      ensureDescriptor(descriptors);
+      ensureDescriptor(properties);
 
-      for (var key in descriptors) {
-        var desc = descriptors[key];
+      for (var key in properties) {
+        var desc = properties[key];
         ensureDescriptor(desc);
         $__DefineOwnProperty(object, key, desc);
       }
 
+      return object;
+    },
+    freeze(object){
+      ensureObject(object, 'freeze');
+      var props = $__Enumerate(object, false, false);
+
+      for (var i=0; i < props.length; i++) {
+        var desc = $__GetOwnProperty(object, props[i]);
+        if (desc.configurable) {
+          desc.configurable = false;
+          if ('writable' in desc) {
+            desc.writable = false;
+          }
+          $__DefineOwnProperty(object, props[i], desc);
+        }
+      }
+
+      $__SetExtensible(object, false);
       return object;
     },
     getOwnPropertyDescriptor(object, key){
@@ -714,9 +732,9 @@
   $__defineDirect(global, 'console', {}, 6);
 
   defineProps(console, {
-    log(...args){
-      for (var i=0; i < args.length; i++) {
-        stdout.write(args[i] + ' ');
+    log(...values){
+      for (var i=0; i < values.length; i++) {
+        stdout.write(values[i] + ' ');
       }
       stdout.write('\n');
     }

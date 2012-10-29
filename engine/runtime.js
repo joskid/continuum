@@ -3014,6 +3014,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     GetExtensible: function(obj){
       return obj.GetExtensible();
     },
+    SetExtensible: function(obj, value){
+      obj.Extensible = value;
+    },
     GetPrototype: function(obj){
       return obj.GetPrototype();
     },
