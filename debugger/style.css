@@ -52,7 +52,7 @@ h1, h2
 .ƒCALL, .ƒCONSTRUCT
 { border-top: 1px solid #000; padding-top: 3px; margin-top: 3px; }
   .ƒCALL
-  { color: hsl(180, 0%, 65%); border-top-color: hsl(180, 50%, 35%); }
+  { color: hsl(180, 50%, 65%); border-top-color: hsl(180, 50%, 35%); }
   .ƒCONSTRUCT
   { color: hsl(200, 50%, 65%); border-top-color: hsl(200, 50%, 35%); }
 

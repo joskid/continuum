@@ -6610,6 +6610,7 @@ exports.assembler = (function(exports){
     VariableDeclaration: visit.RECURSE,
     VariableDeclarator : visit.RECURSE,
     BlockStatement     : visit.RECURSE,
+    Property           : visit.RECURSE,
     Identifier         : ['name'],
     FunctionDeclaration: ['id', 'name'],
     ClassDeclaration   : ['id', 'name']
@@ -7181,37 +7182,32 @@ exports.assembler = (function(exports){
     }
   };
 
-
-
   function destructure(left, right){
     var key = left.type === 'ArrayPattern' ? 'elements' : 'properties',
         lefts = left[key],
-        right = right[key],
+        rights = right[key],
         binding, value;
 
     for (var i=0; i < lefts.length; i++) {
       binding = elementAt[key](left, i);
-      value = right && right[i] ? elementAt[key](right, i) : binding;
 
       if (isPattern(binding)){
+        value = rights && rights[i] ? elementAt[key](right, i) : binding;
         destructure(binding, value);
       } else {
         if (binding.type === 'SpreadElement') {
           recurse(binding.argument);
           recurse(right);
-          record(GET);
           record(SPREAD, i);
         } else {
           recurse(binding);
           recurse(right);
-          record(GET);
           if (left.type === 'ArrayPattern') {
             record(LITERAL, i);
             record(ELEMENT, i);
           } else {
             record(MEMBER, binding.name)
           }
-          record(GET);
         }
         record(PUT);
       }
@@ -7357,11 +7353,11 @@ exports.assembler = (function(exports){
   function ClassBody(node){}
 
   function ClassDeclaration(node){
-    record(CLASS_EXPR, new ClassDefinition(node));
+    record(CLASS_DECL, new ClassDefinition(node));
   }
 
   function ClassExpression(node){
-    record(CLASS_DECL, new ClassDefinition(node));
+    record(CLASS_EXPR, new ClassDefinition(node));
   }
 
   function ClassHeritage(node){}
@@ -10022,9 +10018,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     for (var i=0; i < params.length; i++) {
       if (!env.HasBinding(params[i])) {
         env.CreateMutableBinding(params[i]);
-        if (!func.Strict) {
-          env.InitializeBinding(params[i], undefined);
-        }
+        env.InitializeBinding(params[i], undefined);
       }
     }
 
@@ -10085,6 +10079,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         }
       }
     }
+
+    console.log(func, args, env);
   }
 
 

@@ -641,9 +641,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     for (var i=0; i < params.length; i++) {
       if (!env.HasBinding(params[i])) {
         env.CreateMutableBinding(params[i]);
-        if (!func.Strict) {
-          env.InitializeBinding(params[i], undefined);
-        }
+        env.InitializeBinding(params[i], undefined);
       }
     }
 
