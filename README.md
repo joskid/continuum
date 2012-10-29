@@ -2,7 +2,7 @@
 
 Continuum is a JavaScript virtual machine built in JavaScript. It assembles bytecode from sourcecode and executes it an ES6 runtime environment. The code of the VM is written in ES3 level JavaScript, which means it can run in browsers as old as IE6. (though currently it's only been tested in IE9+ and there's probably some kinks to work out in older IE's).
 
-**ES6 is still an unfinished specification so by ES6 I'm referring to somewhat of a movning target*
+*ES6 is still an unfinished specification and is still a moving target*
 
 # Usage
 
@@ -12,6 +12,18 @@ For now use the debugger interface at http://benvie.github.com/continuum.
 
 ![screenshot](https://raw.github.com/Benvie/continuum/gh-pages/docs/screenshot.png)
 
+# Compatibility
+Continuum probably works in every modern engine, but has not been tested.
+
+Currently known to work in:
+
+* Chrome 23+
+* Firefox 15+
+* IE9+
+
+Will soon work in:
+
+* IE6-8
 
 # ES6 Implementation Status
 
@@ -50,3 +62,11 @@ For now use the debugger interface at http://benvie.github.com/continuum.
 ### Further out
 * Proper implementation of Modules
 * Binary data api
+
+
+# TODO
+* Much work on optimizations
+* Serializable state for saving applications while they run
+* Expanded debugger and eventually full dev environment built around continuum
+* Move more runtime semantics to bytecode
+* Bootstrap the runtime on an even simpler bytecode interpreter
