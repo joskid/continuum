@@ -19,6 +19,12 @@ h1, h2
   { font-size: 16px; color: #fa3; text-shadow: 1px 1px 1px #000; font-weight: normal;
     display: inline-block; vertical-align: text-bottom; margin: 0; text-shadow: 1px 1px 0 #013 }
 
+#github
+{ display: block; position: absolute; top: 8px; right: 8px; padding: 8px 15px; background: #068;
+  color: #aff; text-shadow: 1px 1px 1px #046; text-decoration: none; border-radius: 4px / 10px; }
+#github:hover
+{ background: #09c; color: #fff; box-shadow: inset 0 0 20px #6bf; text-shadow: 1px 1px 1px #000; }
+
 #container
 { }
 
