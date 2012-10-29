@@ -1,6 +1,7 @@
 var debug = (function(exports){
 
   var utility = require('./utility'),
+      isObject = utility.isObject,
       inherit = utility.inherit,
       create = utility.create,
       define = utility.define;
@@ -119,6 +120,28 @@ var debug = (function(exports){
     },
     function getValue(key){
       return this.get(key).subject;
+    },
+    function getOwnDescriptor(key){
+      var prop = this.props.getProperty(key);
+      if (prop) {
+        if (prop[2] & ACCESSOR) {
+          return {
+            name: key,
+            get: prop[1].Get,
+            set: prop[1].Set,
+            enumerable: (prop[2] & ENUMERABLE) > 0,
+            configurable: (prop[2] & CONFIGURABLE) > 0
+          }
+        } else {
+          return {
+            name: key,
+            value: prop[1],
+            writable: (prop[2] & WRITABLE) > 0,
+            enumerable: (prop[2] & ENUMERABLE) > 0,
+            configurable: (prop[2] & CONFIGURABLE) > 0
+          }
+        }
+      }
     },
     function getPrototype(){
       return introspect(this.subject.GetPrototype());
@@ -741,6 +764,80 @@ var debug = (function(exports){
   function isMirror(o){
     return o instanceof Mirror;
   }
+
+  void function(){
+    if (typeof Proxy !== 'object' || typeof require !== 'function') return;
+
+    var util = require('util'),
+        $Object = require('./runtime').builtins.$Object;
+
+    define($Object.prototype, function inspect(){
+      return util.inspect(wrap(this), true, 2, false);
+    });
+
+    function wrap(target){
+      if (isObject(target) && target instanceof $Object) {
+        target = introspect(target);
+        if (!target.proxy) {
+          if (target.getParams) {
+            target.proxy = Proxy.createFunction(new RenderHandler(target), function(){});
+          } else {
+            target.proxy = Proxy.create(new RenderHandler(target));
+          }
+        }
+        return target.proxy;
+      }
+      return target;
+    }
+
+
+    function RenderHandler(mirror){
+      this.mirror = mirror;
+    }
+
+    RenderHandler.prototype = {
+      getOwnPropertyNames: function(){
+        return this.mirror.list(true, true);
+      },
+      getPropertyNames: function(){
+        return this.mirror.list(true, false);
+      },
+      enumerate: function(){
+        return this.mirror.list(false, false);
+      },
+      keys: function(){
+        return this.mirror.list(false, true);
+      },
+      getOwnPropertyDescriptor: function(key){
+        var desc = this.mirror.getOwnDescriptor(key);
+        if (desc) {
+          desc.configurable = true;
+          if (isObject(desc.value)) {
+            desc.value = wrap(desc.value);
+          } else {
+            if (isObject(desc.get)) {
+              desc.get = wrap(desc.get);
+            }
+            if (isObject(desc.set)) {
+              desc.set = wrap(desc.set);
+            }
+          }
+        }
+        return desc;
+      },
+      get: function(rcvr, key){
+        return wrap(this.mirror.getValue(key));
+      },
+      set: function(){},
+      has: function(key){
+        return this.mirror.has(key);
+      },
+      hasOwn: function(key){
+        return this.mirror.hasOwn(key);
+      }
+    };
+  }();
+
 
   exports.createRenderer = createRenderer;
   exports.basicRenderer = render;

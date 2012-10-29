@@ -798,7 +798,7 @@ var utility = (function(exports){
     function Stack(){
       this.empty();
       for (var k in arguments)
-        this.record(arguments[k]);
+        this.push(arguments[k]);
     }
 
     function push(item){
@@ -831,11 +831,14 @@ var utility = (function(exports){
     function filter(callback, context){
       var i = this.length,
           out = new Stack;
+
       context || (context = this);
 
-      for (var i=0; i < this.length; i++)
-        if (callback.call(context, this[i], i, this))
+      for (var i=0; i < this.length; i++) {
+        if (callback.call(context, this[i], i, this)) {
           out.push(this[i]);
+        }
+      }
 
       return out;
     }
@@ -848,19 +851,20 @@ var utility = (function(exports){
     function Queue(items){
       if (isObject(items)) {
         if (items instanceof Queue) {
-          items = items.items.slice(items.front);
+          this.items = items.items.slice(items.front);
         } else if (items instanceof Array) {
-          items = items.slice();
+          this.items = items.slice();
         } else if (items.length) {
-          items = slice.call(items);
+          this.items = slice.call(items);
         } else {
-          items = [items];
+          this.items = [items];
         }
       } else if (items != null) {
-        items = [items];
+        this.items = [items];
+      } else {
+        this.items = [];
       }
-      this.items = items || [];
-      this.length = items.length;
+      this.length = this.items.length;
       this.index = 0;
     }
 
@@ -899,81 +903,46 @@ var utility = (function(exports){
   })();
 
 
-  exports.Reflection = (function(){
-    function Reflection(o){
-      if (!(this instanceof Reflection)) {
-        return new Reflection(o);
-      }
-      define(this, 'subject', o);
-    }
+  exports.Feeder = (function(){
+    function Feeder(callback, context, pace){
+      var self = this;
+      this.queue = new Queue;
+      this.active = false;
+      this.feeder = feeder;
+      this.pace = pace || 5;
 
-    function enumerate(){
-      var keys = [], i = 0;
-      for (keys[i++] in this.subject);
-      return keys;
-    }
+      function feeder(){
+        var count = Math.min(self.pace, self.queue.length);
 
-    function keys(){
-      return ownKeys(this.subject);
-    }
+        while (self.active && count--) {
+          callback.call(context, self.queue.shift());
+        }
 
-    function brand(){
-      return toBrand.call(this.subject).slice(8, -1);
-    }
-
-    function proto(){
-      return getPrototypeOf(this.subject);
-    }
-
-    function copy(){
-      return assign(create(getPrototypeOf(this.subject)), this.subject);
-    }
-
-    function clone(){
-      var out = create(getPrototypeOf(this.subject)),
-          props = getProperties(this.subject);
-
-      for (var i=0; i < props.length; i++) {
-        defineProperty(out, props[i], decribeProperty(this.subject, props[i]));
-      }
-      return out;
-    }
-
-    function inherit(from, props, methods){
-      define(this.subject, { inherits: from });
-      this.subject.prototype = create(from.prototype, {
-        constructor: { configurable: true, writable: true, value: this.subject }
-      });
-      props && define(this.subject.prototype, props);
-      methods && define(this.subject.prototype, methods);
-      return this;
-    }
-
-    function extend(){
-      for (var k in arguments) {
-        assign(this.subject, arguments[k]);
-      }
-      return this;
-    }
-
-    function visit(callback){
-      visit.visit(this.subject, callback);
-      return this;
-    }
-
-    function spawn(){
-      var out = create(this.subject);
-      if (arguments.length) {
-        for (var k in arguments) {
-          assign(out, arguments[k]);
+        if (!self.queue.length) {
+          self.active = false;
+        } else if (self.active) {
+          setTimeout(feeder, 15);
         }
       }
-      return out;
     }
 
-    define(Reflection.prototype, [enumerate,  keys,  brand,  proto,  copy,  inherit,  extend,  visit,  spawn]);
-    return Reflection;
+    function push(item){
+      this.queue.push(item);
+      if (!this.active) {
+        this.active = true;
+        setTimeout(this.feeder, 15);
+      }
+      return this;
+    }
+
+    function pause(){
+      this.active = false;
+    }
+
+    define(Feeder.prototype, [push, pause]);
+    return Feeder;
   })();
+
 
 
 

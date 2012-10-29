@@ -212,6 +212,44 @@ if (document.body.classList) {
   }(create(null));
 }
 
+function Span(text, name){
+  Component.call(this, 'span');
+  this.name = name;
+  this.text(text);
+  if (name) {
+    this.addClass(name);
+  }
+}
+
+inherit(Span, Component, []);
+
+function Div(text, name){
+  Component.call(this, 'div');
+  this.name = name;
+  this.text(text);
+  if (name) {
+    this.addClass(name);
+  }
+}
+
+inherit(Div, Component, []);
+
+
+function Button(text, name){
+  Component.call(this, 'button');
+  this.addClass('button');
+  if (name) {
+    this.addClass(name);
+  }
+  this.face = this.append(new Div(text, 'button-text'));
+}
+
+inherit(Button, Component, [
+  function text(value){
+    return this.face.text(value);
+  }
+]);
+
 // var handlers = {};
 
 // function registerHandler(type, handler){
@@ -1069,7 +1107,7 @@ inherit(ThrownBranch, Branch, [
   }
 ]);
 
-'Uncaught Exception'
+
 var renderer = new debug.Renderer({
   Unknown: Branch.create,
   BooleanValue: Leaf.create,
@@ -1096,43 +1134,6 @@ var renderer = new debug.Renderer({
   WeakMap: Branch.create
 });
 
-function Span(text, name){
-  Component.call(this, 'span');
-  this.name = name;
-  this.text(text);
-  if (name) {
-    this.addClass(name);
-  }
-}
-
-inherit(Span, Component, []);
-
-function Div(text, name){
-  Component.call(this, 'div');
-  this.name = name;
-  this.text(text);
-  if (name) {
-    this.addClass(name);
-  }
-}
-
-inherit(Div, Component, []);
-
-
-function Button(text, name){
-  Component.call(this, 'button');
-  this.addClass('button');
-  if (name) {
-    this.addClass(name);
-  }
-  this.face = this.append(new Div(text, 'button-text'));
-}
-
-inherit(Button, Component, [
-  function text(value){
-    return this.face.text(value);
-  }
-]);
 
 
 
@@ -1169,23 +1170,14 @@ function Instruction(instruction, item){
       this.append(new Span(translators[type](item), typeofs[type]));
     } else {
       if (item.Reference) {
-        if (item.base) {
-          if (item.base.bindings) {
-            if (item.base.bindings.NativeBrand) {
-              if (item.name === '__proto__') {
-                item = item.base.bindings.GetPrototype();
-              } else {
-                item = item.base.bindings.properties[item.name];
-              }
-            } else if (item.name in item.base.bindings) {
-              item = item.base.bindings[item.name];
-            }
-          } else if (item.base.NativeBrand) {
-            if (item.name === '__proto__') {
-              item = item.base.GetPrototype();
-            } else {
-              item = item.base.properties[item.name];
-            }
+        var base = item.base;
+        if (base) {
+          if (base.bindings && base.bindings.NativeBrand) {
+            base = base.bindings;
+          }
+
+          if (base.NativeBrand) {
+            item = item.name === '__proto__' ? base.GetPrototype() : base.properties.get(item.name);
           }
         }
       }
@@ -1223,70 +1215,6 @@ inherit(Instructions, Component, [
   }
 ]);
 
-
-
-function Queue(items){
-  this.items = items instanceof Queue ? items.items.slice(items.index) : [];
-  this.length = this.items.length;
-  this.index = 0;
-}
-
-define(Queue.prototype, [
-  function append(item){
-    this.items.push(item);
-    this.length++;
-    return this;
-  },
-  function shift(){
-    if (this.length) {
-      var item = this.items[this.index];
-      this.items[this.index++] = null;
-      this.length--;
-      if (this.index === 500) {
-        this.items = this.items.slice(this.index);
-        this.index = 0;
-      }
-      return item;
-    }
-  }
-]);
-
-
-function Feeder(callback, context){
-  var self = this;
-  this.queue = new Queue;
-  this.active = false;
-  this.feeder = feeder;
-
-  function feeder(){
-    var item, i = self.queue.length;
-    if (i > 5) i = 5;
-
-    while (self.active && i--) {
-      callback.call(context, self.queue.shift());
-    }
-
-    if (!self.queue.length) {
-      self.active = false;
-    } else if (self.active) {
-      setTimeout(feeder, 15);
-    }
-  }
-}
-
-define(Feeder.prototype, [
-  function append(item){
-    this.queue.append(item);
-    if (!this.active) {
-      this.active = true;
-      setTimeout(this.feeder, 15);
-    }
-    return this;
-  },
-  function pause(){
-    this.active = false;
-  }
-]);
 
 
 
@@ -1351,12 +1279,12 @@ runInContext('this', realm);
 
 
 
-var ops = new Feeder(function(op){
+var ops = new utility.Feeder(function(op){
   instructions.append(new Instruction(op[0], op[1]));
 });
 
 realm.on('op', function(op){
-  ops.append(op);
+  ops.push(op);
 });
 
 realm.on('write', stdout.append.bind(stdout));
