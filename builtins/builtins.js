@@ -431,14 +431,14 @@
       return object;
     },
     defineProperty(object, key, property){
-      ensureObject(object, 'defineProperty');
+      ensureObject(object, 'Object.defineProperty');
       ensureDescriptor(property);
       key = $__ToPropertyName(key);
       $__DefineOwnProperty(object, key, property);
       return object;
     },
     defineProperties(object, properties){
-      ensureObject(object, 'defineProperties');
+      ensureObject(object, 'Object.defineProperties');
       ensureDescriptor(properties);
 
       for (var key in properties) {
@@ -450,7 +450,7 @@
       return object;
     },
     freeze(object){
-      ensureObject(object, 'freeze');
+      ensureObject(object, 'Object.freeze');
       var props = $__Enumerate(object, false, false);
 
       for (var i=0; i < props.length; i++) {
@@ -468,33 +468,33 @@
       return object;
     },
     getOwnPropertyDescriptor(object, key){
-      ensureObject(object, 'getOwnPropertyDescriptor');
+      ensureObject(object, 'Object.getOwnPropertyDescriptor');
       key = $__ToPropertyName(key);
       return $__GetOwnProperty(object, key);
     },
     getOwnPropertyNames(object){
-      ensureObject(object, 'getOwnPropertyNames');
+      ensureObject(object, 'Object.getOwnPropertyNames');
       return $__Enumerate(object, false, false);
     },
     getPropertyDescriptor(object, key){
-      ensureObject(object, 'getPropertyDescriptor');
+      ensureObject(object, 'Object.getPropertyDescriptor');
       key = $__ToPropertyName(key);
       return $__GetProperty(object, key);
     },
     getPropertyNames(object){
-      ensureObject(object, 'getPropertyNames');
+      ensureObject(object, 'Object.getPropertyNames');
       return $__Enumerate(object, true, false);
     },
     getPrototypeOf(object){
-      ensureObject(object, 'getPrototypeOf');
+      ensureObject(object, 'Object.getPrototypeOf');
       return $__GetPrototype(object);
     },
     isExtensible(object){
-      ensureObject(object, 'isExtensible');
+      ensureObject(object, 'Object.isExtensible');
       return $__GetExtensible(object);
     },
     isFrozen(object){
-      ensureObject(object, 'isFrozen');
+      ensureObject(object, 'Object.isFrozen');
       if ($__GetExtensible(object)) {
         return false;
       }
@@ -513,7 +513,7 @@
       return true;
     },
     isSealed(object){
-      ensureObject(object, 'isSealed');
+      ensureObject(object, 'Object.isSealed');
       if ($__GetExtensible(object)) {
         return false;
       }
@@ -530,11 +530,11 @@
       return true;
     },
     keys(object){
-      ensureObject(object, 'keys');
+      ensureObject(object, 'Object.keys');
       return $__Enumerate(object, false, true);
     },
     preventExtensions(object){
-      ensureObject(object, 'preventExtensions');
+      ensureObject(object, 'Object.preventExtensions');
       $__SetExtensible(object, false);
       return object;
     }
