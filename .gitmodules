@@ -7,3 +7,9 @@
 [submodule "node_modules/CodeMirror"]
 	path = node_modules/CodeMirror
 	url = git@github.com:Benvie/CodeMirror.git
+[submodule "third_party/CodeMirror"]
+	path = third_party/CodeMirror
+	url = https://github.com/Benvie/CodeMirror.git
+[submodule "third_party/esprima"]
+	path = third_party/esprima
+	url = https://github.com/Benvie/esprima.git
