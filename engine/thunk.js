@@ -654,8 +654,13 @@ var thunk = (function(exports){
           var range = code.ops[ip].range,
               loc = code.ops[ip].loc;
 
-          error.value.setLocation(loc);
-          error.value.setCode(code.source.slice(range[0], range[1]));
+          if (!error.value.hasLocation) {
+            error.value.hasLocation = true;
+            error.value.setLocation(loc);
+            error.value.setCode(range, code.source);
+            error.value.setOrigin(code.filename, code.name);
+          }
+
           if (stacktrace) {
             if (error.value.trace) {
               [].push.apply(error.value.trace, stacktrace);
@@ -754,3 +759,4 @@ var thunk = (function(exports){
   exports.Thunk = Thunk;
   return exports;
 })(typeof module !== 'undefined' ? module.exports : {});
+

@@ -38,7 +38,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       ToInteger        = operators.ToInteger,
       ToUint32         = operators.ToUint32,
       ToInt32          = operators.ToInt32,
-      ToUint32         = operators.ToUint32,
       ToString         = operators.ToString,
       UnaryOp          = operators.UnaryOp,
       BinaryOp         = operators.BinaryOp,
@@ -109,8 +108,8 @@ var runtime = (function(GLOBAL, exports, undefined){
     return new $Error(name, type, message);
   };
 
-  AbruptCompletion.prototype.Abrupt = SYMBOLS.Abrupt
-  Completion.prototype.Completion   = SYMBOLS.Completion
+  AbruptCompletion.prototype.Abrupt = SYMBOLS.Abrupt;
+  Completion.prototype.Completion   = SYMBOLS.Completion;
 
 
   var LexicalScope          = 'Lexical',
@@ -2273,8 +2272,28 @@ var runtime = (function(GLOBAL, exports, undefined){
       setDirect(this, 'line', loc.start.line);
       setDirect(this, 'column', loc.start.column);
     },
-    function setCode(code){
-      setDirect(this, 'code', code);
+    function setOrigin(filename, scopename){
+      if (filename) {
+        setDirect(this, 'filename', filename);
+      }
+      if (scopename) {
+        setDirect(this, 'scope', scopename);
+      }
+    },
+    function setCode(range, code){
+      var eol = range[1],
+          bol = range[0],
+          len = code.length;
+      while (eol < len && code[eol + 1] !== '\n') {
+        eol++;
+      }
+      while (bol >= 0 && code[bol - 1] !== '\n') {
+        bol--;
+      }
+      var line = code.slice(bol, eol);
+      var pad = new Array(range[0] - bol + 1).join(' ');
+      pad += '|'+new Array(range[1] - range[0]).join('_')+'|';
+      setDirect(this, 'code', line + '\n' + pad);
     }
   ]);
 
@@ -2807,7 +2826,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     Function: $Function,
     Map     : $Map,
     Number  : $Number,
-    Proxy   : $Proxy,
+    //Proxy   : $Proxy,
     RegExp  : $RegExp,
     Set     : $Set,
     String  : $String,
@@ -2841,9 +2860,15 @@ var runtime = (function(GLOBAL, exports, undefined){
               catch (e) { v = new source.constructor }
             }
             if (v instanceof source.constructor || typeof v !== 'object') {
-              return v[key](a, b, c, d);
+              var result =  v[key](a, b, c, d);
             } else if (v.PrimitiveValue) {
-              return v.PrimitiveValue[key](a, b, c, d);
+              var result = v.PrimitiveValue[key](a, b, c, d);
+            }
+            if (!isObject(result)) {
+              return result;
+            }
+            if (result instanceof Array) {
+              return fromInternalArray(result);
             }
           }
         });
@@ -3293,12 +3318,12 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.type = 'reassembled function';
       if (!utility.fname(options)) {
         options = {
-          name: 'unnamed',
+          filename: 'unnamed',
           source: '('+options+')()'
         }
       } else {
         options = {
-          name: utility.fname(options),
+          filename: utility.fname(options),
           source: options+''
         };
       }
@@ -3324,18 +3349,18 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
+    this.filename = options.filename || '';
     if (this.ast) {
       this.bytecode = assemble(this);
       this.thunk = new Thunk(this.bytecode);
     }
-    this.name = options.name || '';
     return this;
   }
 
   function ScriptFile(location){
     Script.call(this, {
       source: ScriptFile.load(location),
-      name: location
+      filename: location
     });
   }
 
@@ -3348,7 +3373,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   function NativeScript(source, location){
     Script.call(this, {
       source: source,
-      name: location,
+      filename: location,
       natives: true
     });
   }

@@ -211,6 +211,10 @@ var assembler = (function(exports){
       }
     });
 
+    if (!this.topLevel && node.id) {
+      this.name = node.id.name;
+    }
+
     this.range = node.range;
     this.loc = node.loc;
 
@@ -376,7 +380,11 @@ var assembler = (function(exports){
 
     for (var i=0, method; method = node.body.body[i]; i++) {
       var code = new Code(method.value, context.source, FUNCTYPE.METHOD, false, context.code.strict);
-      code.name = method.key.name;
+      if (this.name) {
+        code.name = this.name + '#' + method.key.name;
+      } else {
+        code.name = method.key.name;
+      }
       context.pending.push(code);
 
       if (method.kind === '') {
@@ -458,7 +466,8 @@ var assembler = (function(exports){
     eval: false,
     normal: true,
     scoped: false,
-    natives: false
+    natives: false,
+    filename: null
   };
 
 
@@ -485,6 +494,7 @@ var assembler = (function(exports){
       this.levels = new Stack;
       this.jumps = new Stack;
       this.labels = null;
+      this.source = source;
 
       if (this.options.normal)
         node = node.body[0].expression;
@@ -507,6 +517,7 @@ var assembler = (function(exports){
       while (this.pending.length) {
         var lastCode = this.code;
         this.code = this.pending.pop();
+        this.code.filename = this.filename;
         if (lastCode) {
           this.code.inherit(lastCode);
         }

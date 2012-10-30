@@ -43,7 +43,7 @@ var operators = (function(exports){
     if (!v || !v.Reference) {
       return v;
     } else if (v.base === undefined) {
-      return ThrowException('non_object_property_load', [v.name, v.base]);
+      return ThrowException('not_defined', [v.name]);
     } else {
       var base = v.base;
 

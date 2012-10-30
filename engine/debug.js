@@ -777,8 +777,12 @@ var debug = (function(exports){
     var util = require('util'),
         $Object = require('./runtime').builtins.$Object;
 
-    define($Object.prototype, function inspect(){
-      return util.inspect(wrap(this), true, 2, false);
+    define($Object.prototype, function inspect(fn){
+      if (fn && typeof fn === 'function') {
+        return fn(wrap(this));
+      } else {
+        return util.inspect(wrap(this), true, 2, false);
+      }
     });
 
     function wrap(target){
@@ -832,6 +836,12 @@ var debug = (function(exports){
         return desc;
       },
       get: function(rcvr, key){
+        if (key === 'toString') {
+          var mirror = this.mirror;
+          return function toString(){
+            return '[object '+ mirror.subject.NativeBrand+']';
+          };
+        }
         return wrap(this.mirror.getValue(key));
       },
       set: function(){},
