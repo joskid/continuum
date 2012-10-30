@@ -45,17 +45,17 @@ var isFinite = Number.isFinite;
 
 $__defineProps(Number.prototype, {
   toString(radix){
-    if ($__getNativeBrand(this) === 'Number') {
+    if ($__GetNativeBrand(this) === 'Number') {
       return $__NumberToString(this, radix);
     } else {
-      throw $__exception('not_generic', ['Number.prototype.toString']);
+      throw $__Exception('not_generic', ['Number.prototype.toString']);
     }
   },
   valueOf(){
-    if ($__getNativeBrand(this) === 'Number') {
-      return $__getPrimitiveValue(this);
+    if ($__GetNativeBrand(this) === 'Number') {
+      return $__GetPrimitiveValue(this);
     } else {
-      throw $__exception('not_generic', ['Number.prototype.valueOf']);
+      throw $__Exception('not_generic', ['Number.prototype.valueOf']);
     }
   },
   clz() {

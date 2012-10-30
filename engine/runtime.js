@@ -2896,30 +2896,27 @@ var runtime = (function(GLOBAL, exports, undefined){
     ToInteger: ToInteger,
     ToInt32: ToInt32,
     ToUint32: ToUint32,
-    callFunction: function(func, receiver, args){
-      return func.Call(receiver, toInternalArray(args))
-    },
-    isConstructCall: function(){
+    IsConstructCall: function(){
       return context.isConstruct;
     },
-    getNativeBrand: function(object){
+    GetNativeBrand: function(object){
       return object.NativeBrand.name;
     },
-    markAsNative: function(fn){
+    GetPrimitiveValue: function(object){
+      return object ? object.PrimitiveValue : undefined;
+    },
+    MarkAsNative: function(fn){
       fn.Native = true;
       hide(fn, 'Native');
     },
-    markAsNativeConstructor: function(fn){
+    MarkAsNativeConstructor: function(fn){
       fn.Native = true;
       fn.NativeConstructor = true;
       hide(fn, 'Native');
       hide(fn, 'NativeConstructor');
     },
-    exception: function(type, args){
+    Exception: function(type, args){
       return MakeException(type, toInternalArray(args));
-    },
-    getPrimitiveValue: function(object){
-      return object ? object.PrimitiveValue : undefined;
     },
     write: function(text, color){
       if (color === undefined) {
@@ -2964,28 +2961,24 @@ var runtime = (function(GLOBAL, exports, undefined){
       });
       var ctx = new ExecutionContext(context, NewDeclarativeEnvironment(realm.globalEnv), realm, script.bytecode);
       ExecutionContext.push(ctx);
-      return script.thunk.run(ctx);
+      var func = script.thunk.run(ctx);
+      ExecutionContext.pop();
+      return func;
+    },
+    CallFunction: function(func, receiver, args){
+      return func.Call(receiver, toInternalArray(args));
     },
     // FUNCTION PROTOTYPE
-    FunctionToString: function(){
-      if (!IsCallable(this)) {
-        return ThrowException('not_generic', ['Function.prototype.toString'])
-      }
-      if (this.Native || !this.Code) {
-        return nativeCode[0] + this.properties.get('name') + nativeCode[1];
+    FunctionToString: function(func){
+      var code = func.Code;
+      if (func.Native || !code) {
+        return nativeCode[0] + func.properties.get('name') + nativeCode[1];
       } else {
-        var code = this.Code;
         return code.source.slice(code.range[0], code.range[1]);
       }
     },
-    call: function(receiver){
-      return this.Call(receiver, slice.call(arguments, 1));
-    },
-    apply: function(receiver, args){
-      return this.Call(receiver, toInternalArray(args));
-    },
-    bind: function(receiver){
-      return new $BoundFunction(this, receiver, slice.call(arguments, 1));
+    BoundFunctionCreate: function(func, receiver, args){
+      return new $BoundFunction(func, receiver, toInternalArray(args));
     },
 
     // BOOLEAN
@@ -3028,14 +3021,6 @@ var runtime = (function(GLOBAL, exports, undefined){
         search = search.PrimitiveValue;
       }
       return string.replace(search, replace);
-    },
-    replace: function(match, replacer){
-      if (typeof match === 'string') {
-        return this.PrimitiveValue.replace(match, replacer);
-      } else if (match instanceof $RegExp) {
-        match = match.PrimitiveValue;
-        return this.PrimitiveValue.replace(match.PrimitiveValue, replacer);
-      }
     },
     RegExpCreate: function(pattern, flags){
       if (typeof pattern === 'object') {

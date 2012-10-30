@@ -1,5 +1,5 @@
 function Object(value){
-  if ($__isConstructCall()) {
+  if ($__IsConstructCall()) {
     return {};
   } else if (value == null) {
     return {};
@@ -13,7 +13,7 @@ $__setupConstructor(Object, $__ObjectProto);
 $__defineProps(Object, {
   create(prototype, properties){
     if (typeof prototype !== 'object') {
-      throw $__exception('proto_object_or_null', [])
+      throw $__Exception('proto_object_or_null', [])
     }
 
     var object = $__ObjectCreate(prototype);
@@ -147,7 +147,7 @@ $__defineProps(Object.prototype, {
     } else if (this === null) {
       return '[object Null]';
     } else {
-      return '[object '+$__getNativeBrand($__ToObject(this))+']';
+      return '[object '+$__GetNativeBrand($__ToObject(this))+']';
     }
   },
   isPrototypeOf(object){
@@ -183,12 +183,12 @@ var E = 0x1,
 function ensureObject(o, name){
   var type = typeof o;
   if (type === 'object' ? o === null : type !== 'function') {
-    throw $__exception('called_on_non_object', [name]);
+    throw $__Exception('called_on_non_object', [name]);
   }
 }
 
 function ensureDescriptor(o){
   if (o === null || typeof o !== 'object') {
-    throw $__exception('property_desc_object', [typeof o])
+    throw $__Exception('property_desc_object', [typeof o])
   }
 }

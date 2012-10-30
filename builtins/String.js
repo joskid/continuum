@@ -1,6 +1,6 @@
 function String(string){
   string = arguments.length ? $__ToString(string) : '';
-  if ($__isConstructCall()) {
+  if ($__IsConstructCall()) {
     return $__StringCreate(string);
   } else {
     return string;
@@ -17,7 +17,7 @@ $__defineProps(String.prototype, {
         o = '';
 
     if (n <= 1 || n === Infinity || n === -Infinity) {
-      throw $__exception('invalid_repeat_count', []);
+      throw $__Exception('invalid_repeat_count', []);
     }
 
     while (n > 0) {
@@ -104,24 +104,24 @@ $__defineProps(String.prototype, {
     return $__StringSlice(string, start, end);
   },
   toString(){
-    if ($__getNativeBrand(this) === 'String') {
-      return $__getPrimitiveValue(this);
+    if ($__GetNativeBrand(this) === 'String') {
+      return $__GetPrimitiveValue(this);
     } else {
       throw $__exception('not_generic', ['String.prototype.toString']);
     }
   },
   valueOf(){
-    if ($__getNativeBrand(this) === 'String') {
-      return $__getPrimitiveValue(this);
+    if ($__GetNativeBrand(this) === 'String') {
+      return $__GetPrimitiveValue(this);
     } else {
-      throw $__exception('not_generic', ['String.prototype.valueOf']);
+      throw $__Exception('not_generic', ['String.prototype.valueOf']);
     }
   },
 });
 
 
 function isRegExp(subject){
-  return subject != null && typeof subject === 'object' && $__getNativeBrand(subject) === 'RegExp';
+  return subject != null && typeof subject === 'object' && $__GetNativeBrand(subject) === 'RegExp';
 }
 
 function stringIndexOf(string, search, position){

@@ -13,11 +13,11 @@ $__setupConstructor(Array, $__ArrayProto);
 
 $__defineProps(Array, {
   isArray(array){
-    return $__getNativeBrand(array) === 'Array';
+    return $__GetNativeBrand(array) === 'Array';
   },
   from(iterable){
     var out = [];
-    iterable = Object(iterable);
+    iterable = $__ToObject(iterable);
 
     for (var i = 0, len = iterable.length >>> 0; i < len; i++) {
       if (i in iterable) {
@@ -32,7 +32,7 @@ $__defineProps(Array, {
 $__defineProps(Array.prototype, {
   filter(callback){
     if (this == null) {
-      throw $__exception('called_on_null_or_undefined', ['Array.prototype.filter']);
+      throw $__Exception('called_on_null_or_undefined', ['Array.prototype.filter']);
     }
 
     var array = $__ToObject(this),
@@ -50,7 +50,7 @@ $__defineProps(Array.prototype, {
     for (var i = 0; i < length; i++) {
       if (i in array) {
         var element = array[i];
-        if ($__callFunction(callback, receiver, [element, i, array])) {
+        if ($__CallFunction(callback, receiver, [element, i, array])) {
           result[count++] = element;
         }
       }
@@ -66,7 +66,7 @@ $__defineProps(Array.prototype, {
       context = $__ToObject(this);
     }
     for (var i=0; i < len; i++) {
-      callback.call(context, this[i], i, this);
+      $__CallFunction(callback, context, [this[i], i, this]);
     }
   },
   map(callback, context){
@@ -78,7 +78,7 @@ $__defineProps(Array.prototype, {
       context = Object(this);
     }
     for (var i=0; i < len; i++) {
-      out.push(callback.call(context, this[i], i, this));
+      out[i] = $__CallFunction(callback, context, [this[i], i, this]);
     }
     return out;
   },
@@ -90,30 +90,13 @@ $__defineProps(Array.prototype, {
     }
     for (; index < this.length; i++) {
       if (i in this) {
-        initial = callback.call(this, initial, this[o], this);
+        initial = $__CallFunction(callback, this, [initial, this[i], this]);
       }
     }
     return initial;
   },
   join(separator){
-    var out = '', len = this.length;
-
-    if (len === 0) {
-      return out;
-    }
-
-    if (arguments.length === 0) {
-      separator = ',';
-    } else if (typeof separator !== 'string') {
-      separator = $__ToString(separator);
-    }
-
-    len--;
-    for (var i=0; i < len; i++) {
-      out += this[i] + separator;
-    }
-
-    return out + this[i];
+    return joinArray(this, separator);
   },
   push(...values){
     var len = this.length,
@@ -157,6 +140,30 @@ $__defineProps(Array.prototype, {
     return out;
   },
   toString(){
-    return this.join(',');
+    return joinArray(this, ',');
   }
 });
+
+
+
+function joinArray(array, separator){
+  var out = '',
+      len = array.length;
+
+  if (len === 0) {
+    return out;
+  }
+
+  if (arguments.length === 0) {
+    separator = ',';
+  } else if (typeof separator !== 'string') {
+    separator = $__ToString(separator);
+  }
+
+  len--;
+  for (var i=0; i < len; i++) {
+    out += array[i] + separator;
+  }
+
+  return out + array[i];
+}

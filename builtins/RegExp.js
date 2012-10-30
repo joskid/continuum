@@ -1,11 +1,11 @@
 function RegExp(pattern, flags){
-  if ($__isConstructCall()) {
+  if ($__IsConstructCall()) {
     if (pattern === undefined) {
       pattern = '';
     } else if (typeof pattern === 'string') {
-    } else if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {
+    } else if (typeof pattern === 'object' && $__GetNativeBrand(pattern) === 'RegExp') {
       if (flags !== undefined) {
-        throw $__exception('regexp_flags', []);
+        throw $__Exception('regexp_flags', []);
       }
     } else {
       pattern = $__ToString(pattern);
@@ -13,7 +13,7 @@ function RegExp(pattern, flags){
     return $__RegExpCreate(pattern, flags);
   } else {
     if (flags === undefined && pattern) {
-      if (typeof pattern === 'object' && $__getNativeBrand(pattern) === 'RegExp') {
+      if (typeof pattern === 'object' && $__GetNativeBrand(pattern) === 'RegExp') {
         return pattern;
       }
     }
@@ -26,10 +26,10 @@ $__wrapRegExpMethods(RegExp.prototype);
 
 $__defineProps(RegExp.prototype, {
   toString(){
-    if ($__getNativeBrand(this) === 'RegExp') {
+    if ($__GetNativeBrand(this) === 'RegExp') {
       return $__RegExpToString(this);
     } else {
-      throw $__exception('not_generic', ['RegExp.prototype.toString']);
+      throw $__Exception('not_generic', ['RegExp.prototype.toString']);
     }
   }
 });

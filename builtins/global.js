@@ -34,9 +34,9 @@ $__defineProps(global, {
   console: {
     log(...values){
       for (var i=0; i < values.length; i++) {
-        stdout.write(values[i] + ' ');
+        $__write(values[i] + ' ', '#fff');
       }
-      stdout.write('\n');
+      $__write('\n', '#fff');
     }
   }
 });

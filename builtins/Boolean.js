@@ -1,6 +1,6 @@
 function Boolean(value){
   value = $__ToBoolean(value);
-  if ($__isConstructCall()) {
+  if ($__IsConstructCall()) {
     return $__BooleanCreate(value);
   } else {
     return value;
@@ -11,17 +11,17 @@ $__setupConstructor(Boolean, $__BooleanProto);
 
 $__defineProps(Boolean.prototype, {
   toString(){
-    if ($__getNativeBrand(this) === 'Boolean') {
-      return $__getPrimitiveValue(this) ? 'true' : 'false';
+    if ($__GetNativeBrand(this) === 'Boolean') {
+      return $__GetPrimitiveValue(this) ? 'true' : 'false';
     } else {
-      throw $__exception('not_generic', ['Boolean.prototype.toString']);
+      throw $__Exception('not_generic', ['Boolean.prototype.toString']);
     }
   },
   valueOf(){
-    if ($__getNativeBrand(this) === 'Boolean') {
-      return $__getPrimitiveValue(this);
+    if ($__GetNativeBrand(this) === 'Boolean') {
+      return $__GetPrimitiveValue(this);
     } else {
-      throw $__exception('not_generic', ['Boolean.prototype.valueOf']);
+      throw $__Exception('not_generic', ['Boolean.prototype.valueOf']);
     }
   }
 });
