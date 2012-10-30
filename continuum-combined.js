@@ -6874,6 +6874,10 @@ exports.assembler = (function(exports){
       }
     });
 
+    if (!this.topLevel && node.id) {
+      this.name = node.id.name;
+    }
+
     this.range = node.range;
     this.loc = node.loc;
 
@@ -7039,7 +7043,11 @@ exports.assembler = (function(exports){
 
     for (var i=0, method; method = node.body.body[i]; i++) {
       var code = new Code(method.value, context.source, FUNCTYPE.METHOD, false, context.code.strict);
-      code.name = method.key.name;
+      if (this.name) {
+        code.name = this.name + '#' + method.key.name;
+      } else {
+        code.name = method.key.name;
+      }
       context.pending.push(code);
 
       if (method.kind === '') {
@@ -7121,7 +7129,8 @@ exports.assembler = (function(exports){
     eval: false,
     normal: true,
     scoped: false,
-    natives: false
+    natives: false,
+    filename: null
   };
 
 
@@ -7148,6 +7157,7 @@ exports.assembler = (function(exports){
       this.levels = new Stack;
       this.jumps = new Stack;
       this.labels = null;
+      this.source = source;
 
       if (this.options.normal)
         node = node.body[0].expression;
@@ -7170,6 +7180,7 @@ exports.assembler = (function(exports){
       while (this.pending.length) {
         var lastCode = this.code;
         this.code = this.pending.pop();
+        this.code.filename = this.filename;
         if (lastCode) {
           this.code.inherit(lastCode);
         }
@@ -7996,7 +8007,7 @@ exports.operators = (function(exports){
     if (!v || !v.Reference) {
       return v;
     } else if (v.base === undefined) {
-      return ThrowException('non_object_property_load', [v.name, v.base]);
+      return ThrowException('not_defined', [v.name]);
     } else {
       var base = v.base;
 
@@ -9423,8 +9434,13 @@ exports.thunk = (function(exports){
           var range = code.ops[ip].range,
               loc = code.ops[ip].loc;
 
-          error.value.setLocation(loc);
-          error.value.setCode(code.source.slice(range[0], range[1]));
+          if (!error.value.hasLocation) {
+            error.value.hasLocation = true;
+            error.value.setLocation(loc);
+            error.value.setCode(range, code.source);
+            error.value.setOrigin(code.filename, code.name);
+          }
+
           if (stacktrace) {
             if (error.value.trace) {
               [].push.apply(error.value.trace, stacktrace);
@@ -9525,6 +9541,7 @@ exports.thunk = (function(exports){
 })(typeof module !== 'undefined' ? module.exports : {});
 
 
+
 exports.runtime = (function(GLOBAL, exports, undefined){
   var esprima   = require('esprima'),
       errors    = require('./errors'),
@@ -9565,7 +9582,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       ToInteger        = operators.ToInteger,
       ToUint32         = operators.ToUint32,
       ToInt32          = operators.ToInt32,
-      ToUint32         = operators.ToUint32,
       ToString         = operators.ToString,
       UnaryOp          = operators.UnaryOp,
       BinaryOp         = operators.BinaryOp,
@@ -9636,8 +9652,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     return new $Error(name, type, message);
   };
 
-  AbruptCompletion.prototype.Abrupt = SYMBOLS.Abrupt
-  Completion.prototype.Completion   = SYMBOLS.Completion
+  AbruptCompletion.prototype.Abrupt = SYMBOLS.Abrupt;
+  Completion.prototype.Completion   = SYMBOLS.Completion;
 
 
   var LexicalScope          = 'Lexical',
@@ -11800,8 +11816,28 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       setDirect(this, 'line', loc.start.line);
       setDirect(this, 'column', loc.start.column);
     },
-    function setCode(code){
-      setDirect(this, 'code', code);
+    function setOrigin(filename, scopename){
+      if (filename) {
+        setDirect(this, 'filename', filename);
+      }
+      if (scopename) {
+        setDirect(this, 'scope', scopename);
+      }
+    },
+    function setCode(range, code){
+      var eol = range[1],
+          bol = range[0],
+          len = code.length;
+      while (eol < len && code[eol + 1] !== '\n') {
+        eol++;
+      }
+      while (bol >= 0 && code[bol - 1] !== '\n') {
+        bol--;
+      }
+      var line = code.slice(bol, eol);
+      var pad = new Array(range[0] - bol + 1).join(' ');
+      pad += '|'+new Array(range[1] - range[0]).join('_')+'|';
+      setDirect(this, 'code', line + '\n' + pad);
     }
   ]);
 
@@ -12334,7 +12370,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     Function: $Function,
     Map     : $Map,
     Number  : $Number,
-    Proxy   : $Proxy,
+    //Proxy   : $Proxy,
     RegExp  : $RegExp,
     Set     : $Set,
     String  : $String,
@@ -12368,9 +12404,15 @@ exports.runtime = (function(GLOBAL, exports, undefined){
               catch (e) { v = new source.constructor }
             }
             if (v instanceof source.constructor || typeof v !== 'object') {
-              return v[key](a, b, c, d);
+              var result =  v[key](a, b, c, d);
             } else if (v.PrimitiveValue) {
-              return v.PrimitiveValue[key](a, b, c, d);
+              var result = v.PrimitiveValue[key](a, b, c, d);
+            }
+            if (!isObject(result)) {
+              return result;
+            }
+            if (result instanceof Array) {
+              return fromInternalArray(result);
             }
           }
         });
@@ -12820,12 +12862,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       this.type = 'reassembled function';
       if (!utility.fname(options)) {
         options = {
-          name: 'unnamed',
+          filename: 'unnamed',
           source: '('+options+')()'
         }
       } else {
         options = {
-          name: utility.fname(options),
+          filename: utility.fname(options),
           source: options+''
         };
       }
@@ -12851,18 +12893,18 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
+    this.filename = options.filename || '';
     if (this.ast) {
       this.bytecode = assemble(this);
       this.thunk = new Thunk(this.bytecode);
     }
-    this.name = options.name || '';
     return this;
   }
 
   function ScriptFile(location){
     Script.call(this, {
       source: ScriptFile.load(location),
-      name: location
+      filename: location
     });
   }
 
@@ -12875,7 +12917,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   function NativeScript(source, location){
     Script.call(this, {
       source: source,
-      name: location,
+      filename: location,
       natives: true
     });
   }
@@ -13809,8 +13851,12 @@ exports.debug = (function(exports){
     var util = require('util'),
         $Object = require('./runtime').builtins.$Object;
 
-    define($Object.prototype, function inspect(){
-      return util.inspect(wrap(this), true, 2, false);
+    define($Object.prototype, function inspect(fn){
+      if (fn && typeof fn === 'function') {
+        return fn(wrap(this));
+      } else {
+        return util.inspect(wrap(this), true, 2, false);
+      }
     });
 
     function wrap(target){
@@ -13864,6 +13910,12 @@ exports.debug = (function(exports){
         return desc;
       },
       get: function(rcvr, key){
+        if (key === 'toString') {
+          var mirror = this.mirror;
+          return function toString(){
+            return '[object '+ mirror.subject.NativeBrand+']';
+          };
+        }
         return wrap(this.mirror.getValue(key));
       },
       set: function(){},
