@@ -1,5 +1,5 @@
 var runtime = (function(GLOBAL, exports, undefined){
-  var esprima   = require('esprima'),
+  var esprima   = require('../third_party/esprima'),
       errors    = require('./errors'),
       utility   = require('./utility'),
       assemble  = require('./assembler').assemble,

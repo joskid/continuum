@@ -72,7 +72,7 @@ var builder = new Builder;
 
 builder.addFiles('./header.js');
 
-builder.addFiles('../node_modules/esprima/esprima.js', function(name, source){
+builder.addFiles('../third_party/esprima/esprima.js', function(name, source){
   return 'exports.'+name+' = (function(exports){\n'+source+'\nreturn exports;\n})({});';
 });
 

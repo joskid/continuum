@@ -15,7 +15,7 @@ return (function(Realm){
   var exports = { builtins: {} };
 
   function require(request){
-    request = request.replace(/^\.{0,2}\//, '');
+    request = request.slice(request.lastIndexOf('/') + 1);
     return exports[request];
   }
 

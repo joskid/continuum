@@ -9543,7 +9543,7 @@ exports.thunk = (function(exports){
 
 
 exports.runtime = (function(GLOBAL, exports, undefined){
-  var esprima   = require('esprima'),
+  var esprima   = require('../third_party/esprima'),
       errors    = require('./errors'),
       utility   = require('./utility'),
       assemble  = require('./assembler').assemble,
@@ -13960,7 +13960,7 @@ return (function(Realm){
   var exports = { builtins: {} };
 
   function require(request){
-    request = request.replace(/^\.{0,2}\//, '');
+    request = request.slice(request.lastIndexOf('/') + 1);
     return exports[request];
   }
 
