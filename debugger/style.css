@@ -240,7 +240,8 @@ h1, h2
 .CodeMirror pre         { padding: 0 4px; }
 .CodeMirror-gutters     { border-right: 1px solid #036; background: #111; }
 .CodeMirror-linenumbers { min-width: 30px; }
-.CodeMirror-linenumber  { padding: 0 7px 0 5px; text-align: right; color: #036; text-shadow: 1px 1px 1px #368; font-size: 13px }
+.CodeMirror-linenumber,
+.CodeMirror-gutter-text  { padding: 0 7px 0 5px; text-align: right; color: #036; text-shadow: 1px 1px 1px #368; font-size: 13px }
 .CodeMirror .CodeMirror-cursor { border-left: 2px solid #acc; -webkit-transition: opacity .15s; }
 .CodeMirror .CodeMirror-secondarycursor { border-left: 2px solid #acc; }
 .CodeMirror .CodeMirror-cursor.CodeMirror-overwrite {}

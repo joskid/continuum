@@ -18,7 +18,7 @@ function write(file, content){
 }
 
 function escapeJS(source){
-  return '"' + source.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"') + '"';
+  return '"' + source.replace(/\\/g, '\\\\').replace(/(?!=\\)\r?\n/g, '\\n').replace(/"/g, '\\"') + '"';
 }
 
 function transformer(files, callback){
