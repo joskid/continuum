@@ -133,26 +133,43 @@ h1, h2
 
 
 .ƒsplitter
-{ position: absolute; z-index: 10000; border: 0 solid #068;
-  box-shadow: 2px 2px 5px 0 rgba(0,0,0,.6);
-  background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+{ position: absolute; z-index: 10000; border: 0 solid #068; }
+.ƒsplitter-vertical
+{ top: 0; left: 0; width: 100%; height: 3px; cursor: row-resize; border-top-width: 1px; box-shadow: 1px 3px 5px 0 rgba(0,0,0,.6); }
+.ƒsplitter-horizontal
+{ top: 0; left: 0; width: 3px; height: 100%; cursor: col-resize; border-left-width: 1px; box-shadow: 3px 1px 5px 0 rgba(0,0,0,.6); }
+
+.ƒsplitter-vertical
+{ background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6)); }
-.ƒsplitter-vertical
-{ top: 0; left: 0; width: 100%; height: 5px; cursor: row-resize; border-top-width: 1px; }
-.ƒsplitter-horizontal
-{ top: 0; left: 0; width: 5px; height: 100%; cursor: col-resize; border-left-width: 1px; }
-.ƒsplitter:hover
+.ƒsplitter-vertical:hover
 { background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8)); }
-.ƒsplitter.ƒdragging
+.ƒsplitter-vertical.ƒdragging
 { background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1)); }
+
+.ƒsplitter-horizontal
+{ background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+  background:    -moz-linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+  background:     -ms-linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+  background:         linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6)); }
+.ƒsplitter-horizontal:hover
+{ background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
+  background:    -moz-linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
+  background:     -ms-linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
+  background:         linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8)); }
+.ƒsplitter-horizontal.ƒdragging
+{ background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
+  background:    -moz-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
+  background:     -ms-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
+  background:         linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1)); }
 
 
 .ƒtree
@@ -233,20 +250,10 @@ h1, h2
 
 
 
-
-.CodeMirror             { font-family: monospace; }
-.CodeMirror-scroll      { overflow: auto; }
-.CodeMirror-lines       { padding: 4px 0; }
-.CodeMirror pre         { padding: 0 4px; }
-.CodeMirror-gutters     { border-right: 1px solid #036; background: #111; }
-.CodeMirror-linenumbers { min-width: 30px; }
-.CodeMirror-linenumber,
-.CodeMirror-gutter-text  { padding: 0 7px 0 5px; text-align: right; color: #036; text-shadow: 1px 1px 1px #368; font-size: 13px }
-.CodeMirror .CodeMirror-cursor { border-left: 2px solid #acc; -webkit-transition: opacity .15s; }
-.CodeMirror .CodeMirror-secondarycursor { border-left: 2px solid #acc; }
-.CodeMirror .CodeMirror-cursor.CodeMirror-overwrite {}
-.CodeMirror-scrollbar-filler {  }
-
+.CodeMirror .CodeMirror-secondarycursor    { border-left: 2px solid #acc; }
+.CodeMirror .CodeMirror-cursor             { border-left: 2px solid #acc; }
+.CodeMirror-gutters            { border-right: 1px solid #036; background: #111; }
+.CodeMirror-linenumber         { color: #036; text-shadow: 1px 1px 1px #368; }
 .cm-s-default .cm-keyword      { color: #f0a }
 .cm-s-default .cm-atom         { color: #f09 }
 .cm-s-default .cm-number       { color: #a0f }
@@ -284,6 +291,15 @@ h1, h2
 .cm-link     { text-decoration: underline }
 
 
+.CodeMirror             { font-family: monospace; }
+.CodeMirror-scroll      { overflow: auto; }
+.CodeMirror-lines       { padding: 4px 0; }
+.CodeMirror pre         { padding: 0 4px; }
+.CodeMirror-linenumbers { min-width: 30px; }
+.CodeMirror-linenumber  { padding: 0 7px 0 5px; text-align: right; font-size: 13px }
+.CodeMirror-cursor      { -webkit-transition: opacity .15s; }
+.CodeMirror .CodeMirror-cursor.CodeMirror-overwrite {}
+.CodeMirror-scrollbar-filler {}
 
 
 
@@ -296,11 +312,11 @@ h1, h2
   .CodeMirror-sizer
     { position: relative; }
     .CodeMirror-vscrollbar
-    { position: absolute; right: 0; top: 0; overflow-x: hidden; overflow-y: scroll; display: none; }
+    { position: absolute; z-index: 6; display: none; right: 0; top: 0; overflow-x: hidden; overflow-y: scroll; }
     .CodeMirror-hscrollbar
     { position: absolute; z-index: 6; display: none }
       .CodeMirror-scrollbar-filler
-      { position: absolute;  right: 0; bottom: 0; z-index: 6; }
+      { position: absolute; z-index: 6; right: 0; bottom: 0;}
     .CodeMirror-gutters
     { position: absolute; left: 0; top: 0; height: 100%; z-index: 1; }
       .CodeMirror-gutter
