@@ -1103,7 +1103,9 @@ inherit(ThrownBranch, Branch, [
   function refresh(){
     this.label.innerHTML = '';
     this.label.append(new Div('Uncaught Exception', 'Exception'));
-    this.label.append(new Div(this.mirror.getError()));
+    this.label.append(new Div(this.mirror.getError(), 'Exception'));
+    this.label.append(new Div(this.mirror.getValue('scope'), 'Scope'));
+    this.label.append(new Div(this.mirror.getValue('code'), 'Code'));
   }
 ]);
 
@@ -1215,18 +1217,150 @@ inherit(Instructions, Component, [
   }
 ]);
 
+function EditorOptions(o){
+  if (o)
+    for (var k in this)
+      this[k] = k in o ? o[k] : this[k];
+}
 
+EditorOptions.prototype = {
+  //autoClearEmptyLines: false,
+  autofocus          : true,
+  cursorBlinkRate    : 330,
+  cursorHeight       : 1,
+  dragDrop           : true,
+  electricChars      : true,
+  //extraKeys          : null,
+  firstLineNumber    : 1,
+  flattenSpans       : true,
+  //gutters            : null,
+  indentUnit         : 2,
+  indentWithTabs     : false,
+  keyMap             : 'default',
+  //lineNumberFormatter: null,
+  lineNumbers        : true,
+  lineWrapping       : true ,
+  mode               : 'javascript',
+  onDragEvent        : null,
+  onKeyEvent         : null,
+  pollInterval       : 100,
+  readOnly           : false,
+  //smartIndent        : true,
+  tabSize            : 4,
+  //tabindex           : null,
+  //theme              : 'default',
+  undoDepth          : 40,
+  //value              : '',
+  //viewportMargin     : 100,
+  workDelay          : 300,
+  workTime           : 200
+};
 
+CodeMirror.keyMap.debugger = {
+  'Enter': function(cm){
+    cm.editor.entry();
+  },
+  'Up': function(cm){
+    cm.editor.previous()
+  },
+  'Down': function(cm){
+    cm.editor.next()
+  },
+  fallthrough: ['basic']
+};
 
+function Editor(options){
+  Component.call(this, 'div');
+  //options = new EditorOptions(options);
+  this.addClass('editor');
+  this.codemirror = CodeMirror(this.element, {
+    lineNumbers: true,
+    autofocus: true,
+    lineWrapping: true,
+    mode: 'javascript',
+    keyMap: 'debugger',
+    autoClearEmptyLines: false,
+  });
+  this.items = [];
+  this.index = 0;
+  this.codemirror.editor = this;
+}
 
+inherit(Editor, Component, [
+  function resize(){
+    this.codemirror.refresh();
+  },
+  function entry(){
+    var value = this.codemirror.getValue();
+    this.codemirror.setValue('');
+    if (this.index !== this.items.length) {
+      this.items.splice(this.index, 0, value);
+    } else {
+      this.items.push(value);
+    }
+    this.index++;
+    this.emit('entry', { value: value });
+    return this;
+  },
+  function reset(){
+    this.items = [];
+    this.index = 0;
+    this.codemirror.setValue('');
+    return this;
+  },
+  function last(){
+    this.index = this.items.length;
+    this.codemirror.setValue('');
+    return this;
+  },
+  function previous(){
+    if (this.items.length) {
+      if (this.index === 0) {
+        this.last();
+      } else {
+        this.set('previous', this.items[--this.index]);
+      }
+    }
+    return this;
+  },
+  function next(){
+    if (this.items.length) {
+      if (this.index === this.items.length - 1) {
+        this.last();
+      } else {
+        if (this.index === this.items.length) {
+          this.index = -1
+        }
+        this.set('next', this.items[++this.index]);
+      }
+    }
+    return this;
+  },
+  function set(reason, value){
+    if (this.disabled) return;
+    this.codemirror.setValue(value);
+    this.emit(reason, { value: value });
+    CodeMirror.commands.goDocEnd(this.codemirror);
+    return this;
+  },
+  function disable(){
+    this.codemirror.readonly(true);
+    this.disabled = true;
+  },
+  function enable(){
+    this.codemirror.readonly(false);
+    this.disabled = false;
+  }
+]);
 
-var input = new InputBox({ hint: 'Enter code to run...', autofocus: true }),
+//var input = new InputBox({ hint: 'Enter code to run...', autofocus: true }),
+var body = new Component(document.body),
     stdout = new Console,
     root = _('div'),
+    input = new Editor,
     instructions = new Instructions;
 
 root.className = 'root';
-
 
 var main = new Panel(null, {
   name: 'container',
@@ -1252,9 +1386,8 @@ var main = new Panel(null, {
     },
   },
   bottom: {
-    label: 'Input',
     name: 'input',
-    size: 35,
+    size: .3,
     content: input
   }
 });
@@ -1310,11 +1443,11 @@ realm.on('pause', function(){
 
 
 
-var body = new Component(document.body);
 
 input.on('entry', function(evt){
   runInContext(evt.value, realm);
 });
+
 
 
 })(this, continuum.Realm, continuum.constants, continuum.utility, continuum.debug);

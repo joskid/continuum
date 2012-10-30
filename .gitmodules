@@ -4,3 +4,6 @@
 [submodule "node_modules/esprima"]
 	path = node_modules/esprima
 	url = git://github.com/Benvie/esprima.git
+[submodule "node_modules/CodeMirror"]
+	path = node_modules/CodeMirror
+	url = git@github.com:Benvie/CodeMirror.git
