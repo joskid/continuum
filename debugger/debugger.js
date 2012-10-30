@@ -1397,7 +1397,7 @@ function runInContext(code, realm){
   if (root.firstChild) {
     root.removeChild(root.firstChild);
   }
-  var result = renderer.render(realm.eval(code));
+  var result = renderer.render(realm.evaluate(code));
   root.appendChild(result.element);
   if (result.tree) {
     result.tree.expand();
@@ -1405,49 +1405,45 @@ function runInContext(code, realm){
   return result;
 }
 
-
-var realm = new Realm;
-
-runInContext('this', realm);
-
-
-
 var ops = new utility.Feeder(function(op){
   instructions.append(new Instruction(op[0], op[1]));
 });
 
-realm.on('op', function(op){
-  ops.push(op);
-});
 
-realm.on('write', stdout.append.bind(stdout));
-realm.on('clear', stdout.clear.bind(stdout));
-realm.on('backspace', stdout.backspace.bind(stdout));
-realm.on('pause', function(){
-  body.addClass('paused');
-  input.disable();
-  var overlay = new Div('', 'overlay');
-  body.append(overlay);
+function createRealm(){
+  var realm = new Realm;
 
-  var unpause = body.append(new Button('Unpause', 'unpause'));
-  unpause.once('click', function(){
-    body.removeClass('paused');
-    input.enable();
-    unpause.remove();
-    overlay.remove();
-    realm.resume();
+  realm.on('op', function(op){
+    ops.push(op);
   });
-});
 
+  input.on('entry', function(evt){
+    runInContext(evt.value, realm);
+  });
 
+  realm.on('write', stdout.append.bind(stdout));
+  realm.on('clear', stdout.clear.bind(stdout));
+  realm.on('backspace', stdout.backspace.bind(stdout));
+  realm.on('pause', function(){
+    body.addClass('paused');
+    input.disable();
+    var overlay = new Div('', 'overlay');
+    body.append(overlay);
 
+    var unpause = body.append(new Button('Unpause', 'unpause'));
+    unpause.once('click', function(){
+      body.removeClass('paused');
+      input.enable();
+      unpause.remove();
+      overlay.remove();
+      realm.resume();
+    });
+  });
 
+  runInContext('this', realm);
+}
 
-
-input.on('entry', function(evt){
-  runInContext(evt.value, realm);
-});
-
+setTimeout(createRealm, 1);
 
 
 })(this, continuum.Realm, continuum.constants, continuum.utility, continuum.debug);

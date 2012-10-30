@@ -1652,7 +1652,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   }, [
     function Call(receiver, args, isConstruct){
       if (realm !== this.Realm) {
-        this.Realm.activate();
+        activate(this.Realm);
       }
       if (this.ThisMode === 'lexical') {
         var local = NewDeclarativeEnvironment(this.Scope);
@@ -2478,7 +2478,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   define(ExecutionContext, [
     function push(newContext){
       context = newContext;
-      context.realm.active || context.realm.activate();
+      context.realm.active || activate(context.realm);
     },
     function pop(){
       if (context) {
@@ -2784,13 +2784,13 @@ var runtime = (function(GLOBAL, exports, undefined){
 
       if (realm !== this.realm) {
         var activeRealm = realm;
-        this.realm.activate();
+        activate(this.realm);
       }
 
       this.bindings[options.name] = new $NativeFunction(options);
 
       if (activeRealm) {
-        activeRealm.activate();
+        activate(activeRealm);
       }
     }
 
@@ -3376,6 +3376,71 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
+  function prepareToRun(realm, bytecode){
+    ExecutionContext.push(new ExecutionContext(null, realm.globalEnv, realm, bytecode));
+    var status = TopLevelDeclarationInstantiation(bytecode);
+    if (status && status.Abrupt) {
+      realm.emit(status.type, status.value);
+      return status;
+    }
+  }
+
+  function run(realm, thunk){
+    activate(realm);
+    realm.executing = thunk;
+    realm.state = 'executing';
+    realm.emit('executing', thunk);
+
+    var result = thunk.run(context);
+
+    if (result === Pause) {
+      var resume = function(){
+        resume = function(){};
+        delete realm.resume;
+        realm.emit('resume');
+        return run(realm, thunk);
+      };
+
+      realm.resume = function(){ return resume() };
+      realm.state = 'paused';
+      realm.emit('pause');
+    } else {
+      realm.executing = null;
+      realm.state = 'idle';
+      if (result && result.Abrupt) {
+        realm.emit(result.type, result.value);
+      } else {
+        realm.emit('complete', result);
+      }
+
+      deactivate(realm);
+      return result;
+    }
+  }
+
+
+  function activate(target){
+    if (realm !== target) {
+      if (realm) {
+        realm.active = false;
+        realm.emit('deactivate');
+      }
+      realms.push(realm);
+      realm = target;
+      global = operators.global = target.global;
+      intrinsics = target.intrinsics;
+      target.active = true;
+      target.emit('activate');
+    }
+  }
+
+  function deactivate(target){
+    if (realm === target) {
+      target.active = false;
+      realm = realms.pop();
+      target.emit('dectivate');
+    }
+  }
 
   var builtins,
       realms = [],
@@ -3418,92 +3483,34 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     listener && this.on('*', listener);
 
-    this.activate();
+    activate(this);
     for (var k in builtins) {
       var script = new NativeScript(builtins[k], k);
       if (script.error) {
         this.emit(script.error.type, script.error.value);
       } else {
-        this.eval(script, !listener);
+        this.evaluate(script, !listener);
       }
     }
-    this.deactivate();
+    deactivate(this);
 
     this.state = 'idle';
   }
 
-
   inherit(Realm, Emitter, [
-    function activate(){
-      if (realm !== this) {
-        if (realm) {
-          realm.active = false;
-          realm.emit('deactivate');
-        }
-        realms.push(realm);
-        realm = this;
-        global = operators.global = this.global;
-        intrinsics = this.intrinsics;
-        this.active = true;
-        this.emit('activate');
-      }
-    },
-    function deactivate(){
-      if (realm === this) {
-        this.active = false;
-        realm = realms.pop();
-        this.emit('dectivate');
-      }
-    },
-    function resume(){
-      if (this.executing) {
-        this.emit('resume');
-        return this.run(this.executing);
-      }
-    },
-    function run(thunk){
-      this.activate();
-      this.executing = thunk;
-      this.state = 'executing';
-      this.emit('executing', thunk);
-      var result = thunk.run(context);
-      if (result === Pause) {
-        this.state = 'paused';
-        this.emit('pause');
-      } else {
-        this.executing = null;
-        this.state = 'idle';
-        if (result && result.Abrupt) {
-          this.emit(result.type, result.value);
-          //console.log(context);
-        } else {
-          this.emit('complete', result);
-        }
-        this.deactivate();
-        return result;
-      }
-    },
-    function prepare(bytecode){
-      ExecutionContext.push(new ExecutionContext(null, this.globalEnv, this, bytecode));
-      var status = TopLevelDeclarationInstantiation(bytecode);
-      if (status && status.Abrupt) {
-        this.emit(status.type, status.value);
-        return status;
-      }
-    },
-    function eval(subject, quiet){
-      this.activate();
+    function evaluate(subject, quiet){
+      activate(this);
       var script = new Script(subject);
 
       if (script.error) {
         this.emit(script.error.type, script.error.value);
-        this.deactivate();
+        deactivate(this);
         return script.error;
       }
 
       realm.quiet = !!quiet;
       this.scripts.push(script);
-      return this.prepare(script.bytecode) || this.run(script.thunk);
+      return prepareToRun(this, script.bytecode) || run(this, script.thunk);
     },
   ]);
 
