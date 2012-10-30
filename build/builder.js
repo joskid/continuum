@@ -4,7 +4,7 @@ var fs = require('fs'),
 
 
 function dir(name){
-  return fs.readdirSync(name).map(function(file){
+  return fs.readdirSync(name).sort().map(function(file){
     return name + '/' + file;
   });
 }
@@ -93,7 +93,7 @@ builder.addDirectory('../builtins', function(name, source){
   if (name === 'index') {
     return '';
   } else {
-    return 'exports.builtins.'+name+' = '+escapeJS(source);
+    return 'exports.builtins.'+name+' = '+escapeJS(source) + ';';
   }
 });
 

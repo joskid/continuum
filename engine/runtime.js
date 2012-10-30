@@ -3017,8 +3017,17 @@ var runtime = (function(GLOBAL, exports, undefined){
       return new $String(string);
     },
     // STRING PROTOTYPE
-    charCode: function(char){
+    CodeUnit: function(char){
       return char.charCodeAt(0);
+    },
+    StringSlice: function(string, start, end){
+      return string.slice(start, end);
+    },
+    StringReplace: function(string, search, replace){
+      if (typeof search !== 'string') {
+        search = search.PrimitiveValue;
+      }
+      return string.replace(search, replace);
     },
     replace: function(match, replacer){
       if (typeof match === 'string') {
@@ -3372,7 +3381,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function NativeScript(source, location){
     Script.call(this, {
-      source: source,
+      source: '(function(global, undefined){\n'+source+'\n})(this)',
       filename: location,
       natives: true
     });
@@ -3426,7 +3435,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     this.activate();
     for (var k in builtins) {
-      var script = new NativeScript(builtins[k], k+'.js');
+      var script = new NativeScript(builtins[k], k);
       if (script.error) {
         this.emit(script.error.type, script.error.value);
       } else {

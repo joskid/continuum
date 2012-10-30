@@ -391,13 +391,14 @@ var operators = (function(exports){
       return finalize(val);
     }
   });
-
-  var MUL, DIV, MOD, SUB;
-  void function(makeMultiplier){
-    exports.MUL = MUL = makeMultiplier(function(l, r){ return l * r });
-    exports.DIV = DIV = makeMultiplier(function(l, r){ return l / r });
-    exports.MOD = MOD = makeMultiplier(function(l, r){ return l % r });
-    exports.SUB = SUB = makeMultiplier(function(l, r){ return l - r });
+  var MUL, DIV, MOD, SUB, BIT_OR, BIT_AND;
+  void function(makeMathOp){
+    exports.MUL = MUL = makeMathOp(function(l, r){ return l * r });
+    exports.DIV = DIV = makeMathOp(function(l, r){ return l / r });
+    exports.MOD = MOD = makeMathOp(function(l, r){ return l % r });
+    exports.SUB = SUB = makeMathOp(function(l, r){ return l - r });
+    exports.BIT_AND = BIT_AND = makeMathOp(function(l, r){ return l & r });
+    exports.BIT_OR = BIT_OR = makeMathOp(function(l, r){ return l | r });
   }(function(finalize){
     return function(lval, rval) {
       lval = ToNumber(lval);
