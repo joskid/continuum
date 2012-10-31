@@ -1299,7 +1299,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       proto = intrinsics.ObjectProto;
     this.Prototype = proto;
     this.properties = new PropertyList;
+    this.hiddens = create(null);
     $Object.tag(this);
+    hide(this, 'hiddens');
     hide(this, 'Prototype');
     hide(this, 'attributes');
   }
@@ -2905,30 +2907,44 @@ var runtime = (function(GLOBAL, exports, undefined){
     GetPrimitiveValue: function(object){
       return object ? object.PrimitiveValue : undefined;
     },
-    MarkAsNative: function(fn){
-      fn.Native = true;
-      hide(fn, 'Native');
+    SetInternal: function(object, key, value){
+      object[key] = value;
+      hide(object, key);
     },
-    MarkAsNativeConstructor: function(fn){
-      fn.Native = true;
-      fn.NativeConstructor = true;
-      hide(fn, 'Native');
-      hide(fn, 'NativeConstructor');
+    GetInternal: function(object, key){
+      return object[key];
+    },
+    SetHidden: function(object, key, value){
+      object.hiddens[key] = value;
+    },
+    GetHidden: function(object, key){
+      return object.hiddens[key];
+    },
+    DeleteHidden: function(object, key){
+      if (key in object.hiddens) {
+        delete object.hiddens[key];
+        return true;
+      }
+      return false;
+    },
+    HasHidden: function(object, key){
+      return key in object.hiddens;
+    },
+    EnumerateHidden: function(object){
+      return ownKeys(object.hiddens);
     },
     Exception: function(type, args){
       return MakeException(type, toInternalArray(args));
     },
-    write: function(text, color){
-      if (color === undefined) {
-        color = 'white';
+    Signal: function(name, value){
+      if (isObject(value)) {
+        if (value instanceof $Array) {
+          value = toInternalArray(value);
+        } else {
+          throw new Error('NYI');
+        }
       }
-      realm.emit('write', text, color);
-    },
-    clear: function(){
-      realm.emit('clear');
-    },
-    backspace: function(count){
-      realm.emit('backspace', count);
+      realm.emit(name, value);
     },
     wrapDateMethods: function(target){
       wrapNatives(Date.prototype, target);
@@ -2951,6 +2967,19 @@ var runtime = (function(GLOBAL, exports, undefined){
       });
       return script.thunk.run(context);
     },
+    CallFunction: function(func, receiver, args){
+      return func.Call(receiver, toInternalArray(args));
+    },
+
+    BoundFunctionCreate: function(func, receiver, args){
+      return new $BoundFunction(func, receiver, toInternalArray(args));
+    },
+    BooleanCreate: function(boolean){
+      return new $Boolean(boolean);
+    },
+    DateCreate: function(args){
+      return new $Date(new (applybind(Date, [null].concat(toInternalArray(args)))));
+    },
     FunctionCreate: function(args){
       args = toInternalArray(args);
       var body = args.pop();
@@ -2965,62 +2994,11 @@ var runtime = (function(GLOBAL, exports, undefined){
       ExecutionContext.pop();
       return func;
     },
-    CallFunction: function(func, receiver, args){
-      return func.Call(receiver, toInternalArray(args));
-    },
-    // FUNCTION PROTOTYPE
-    FunctionToString: function(func){
-      var code = func.Code;
-      if (func.Native || !code) {
-        return nativeCode[0] + func.properties.get('name') + nativeCode[1];
-      } else {
-        return code.source.slice(code.range[0], code.range[1]);
-      }
-    },
-    BoundFunctionCreate: function(func, receiver, args){
-      return new $BoundFunction(func, receiver, toInternalArray(args));
-    },
-
-    // BOOLEAN
-    BooleanCreate: function(boolean){
-      return new $Boolean(boolean);
-    },
-
-    // DATE
-    DateCreate: function(args){
-      return new $Date(new (applybind(Date, [null].concat(toInternalArray(args)))));
-    },
-    DateToString: function(object){
-      return ''+object.PrimitiveValue;
-    },
-    DateToNumber: function(object){
-      return +object.PrimitiveValue;
-    },
-
-    // NUMBER
     NumberCreate: function(number){
       return new $Number(number);
     },
-    NumberToString: function(object, radix){
-      return object.PrimitiveValue.toString(radix);
-    },
-
-    // STRING
-    StringCreate: function(string){
-      return new $String(string);
-    },
-    // STRING PROTOTYPE
-    CodeUnit: function(char){
-      return char.charCodeAt(0);
-    },
-    StringSlice: function(string, start, end){
-      return string.slice(start, end);
-    },
-    StringReplace: function(string, search, replace){
-      if (typeof search !== 'string') {
-        search = search.PrimitiveValue;
-      }
-      return string.replace(search, replace);
+    ObjectCreate: function(proto){
+      return new $Object(proto);
     },
     RegExpCreate: function(pattern, flags){
       if (typeof pattern === 'object') {
@@ -3033,14 +3011,41 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
       return new $RegExp(result);
     },
+    StringCreate: function(string){
+      return new $String(string);
+    },
+
+    DateToString: function(object){
+      return ''+object.PrimitiveValue;
+    },
+    FunctionToString: function(func){
+      var code = func.Code;
+      if (func.Native || !code) {
+        return nativeCode[0] + func.properties.get('name') + nativeCode[1];
+      } else {
+        return code.source.slice(code.range[0], code.range[1]);
+      }
+    },
+    NumberToString: function(object, radix){
+      return object.PrimitiveValue.toString(radix);
+    },
     RegExpToString: function(object, radix){
       return object.PrimitiveValue.toString(radix);
     },
 
-    // OBJECT
-    ObjectCreate: function(proto){
-      return new $Object(proto);
+    CodeUnit: function(char){
+      return char.charCodeAt(0);
     },
+    StringSlice: function(string, start, end){
+      return string.slice(start, end);
+    },
+    StringReplace: function(string, search, replace){
+      if (typeof search !== 'string') {
+        search = search.PrimitiveValue;
+      }
+      return string.replace(search, replace);
+    },
+
     GetExtensible: function(obj){
       return obj.GetExtensible();
     },

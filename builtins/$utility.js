@@ -14,8 +14,8 @@ var ___ = 0x00,
 
 $__defineMethods = function defineMethods(obj, props){
   for (var i in props) {
+    $__SetInternal(props[i], 'Native', true);
     $__defineDirect(obj, props[i].name, props[i], _CW);
-    $__MarkAsNative(props[i]);
     $__deleteDirect(props[i], 'prototype');
   }
   return obj;
@@ -26,7 +26,7 @@ $__defineProps = function defineProps(obj, props){
     var prop = props[name];
     $__defineDirect(obj, name, prop, _CW);
     if (typeof prop === 'function') {
-      $__MarkAsNative(prop);
+      $__SetInternal(prop, 'Native', true);
       $__defineDirect(prop, 'name', name, ___);
       $__deleteDirect(prop, 'prototype');
     }
@@ -44,7 +44,8 @@ $__setupConstructor = function setupConstructor(ctor, proto){
   $__defineDirect(ctor, 'prototype', proto, ___);
   $__defineDirect(ctor.prototype, 'constructor', ctor, ___);
   $__defineDirect(global, ctor.name, ctor, _CW);
-  $__MarkAsNativeConstructor(ctor);
+  $__SetInternal(ctor, 'Native', true);
+  $__SetInternal(ctor, 'NativeConstructor', true);
 };
 
 $__EmptyClass = function constructor(...args){

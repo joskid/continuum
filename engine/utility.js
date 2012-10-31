@@ -99,8 +99,6 @@ var utility = (function(exports){
   }
 
 
-
-
   function enumerate(o){
     var keys = [], i = 0;
     for (keys[i++] in o);
@@ -108,8 +106,6 @@ var utility = (function(exports){
   }
 
   exports.enumerate = enumerate;
-
-
 
 
   if (Object.keys) {
@@ -195,6 +191,29 @@ var utility = (function(exports){
   }
 
   exports.copy = copy;
+
+
+  function iterate(o, callback, context){
+    if (!o) return;
+    var type = typeof o;
+    context = context || this;
+    if (type === 'number' || type === 'boolean') {
+      return void callback.call(context, o, 0, o);
+    }
+    o = Object(o);
+    if (type !== 'function' && o.length) {
+      for (var i=0; i < o.length; i++) {
+        callback.call(context, o[i], i, o);
+      }
+    } else {
+      var keys = ownKeys(o);
+      for (var i=0; i < keys.length; i++) {
+        callback.call(context, o[keys[i]], keys[i], o);
+      }
+    }
+  }
+
+  exports.iterate = iterate;
 
 
   function Hidden(value){

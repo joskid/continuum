@@ -98,7 +98,7 @@ $__defineProps(String.prototype, {
   slice(start, end){
     var string = $__ToString(this);
     start = $__ToInteger(start);
-    if (end !== undefined)
+    if (end !== undefined) {
       end = $_ToInteger(end);
     }
     return $__StringSlice(string, start, end);
@@ -116,7 +116,7 @@ $__defineProps(String.prototype, {
     } else {
       throw $__Exception('not_generic', ['String.prototype.valueOf']);
     }
-  },
+  }
 });
 
 

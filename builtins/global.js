@@ -22,21 +22,22 @@ $__defineProps(global, {
 $__defineProps(global, {
   stdout: {
     write(text, color){
-      $__write(text, color);
+      $__Signal('write', [text, color]);
     },
     clear(){
-      $__clear();
+      $__Signal('clear');
     },
     backspace(count){
-      $__backspace(count);
+      $__Signal('backspace', $_ToInteger(count));
     }
   },
   console: {
     log(...values){
+      var text = '';
       for (var i=0; i < values.length; i++) {
-        $__write(values[i] + ' ', '#fff');
+        text += $__ToString(values[i]);
       }
-      $__write('\n', '#fff');
+      $__Signal('write', [text, '#fff']);
     }
   }
 });
