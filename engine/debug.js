@@ -399,6 +399,9 @@ var debug = (function(exports){
     kind: 'Thrown'
   }, [
     function getError(){
+      if (this.subject.NativeBrand.name === 'StopIteration') {
+        return 'StopIteration';
+      }
       return this.getValue('name') + ': ' + this.getValue('message');
     },
     function trace(){

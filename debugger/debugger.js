@@ -1220,6 +1220,7 @@ inherit(Instructions, Component, [
 
 void function(commands, Pass){
   var paging = CodeMirror.keyMap.paging = {
+    'Enter': function(cm){ cm.editor.entry() },
     'Up': function(cm){ cm.editor.previous() },
     'Down': function(cm){ cm.editor.next() },
     'Ctrl-Up': function(cm){ cm.editor.previous() },
@@ -1229,7 +1230,7 @@ void function(commands, Pass){
 
   function cancelPaging(cm){
     cm.setOption('keyMap', 'debugger');
-    return Pass;
+    throw Pass;
   }
 
   utility.iterate(CodeMirror.keyNames, function(name){
