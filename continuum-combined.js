@@ -7640,8 +7640,11 @@ exports.assembler = (function(exports){
     context.queue(node.Code);
   }
 
-  function FunctionExpression(node){
+  function FunctionExpression(node, methodName){
     var code = new Code(node, context.code.source, FUNCTYPE.NORMAL, false, context.code.strict);
+    if (methodName) {
+      code.name = methodName;
+    }
     context.queue(code);
     record(FUNCTION, intern(node.id ? node.id.name : ''), code);
   }
@@ -7754,7 +7757,11 @@ exports.assembler = (function(exports){
 
   function Property(node){
     if (node.kind === 'init'){
-      recurse(node.value);
+      if (node.method) {
+        FunctionExpression(node.value, node.key.name);
+      } else {
+        recurse(node.value);
+      }
       record(GET);
       record(PROPERTY, intern(node.key.name));
     } else {
@@ -11192,8 +11199,13 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
     defineDirect(this, 'length', params ? params.ExpectedArgumentCount : 0, ___);
 
-    if (typeof name === 'string' && kind !== ARROW) {
-      defineDirect(this, 'name', name, ___);
+    if (kind !== ARROW) {
+      if (!name && code.name) {
+        name = code.name;
+      }
+      if (typeof name === 'string') {
+        defineDirect(this, 'name', name, ___);
+      }
     }
 
     hide(this, 'Realm');
@@ -12477,6 +12489,25 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     },
     GetInternal: function(object, key){
       return object[key];
+    },
+    SetHidden: function(object, key, value){
+      object.hiddens[key] = value;
+    },
+    GetHidden: function(object, key){
+      return object.hiddens[key];
+    },
+    DeleteHidden: function(object, key){
+      if (key in object.hiddens) {
+        delete object.hiddens[key];
+        return true;
+      }
+      return false;
+    },
+    HasHidden: function(object, key){
+      return key in object.hiddens;
+    },
+    EnumerateHidden: function(object){
+      return ownKeys(object.hiddens);
     },
     Exception: function(type, args){
       return MakeException(type, toInternalArray(args));

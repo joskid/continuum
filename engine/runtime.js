@@ -1628,8 +1628,13 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     defineDirect(this, 'length', params ? params.ExpectedArgumentCount : 0, ___);
 
-    if (typeof name === 'string' && kind !== ARROW) {
-      defineDirect(this, 'name', name, ___);
+    if (kind !== ARROW) {
+      if (!name && code.name) {
+        name = code.name;
+      }
+      if (typeof name === 'string') {
+        defineDirect(this, 'name', name, ___);
+      }
     }
 
     hide(this, 'Realm');

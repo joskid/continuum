@@ -958,8 +958,11 @@ var assembler = (function(exports){
     context.queue(node.Code);
   }
 
-  function FunctionExpression(node){
+  function FunctionExpression(node, methodName){
     var code = new Code(node, context.code.source, FUNCTYPE.NORMAL, false, context.code.strict);
+    if (methodName) {
+      code.name = methodName;
+    }
     context.queue(code);
     record(FUNCTION, intern(node.id ? node.id.name : ''), code);
   }
@@ -1072,7 +1075,11 @@ var assembler = (function(exports){
 
   function Property(node){
     if (node.kind === 'init'){
-      recurse(node.value);
+      if (node.method) {
+        FunctionExpression(node.value, node.key.name);
+      } else {
+        recurse(node.value);
+      }
       record(GET);
       record(PROPERTY, intern(node.key.name));
     } else {
