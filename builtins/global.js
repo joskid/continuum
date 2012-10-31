@@ -1,4 +1,4 @@
-$__defineProps(global, {
+$__defineProps(this, {
   Math: $__MathCreate(),
   JSON: $__JSONCreate(),
   parseInt: $__parseInt,
@@ -16,10 +16,7 @@ $__defineProps(global, {
   isFinite(number){
     number = $__ToNumber(number);
     return number === number && number !== Infinity && number !== -Infinity;
-  }
-});
-
-$__defineProps(global, {
+  },
   stdout: {
     write(text, color){
       $__Signal('write', [text, color]);
@@ -37,7 +34,7 @@ $__defineProps(global, {
       for (var i=0; i < values.length; i++) {
         text += $__ToString(values[i]);
       }
-      $__Signal('write', [text, '#fff']);
+      $__Signal('write', [text + '\n', '#fff']);
     }
   }
 });
