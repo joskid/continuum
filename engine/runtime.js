@@ -3439,6 +3439,25 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
+  function mutationContext(realm, toggle){
+    if (toggle === undefined) {
+      toggle = !realm.mutating;
+    } else {
+      toggle = !!toggle;
+    }
+
+    if (toggle !== this.mutating) {
+      realm.mutating = toggle;
+      if (toggle) {
+        activate(realm);
+        ExecutionContext.push(realm.mutationScope);
+      } else {
+        ExecutionContext.pop();
+      }
+    }
+    return toggle;
+  }
+
   var builtins,
       realms = [],
       realm = null,
@@ -3481,6 +3500,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     listener && this.on('*', listener);
 
     activate(this);
+    this.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, new NativeScript('void 0', 'mutation scope'));
     for (var k in builtins) {
       var script = new NativeScript(builtins[k], k);
       if (script.error) {
@@ -3492,29 +3512,43 @@ var runtime = (function(GLOBAL, exports, undefined){
     deactivate(this);
 
     this.state = 'idle';
+    if (!realm) {
+      activate(this);
+    }
   }
 
   inherit(Realm, Emitter, [
+    function enterMutationContext(){
+      mutationContext(this, true);
+    },
+    function exitMutationContext(){
+      mutationContext(this, false);
+    },
     function evaluate(subject, quiet){
       activate(this);
       var script = new Script(subject);
 
       if (script.error) {
         this.emit(script.error.type, script.error.value);
-        deactivate(this);
         return script.error;
       }
 
       realm.quiet = !!quiet;
       this.scripts.push(script);
       return prepareToRun(this, script.bytecode) || run(this, script.thunk);
-    },
+    }
   ]);
 
 
 
   exports.Realm = Realm;
   exports.Script = Script;
+  exports.activeRealm = function activeRealm(){
+    return realm;
+  };
+  exports.activeContext = function activeContext(){
+    return context;
+  }
 
   exports.builtins = {
     $Object: $Object

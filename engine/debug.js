@@ -12,6 +12,8 @@ var debug = (function(exports){
       WRITABLE = constants.ATTRIBUTES.WRITABLE,
       ACCESSOR = constants.ATTRIBUTES.ACCESSOR;
 
+  var runtime = require('./runtime'),
+      realm = runtime.activeRealm;
 
   function always(value){
     return function(){ return value };
@@ -113,16 +115,84 @@ var debug = (function(exports){
       if (!prop) {
         return this.getPrototype().get(key);
       } else if (prop[2] & ACCESSOR) {
-        return introspect(this.subject.Get(key));
+        realm().enterMutationContext();
+        var ret = introspect(this.subject.Get(key));
+        realm().exitMutationContext();
+        return ret;
       } else {
         return introspect(prop[1]);
       }
     },
-    function getInternal(name){
-      return this.subject[name];
-    },
     function getValue(key){
       return this.get(key).subject;
+    },
+    function getPrototype(){
+      return introspect(this.subject.GetPrototype());
+    },
+    function setPrototype(value){
+      realm().enterMutationContext();
+      var ret = this.subject.SetPrototype(value);
+      realm().exitMutationContext();
+      return ret;
+    },
+    function set(key, value){
+      var ret;
+      realm().enterMutationContext();
+      if (key === '__proto__') {
+        this.subject.SetPrototype(value);
+        ret = true;
+      } else {
+        ret = this.subject.Put(key, value, false);
+      }
+      realm().exitMutationContext();
+      return ret;
+    },
+    function setAttribute(key, attr){
+      var prop = this.props.getProperty(key);
+      if (prop) {
+        prop[2] = attr;
+        return true;
+      }
+      return false;
+    },
+    function defineProperty(key, desc){
+      desc = Object(desc);
+      var Desc = {};
+      if ('value' in desc) {
+        Desc.Value = desc.value;
+      }
+      if ('get' in desc) {
+        Desc.Get = desc.get;
+      }
+      if ('set' in desc) {
+        Desc.Set = desc.set;
+      }
+      if ('enumerable' in desc) {
+        Desc.Enumerable = desc.enumerable;
+      }
+      if ('configurable' in desc) {
+        Desc.Configurable = desc.configurable;
+      }
+      if ('writable' in desc) {
+        Desc.Writable = desc.writable;
+      }
+      realm().enterMutationContext();
+      var ret = this.subject.DefineOwnProperty(key, Desc, false);
+      realm().exitMutationContext();
+      return ret;
+    },
+    function hasOwn(key){
+      if (this.props) {
+        return this.props.has(key);
+      } else {
+        return false;
+      }
+    },
+    function has(key){
+      return this.hasOwn(key) || this.getPrototype().has(key);
+    },
+    function isExtensible(key){
+      return this.subject.GetExtensible();
     },
     function getOwnDescriptor(key){
       var prop = this.props.getProperty(key);
@@ -146,21 +216,8 @@ var debug = (function(exports){
         }
       }
     },
-    function getPrototype(){
-      return introspect(this.subject.GetPrototype());
-    },
-    function hasOwn(key){
-      if (this.props) {
-        return this.props.has(key);
-      } else {
-        return false;
-      }
-    },
-    function has(key){
-      return this.hasOwn(key) || this.getPrototype().has(key);
-    },
-    function isExtensible(key){
-      return this.subject.GetExtensible();
+    function getInternal(name){
+      return this.subject[name];
     },
     function isPropEnumerable(key){
       return (this.propAttributes(key) & ENUMERABLE) > 0;
@@ -365,6 +422,25 @@ var debug = (function(exports){
         return names;
       } else {
         return [];
+      }
+    },
+    function apply(receiver, args){
+      if (receiver.subject) {
+        receiver = receiver.subject;
+      }
+      realm().enterMutationContext();
+      var ret = this.subject.Call(receiver, args);
+      realm().exitMutationContext();
+      return introspect(ret);
+    },
+    function construct(args){
+      if (this.subject.Construct) {
+        realm().enterMutationContext();
+        var ret = this.subject.Construct(args);
+        realm().exitMutationContext();
+        return introspect(ret);
+      } else {
+        return false;
       }
     }
   ]);
@@ -778,6 +854,7 @@ var debug = (function(exports){
     if (typeof Proxy !== 'object' || typeof require !== 'function') return;
 
     var util = require('util'),
+        wrappers = new WeakMap,
         $Object = require('./runtime').builtins.$Object;
 
     define($Object.prototype, function inspect(fn){
@@ -788,19 +865,41 @@ var debug = (function(exports){
       }
     });
 
+
     exports.wrap = wrap;
 
     function wrap(target){
-      if (isObject(target) && target instanceof $Object) {
-        target = introspect(target);
-        if (!target.proxy) {
-          if (target.getParams) {
-            target.proxy = Proxy.createFunction(new RenderHandler(target), function(){});
-          } else {
-            target.proxy = Proxy.create(new RenderHandler(target));
+      if (isObject(target)) {
+        if (target instanceof $Object) {
+          target = introspect(target);
+        }
+        if (target instanceof MirrorObject) {
+          if (!target.proxy) {
+            if (target.type === 'function') {
+              var handler = new RenderHandler(target);
+              target.proxy = Proxy.createFunction(handler,
+                function(){ return handler.apply(this, [].slice.call(arguments)) },
+                function(){ return handler.construct([].slice.call(arguments)) }
+              );
+            } else {
+              target.proxy = Proxy.create(new RenderHandler(target));
+            }
+            wrappers.set(target.proxy, target.subject);
           }
+        } else if (target instanceof Mirror) {
+          return Mirror.subject;
         }
         return target.proxy;
+      }
+      return target;
+    }
+
+    function unwrap(target){
+      if (!isObject(target) || target instanceof $Object) {
+        return target;
+      }
+      if (wrappers.has(target)) {
+        return wrappers.get(target);
       }
       return target;
     }
@@ -841,20 +940,49 @@ var debug = (function(exports){
         return desc;
       },
       get: function(rcvr, key){
+        if (key === 'inspect') return;
         if (key === 'toString') {
           var mirror = this.mirror;
           return function toString(){
             return '[object '+ mirror.subject.NativeBrand+']';
           };
         }
-        return wrap(this.mirror.getValue(key));
+        var result = this.mirror.get(key);
+        if (!isObject(result.subject)) {
+          return result.subject;
+        } else {
+          return wrap(result);
+        }
+
       },
-      set: function(){},
+      set: function(receiver, key, value){
+        this.mirror.set(key, unwrap(value));
+        return true;
+      },
+      defineProperty: function(key, desc){
+        if ('value' in desc) {
+          desc.value = unwrap(desc.value);
+        } else {
+          if ('get' in desc) {
+            desc.get = unwrap(desc.get);
+          }
+          if ('set' in desc) {
+            desc.set = unwrap(desc.set);
+          }
+        }
+        this.mirror.defineProperty(key, desc);
+      },
       has: function(key){
         return this.mirror.has(key);
       },
       hasOwn: function(key){
         return this.mirror.hasOwn(key);
+      },
+      apply: function(receiver, args){
+        return wrap(this.mirror.apply(unwrap(receiver), args.map(unwrap)));
+      },
+      construct: function(args){
+        return wrap(this.mirror.construct(args.map(unwrap)));
       }
     };
   }();
