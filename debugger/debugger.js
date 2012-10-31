@@ -1217,72 +1217,86 @@ inherit(Instructions, Component, [
   }
 ]);
 
-function EditorOptions(o){
-  if (o)
-    for (var k in this)
-      this[k] = k in o ? o[k] : this[k];
-}
 
-EditorOptions.prototype = {
-  //autoClearEmptyLines: false,
-  autofocus          : true,
-  cursorBlinkRate    : 330,
-  cursorHeight       : 1,
-  dragDrop           : true,
-  electricChars      : true,
-  //extraKeys          : null,
-  firstLineNumber    : 1,
-  flattenSpans       : true,
-  //gutters            : null,
-  indentUnit         : 2,
-  indentWithTabs     : false,
-  keyMap             : 'default',
-  //lineNumberFormatter: null,
-  lineNumbers        : true,
-  lineWrapping       : true ,
-  mode               : 'javascript',
-  onDragEvent        : null,
-  onKeyEvent         : null,
-  pollInterval       : 100,
-  readOnly           : false,
-  //smartIndent        : true,
-  tabSize            : 4,
-  //tabindex           : null,
-  //theme              : 'default',
-  undoDepth          : 40,
-  //value              : '',
-  //viewportMargin     : 100,
-  workDelay          : 300,
-  workTime           : 200
-};
+void function(commands, Pass){
+  var paging = CodeMirror.keyMap.paging = {
+    'Up': function(cm){ cm.editor.previous() },
+    'Down': function(cm){ cm.editor.next() },
+    'Ctrl-Up': function(cm){ cm.editor.previous() },
+    'Ctrl-Down': function(cm){ cm.editor.next() },
+    fallthrough: ['default']
+  };
 
-CodeMirror.keyMap.debugger = {
-  'Enter': function(cm){
-    cm.editor.entry();
-  },
-  'Up': function(cm){
-    cm.editor.previous()
-  },
-  'Down': function(cm){
-    cm.editor.next()
-  },
-  fallthrough: ['basic']
-};
+  function cancelPaging(cm){
+    cm.setOption('keyMap', 'debugger');
+    return Pass;
+  }
+
+  utility.iterate(CodeMirror.keyNames, function(name){
+    if (!(name in paging)) {
+      paging[name] = cancelPaging;
+    }
+  });
+
+  CodeMirror.keyMap.debugger = {
+    'Enter': function(cm){
+      cm.editor.entry();
+    },
+    'Up': function(cm){
+      if (!cm.getValue() && cm.editor.count) {
+        cm.setOption('keyMap', 'paging');
+        cm.editor.previous();
+      } else {
+        commands.goLineUp(cm);
+      }
+    },
+    'Down': function(cm){
+      if (!cm.getValue() && cm.editor.count) {
+        cm.setOption('keyMap', 'paging');
+        cm.editor.next();
+      } else {
+        commands.goLineDown(cm);
+      }
+    },
+    'Ctrl-Up': function(cm){
+      if (cm.editor.count) {
+        cm.setOption('keyMap', 'paging');
+        cm.editor.previous()
+      } else {
+        return Pass;
+      }
+    },
+    'Ctrl-Down': function(cm){
+      if (cm.editor.count) {
+        cm.setOption('keyMap', 'paging');
+        cm.editor.next()
+      } else {
+        return Pass;
+      }
+    },
+    fallthrough: ['default']
+  };
+}(CodeMirror.commands, CodeMirror.Pass);
+
 
 function Editor(options){
   Component.call(this, 'div');
   //options = new EditorOptions(options);
   this.addClass('editor');
-  this.codemirror = CodeMirror(this.element, {
+  this.codemirror = new CodeMirror(this.element, {
     lineNumbers: true,
     autofocus: true,
     lineWrapping: true,
+    smartIndent: true,
+    autoClearEmptyLines: false,
     mode: 'javascript',
     keyMap: 'debugger',
-    autoClearEmptyLines: false,
+    tabSize: 4,
+    pollInterval: 50
   });
   this.items = [];
   this.index = 0;
+  this.count = 0;
   this.codemirror.editor = this;
 }
 
@@ -1299,12 +1313,14 @@ inherit(Editor, Component, [
       this.items.push(value);
     }
     this.index++;
+    this.count++;
     this.emit('entry', { value: value });
     return this;
   },
   function reset(){
     this.items = [];
     this.index = 0;
+    this.count = 0;
     this.codemirror.setValue('');
     return this;
   },
