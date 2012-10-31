@@ -1,6 +1,6 @@
 function Number(value){
   value = $__ToNumber(value);
-  if ($__isConstructCall()) {
+  if ($__IsConstructCall()) {
     return $__NumberCreate(value);
   } else {
     return value;
