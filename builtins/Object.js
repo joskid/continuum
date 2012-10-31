@@ -147,7 +147,7 @@ $__defineProps(Object.prototype, {
     } else if (this === null) {
       return '[object Null]';
     } else {
-      return '[object '+$__GetNativeBrand($__ToObject(this))+']';
+      return '[object '+$__GetBrand($__ToObject(this))+']';
     }
   },
   isPrototypeOf(object){

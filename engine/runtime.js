@@ -774,6 +774,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       PropertyDefinitionEvaluation(method.kind, proto, method.name, method.code);
     }
 
+    ctor.Class = true;
+    if (name) proto.Brand = name;
+
     context.LexicalEnvironment = lex;
     return ctor;
   }
@@ -2266,7 +2269,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function $Error(name, type, message){
     $Object.call(this, intrinsics[name+'Proto']);
-    defineDirect(this, 'message', message, _CW);
+    defineDirect(this, 'message', message, ECW);
     if (type !== undefined) {
       defineDirect(this, 'type', type, _CW);
     }
@@ -2909,6 +2912,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     GetNativeBrand: function(object){
       return object.NativeBrand.name;
     },
+    GetBrand: function(object){
+      return object.Brand || object.NativeBrand.name;
+    },
     GetPrimitiveValue: function(object){
       return object ? object.PrimitiveValue : undefined;
     },
@@ -3543,6 +3549,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   exports.Realm = Realm;
   exports.Script = Script;
+  exports.NativeScript = NativeScript;
   exports.activeRealm = function activeRealm(){
     return realm;
   };
