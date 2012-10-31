@@ -1458,7 +1458,6 @@ function createRealm(){
     });
   });
 
-  realm.on('throw', console.log.bind(console));
 
   runInContext('this', realm);
 }

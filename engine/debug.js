@@ -123,6 +123,12 @@ var debug = (function(exports){
         return introspect(prop[1]);
       }
     },
+    function isClass(){
+      return !!this.subject.Class;
+    },
+    function getBrand(){
+      return this.subject.Brand || this.subject.NativeBrand;
+    },
     function getValue(key){
       return this.get(key).subject;
     },
@@ -241,6 +247,9 @@ var debug = (function(exports){
       return prop ? prop[2] : this.getPrototype().propAttributes(key);
     },
     function label(){
+      if (this.subject.Brand) {
+        return this.subject.Brand;
+      }
       var brand = this.subject.NativeBrand;
       if (brand && brand.name !== 'Object') {
         return brand.name;
