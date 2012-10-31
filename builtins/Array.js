@@ -156,11 +156,6 @@ $__defineProps(Array.prototype, {
   }
 });
 
-$__defineProps(Array.prototype, {
-  @@iterator: Array.prototype.items
-});
-
-
 function joinArray(array, separator){
   var out = '',
       len = array.length;
@@ -245,11 +240,4 @@ class ArrayIterator {
     }
     return key;
   }
-  @@iterator(){
-    return this;
-  }
 };
-
-$__defineProps(ArrayIterator.prototype, {
-  @@toStringTag: 'Array Iterator'
-});
