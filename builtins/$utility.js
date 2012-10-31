@@ -1,15 +1,15 @@
 var ___ = 0x00,
     E__ = 0x01,
     _C_ = 0x02,
-    EC_ = E__ | _C_,
+    EC_ = 3,
     __W = 0x04,
-    E_W = E__ | __W,
-    _CW = _C_ | __W,
-    ECW = EC_ | __W,
+    E_W = 5,
+    _CW = 6,
+    ECW = 7,
     __A = 0x08,
-    E_A = E__ | __A,
-    _CA = _C_ | __A,
-    ECA = EC_ | __A;
+    E_A = 9,
+    _CA = 10,
+    ECA = 11;
 
 
 $__defineMethods = function defineMethods(obj, props){

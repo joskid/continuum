@@ -34,3 +34,4 @@ module.exports = continuum;
 continuum.debug = debug;
 continuum.Realm = runtime.Realm;
 continuum.createBytecode = createBytecode;
+utility.define(continuum, 'utility', utility);
