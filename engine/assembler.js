@@ -916,76 +916,77 @@ var assembler = (function(exports){
   }
 
   function ForStatement(node){
-    entrance(function(){
-      var init = node.init;
-      if (init){
-        recurse(init);
-        if (init.type !== 'VariableDeclaration') {
-          record(GET);
-          record(POP);
-        } else if (init.kind === 'let' || init.kind === 'const') {
-          var decl = init.declarations[init.declarations.length - 1].id;
-          var lexicalDecl = {
-            type: 'VariableDeclaration',
-            kind: init.kind,
-            declarations: [{
-              type: 'VariableDeclarator',
-              id: decl,
-              init: null
-            }],
-          };
-          lexicalDecl.BoundNames = BoundNames(lexicalDecl);
+    lexical(function(){
+      entrance(function(){
+        var scope = record(BLOCK, { LexicalDeclarations: [] });
+        var init = node.init;
+        if (init){
+          if (init.type === 'VariableDeclaration') {
+            if (init.kind === 'let' || init.kind === 'const') {
+              var decl = init.declarations[init.declarations.length - 1].id;
+              scope[0].LexicalDeclarations = BoundNames(decl);
+              var lexicalDecl = {
+                type: 'VariableDeclaration',
+                kind: init.kind,
+                declarations: [{
+                  type: 'VariableDeclarator',
+                  id: decl,
+                  init: null
+                }],
+              };
+              lexicalDecl.BoundNames = BoundNames(lexicalDecl);
+            }
+            recurse(init);
+          } else {
+            record(GET);
+            record(POP);
+          }
         }
-      }
 
-      var test = current();
+        var test = current();
 
-      if (node.test) {
-        recurse(node.test);
-        record(GET);
-        var op = record(IFEQ, 0, false);
-      }
+        if (node.test) {
+          recurse(node.test);
+          record(GET);
+          var op = record(IFEQ, 0, false);
+        }
 
-      var update = current();
+        var update = current();
 
-      if (decl) {
-        recurse(decl);
-        record(GET);
-      }
-
-      if (node.body.body && decl) {
-        block(function(){
-          lexical(function(){
-            var lexicals = LexicalDeclarations(node.body.body);
-            record(BLOCK, { LexicalDeclarations: lexicals });
-
-            if (decl) {
+        if (node.body.body && decl) {
+          recurse(decl);
+          record(GET);
+          block(function(){
+            lexical(function(){
+              var lexicals = LexicalDeclarations(node.body.body);
               lexicals.push(lexicalDecl);
+              record(BLOCK, { LexicalDeclarations: lexicals });
               recurse(decl);
               record(ROTATE, 1);
               record(PUT);
-            }
 
-            for (var i=0, item; item = node.body.body[i]; i++) {
-              recurse(item);
-            }
+              for (var i=0, item; item = node.body.body[i]; i++) {
+                recurse(item);
+              }
 
-            record(UPSCOPE);
+              record(UPSCOPE);
+            });
           });
-        });
-      } else {
-        recurse(node.body);
-      }
+        } else {
+          recurse(node.body);
+        }
 
-      if (node.update) {
-        recurse(node.update);
-        record(GET);
-        record(POP);
-      }
+        if (node.update) {
+          recurse(node.update);
+          record(GET);
+          record(POP);
+        }
 
-      record(JUMP, test);
-      adjust(op);
-      return update;
+        record(JUMP, test);
+        adjust(op);
+        return update;
+      });
+      record(UPSCOPE);
     });
   }
 

@@ -6704,7 +6704,8 @@ exports.assembler = (function(exports){
       AST       = constants.AST,
       FUNCTYPE  = constants.FUNCTYPE.hash;
 
-  var hasOwn = {}.hasOwnProperty;
+  var hasOwn = {}.hasOwnProperty,
+      push = [].push;
 
 
 
@@ -6772,7 +6773,7 @@ exports.assembler = (function(exports){
     }
     return function(node){
       node.IsConstantDeclaration = isConst(node);
-      node.BoundNames = BoundNames(node);
+      node.BoundNames = BoundNames(node).map(intern);
       return node;
     };
   });
@@ -6853,16 +6854,23 @@ exports.assembler = (function(exports){
   function Params(params, node, rest){
     this.length = 0;
     if (params) {
-      [].push.apply(this, params);
+      // for (var i=0; i < params.length; i++) {
+      //   if (params[i].type === 'Identifier') {
+      //     push.call(this, intern(params[i].name))
+      //   } else {
+      //     push.call(this, params[i]);
+      //   }
+      // }
+      push.apply(this, params)
     }
     this.Rest = rest;
-    this.BoundNames = BoundNames(node);
+    this.BoundNames = BoundNames(node).map(intern);
     var args = collectExpectedArguments(this);
     this.ExpectedArgumentCount = args.length;
     this.ArgNames = [];
     for (var i=0; i < args.length; i++) {
       if (args[i].type === 'Identifier') {
-        this.ArgNames.push(args[i].name);
+        this.ArgNames.push(intern(args[i].name));
       } else {
 
       }
@@ -6885,6 +6893,9 @@ exports.assembler = (function(exports){
     define(this, {
       body: body,
       source: source,
+      range: node.range,
+      loc: node.loc,
+      children: [],
       LexicalDeclarations: LexicalDeclarations(body),
       createOperation: function(args){
         var op =  new Instruction(args);
@@ -6897,9 +6908,6 @@ exports.assembler = (function(exports){
       this.name = node.id.name;
     }
 
-    this.range = node.range;
-    this.loc = node.loc;
-
     this.global = global;
     this.entrances = [];
     this.Type = type || FUNCTYPE.NORMAL;
@@ -6907,33 +6915,38 @@ exports.assembler = (function(exports){
     this.NeedsSuperBinding = ReferencesSuper(this.body);
     this.Strict = strict || isStrict(this.body);
     this.params = new Params(node.params, node, node.rest);
-    this.ops = [];
-    this.children = [];
-
+    this.ops = new Ops;
   }
+
+  function Ops(){
+    var self = [];
+    self.__proto__ = Ops.prototype;
+    return self;
+  }
+
+  Ops.prototype = [];
+  Ops.prototype.inspect = function inspect(){
+    var out = [];
+
+    return this.map(function(op, i){
+      return ('   '+i).slice(-4) + ' '+util.inspect(op);
+    }).join('\n');
+  }
+
+  var proto = Math.random().toString(36).slice(2);
 
   define(Code.prototype, [
     function inherit(code){
       if (code) {
-        this.identifiers = code.identifiers;
+        this.strings = code.strings;
         this.hash = code.hash;
         this.natives = code.natives;
-      }
-    },
-    function intern(name){
-      return name;
-      if (name in this.hash) {
-        return this.hash[name];
-      } else {
-        var index = this.hash[name] = this.identifiers.length;
-        this.identifiers[index] = name;
-        return index;
       }
     },
     function lookup(id){
       return id;
       if (typeof id === 'number') {
-        return this.identifiers[id];
+        return this.strings[id];
       } else {
         return id;
       }
@@ -7015,13 +7028,14 @@ exports.assembler = (function(exports){
       SUPER_ELEMENT = new OpCode(0, 'SUPER_ELEMENT'),
       SUPER_MEMBER  = new OpCode(1, 'SUPER_MEMBER'),
       THIS          = new OpCode(0, 'THIS'),
-      THROW         = new OpCode(1, 'THROW'),
+      THROW         = new OpCode(0, 'THROW'),
       UNARY         = new OpCode(1, 'UNARY'),
       UNDEFINED     = new OpCode(0, 'UNDEFINED'),
       UPDATE        = new OpCode(1, 'UPDATE'),
       UPSCOPE       = new OpCode(0, 'UPSCOPE'),
       VAR           = new OpCode(1, 'VAR'),
       WITH          = new OpCode(0, 'WITH');
+
 
 
 
@@ -7040,16 +7054,8 @@ exports.assembler = (function(exports){
     function inspect(){
       var out = [];
       for (var i=0; i < this.op.params; i++) {
-        if (typeof this[i] === 'number') {
-          var interned = this.code.lookup(this[i]);
-          if (typeof interned === 'string') {
-            out.push(interned)
-          }
-        } else {
-          out.push(util.inspect(this[i]));
-        }
+        out.push(util.inspect(this[i]));
       }
-
       return util.inspect(this.op)+'('+out.join(', ')+')';
     }
   ]);
@@ -7101,6 +7107,9 @@ exports.assembler = (function(exports){
   define(Unwinder.prototype, [
     function toJSON(){
       return [this.type, this.begin, this.end];
+    },
+    function inspect(){
+      return constants.ENTRY.array[this.type] + '(' + this.begin + ' => ' + this.end + ')';
     }
   ]);
 
@@ -7158,6 +7167,10 @@ exports.assembler = (function(exports){
 
   function Assembler(options){
     this.options = new AssemblerOptions(options);
+    define(this, {
+      strings: [],
+      hash: create(null)
+    });
   }
 
   define(Assembler.prototype, {
@@ -7172,6 +7185,7 @@ exports.assembler = (function(exports){
 
   define(Assembler.prototype, [
     function assemble(node, source){
+      context = this;
       this.pending = new Stack;
       this.levels = new Stack;
       this.jumps = new Stack;
@@ -7183,8 +7197,11 @@ exports.assembler = (function(exports){
 
       var type = this.options.eval ? 'eval' : this.options.normal ? 'function' : 'global';
       var code = new Code(node, source, type, !this.options.scoped);
-      code.identifiers = [];
-      code.hash = create(null);
+      define(code, {
+        strings: this.strings,
+        hash: this.hash
+      });
+
       code.topLevel = true;
 
       if (this.options.natives) {
@@ -7193,7 +7210,6 @@ exports.assembler = (function(exports){
       }
 
       parenter(node);
-      context = this;
       this.queue(code);
 
       while (this.pending.length) {
@@ -7223,7 +7239,24 @@ exports.assembler = (function(exports){
         this.code.children.push(code);
       }
       this.pending.push(code);
-    }
+    },
+    function intern(name){
+      if (name === '__proto__') {
+        if (!this.hash[proto]) {
+          var index = this.hash[proto] = this.strings.length;
+          this.strings[index] = '__proto__';
+        }
+        name = proto;
+      }
+
+      if (name in this.hash) {
+        return this.hash[name];
+      } else {
+        var index = this.hash[name] = this.strings.length;
+        this.strings[index] = name;
+        return index;
+      }
+    },
   ]);
 
   var currentNode;
@@ -7239,7 +7272,7 @@ exports.assembler = (function(exports){
   }
 
   function intern(string){
-    return string;
+    return string//context.intern(string);
   }
 
   function record(){
@@ -7481,7 +7514,7 @@ exports.assembler = (function(exports){
       var decls = LexicalDeclarations(node.body);
       decls.push({
         type: 'VariableDeclaration',
-        kind: 'var',
+        kind: 'let',
         IsConstantDeclaration: false,
         BoundNames: [node.param.name],
         declarations: [{
@@ -7492,10 +7525,10 @@ exports.assembler = (function(exports){
       });
       record(BLOCK, { LexicalDeclarations: decls });
       recurse(node.param);
-      record(GET);
       record(PUT);
-      for (var i=0, item; item = node.body.body[i]; i++)
+      for (var i=0, item; item = node.body.body[i]; i++) {
         recurse(item);
+      }
 
       record(UPSCOPE);
     });
@@ -7565,33 +7598,77 @@ exports.assembler = (function(exports){
   }
 
   function ForStatement(node){
-    entrance(function(){
-      if (node.init){
-        recurse(node.init);
-        if (node.init.type !== 'VariableDeclaration') {
+    lexical(function(){
+      entrance(function(){
+        var scope = record(BLOCK, { LexicalDeclarations: [] });
+        var init = node.init;
+        if (init){
+          if (init.type === 'VariableDeclaration') {
+            if (init.kind === 'let' || init.kind === 'const') {
+              var decl = init.declarations[init.declarations.length - 1].id;
+              scope[0].LexicalDeclarations = BoundNames(decl);
+              var lexicalDecl = {
+                type: 'VariableDeclaration',
+                kind: init.kind,
+                declarations: [{
+                  type: 'VariableDeclarator',
+                  id: decl,
+                  init: null
+                }],
+              };
+              lexicalDecl.BoundNames = BoundNames(lexicalDecl);
+            }
+            recurse(init);
+          } else {
+            record(GET);
+            record(POP);
+          }
+        }
+
+        var test = current();
+
+        if (node.test) {
+          recurse(node.test);
+          record(GET);
+          var op = record(IFEQ, 0, false);
+        }
+
+        var update = current();
+
+        if (node.body.body && decl) {
+          recurse(decl);
+          record(GET);
+          block(function(){
+            lexical(function(){
+              var lexicals = LexicalDeclarations(node.body.body);
+              lexicals.push(lexicalDecl);
+              record(BLOCK, { LexicalDeclarations: lexicals });
+              recurse(decl);
+              record(ROTATE, 1);
+              record(PUT);
+
+              for (var i=0, item; item = node.body.body[i]; i++) {
+                recurse(item);
+              }
+
+              record(UPSCOPE);
+            });
+          });
+        } else {
+          recurse(node.body);
+        }
+
+        if (node.update) {
+          recurse(node.update);
           record(GET);
           record(POP);
         }
-      }
 
-      var test = current();
-      if (node.test) {
-        recurse(node.test);
-        record(GET);
-        var op = record(IFEQ, 0, false);
-      }
-      var update = current();
-
-      recurse(node.body);
-      if (node.update) {
-        recurse(node.update);
-        record(GET);
-        record(POP);
-      }
-
-      record(JUMP, test);
-      adjust(op);
-      return update;
+        record(JUMP, test);
+        adjust(op);
+        return update;
+      });
+      record(UPSCOPE);
     });
   }
 
@@ -7880,17 +7957,19 @@ exports.assembler = (function(exports){
     lexical(ENTRY.TRYCATCH, function(){
       recurse(node.block);
     });
-    var count = node.handlers.length,
-        tryer = record(JUMP, 0),
-        handlers = [tryer];
 
-    for (var i=0; i < count; i++) {
-      recurse(node.handlers[i]);
-      if (i < count - 1) {
+    var tryer = record(JUMP, 0),
+        handlers = [];
+
+    for (var i=0, handler; handler = node.handlers[i]; i++) {
+      recurse(handler);
+      if (i < node.handlers.length - 1) {
         handlers.push(record(JUMP, 0));
       }
     }
 
+    i--;
+    adjust(tryer);
     while (i--) {
       adjust(handlers[i]);
     }
@@ -7925,10 +8004,14 @@ exports.assembler = (function(exports){
         record(UNDEFINED);
       }
 
-      record(op, item.id);
+      //if (item.id.type === 'Identifier') {
+      //  record(op, intern(item.id.name));
+      //} else {
+        record(op, item.id);
+      //}
 
       if (node.kind === 'var') {
-        context.code.VarDeclaredNames.push(item.id.name);
+        context.code.VarDeclaredNames.push(intern(item.id.name));
       }
     }
   }
@@ -7986,6 +8069,7 @@ exports.assembler = (function(exports){
   exports.assemble = assemble;
   return exports;
 })(typeof module !== 'undefined' ? module.exports : {});
+
 
 
 exports.operators = (function(exports){
@@ -9441,16 +9525,11 @@ exports.thunk = (function(exports){
           if (entry.type === ENTRY.ENV) {
             trace(context.popBlock());
           } else {
-
-            //sp = entry.unwindStack(this);
-            if (entry.type === ENTRY.FINALLY) {
-              stack[sp++] = Empty;
-              stack[sp++] = error;
-              stack[sp++] = ENTRY.FINALLY;
-              ip = entry.end;
+            if (entry.type === ENTRY.TRYCATCH) {
+              stack[sp++] = error.value;
+              ip = entry.end + 1;
+              console.log(code.ops[ip])
               return cmds[ip];
-            } else {
-              stack[sp++] = error;
             }
           }
         }
@@ -12932,19 +13011,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     return this;
   }
 
-  function ScriptFile(location){
-    Script.call(this, {
-      source: ScriptFile.load(location),
-      filename: location
-    });
-  }
-
-  ScriptFile.load = function load(location){
-    return require('fs').readFileSync(location, 'utf8');
-  };
-
-  inherit(ScriptFile, Script);
-
   function NativeScript(source, location){
     Script.call(this, {
       source: '(function(global, undefined){\n'+source+'\n})(this)',
@@ -12953,7 +13019,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     });
   }
 
-  inherit(NativeScript, ScriptFile);
+  inherit(NativeScript, Script);
 
 
 
@@ -13098,6 +13164,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
 
   exports.Realm = Realm;
+  exports.Script = Script;
 
   exports.builtins = {
     $Object: $Object
@@ -14003,7 +14070,7 @@ exports.builtins.String = "function String(string){\n  string = arguments.length
 
 exports.builtins.WeakMap = "function WeakMap(iterable){}\n$__setupConstructor(WeakMap, $__WeakMapProto);\n";
 
-exports.builtins.global = "$__defineProps(global, {\n  Math: $__MathCreate(),\n  JSON: $__JSONCreate(),\n  parseInt: $__parseInt,\n  parseFloat: $__parseFloat,\n  decodeURI: $__decodeURI,\n  encodeURI: $__encodeURI,\n  decodeURIComponent: $__decodeURIComponent,\n  encodeURIComponent: $__encodeURIComponent,\n  escape: $__escape,\n  eval: $__eval,\n  isNaN(number){\n    number = $__ToNumber(number);\n    return number !== number;\n  },\n  isFinite(number){\n    number = $__ToNumber(number);\n    return number === number && number !== Infinity && number !== -Infinity;\n  }\n});\n\n$__defineProps(global, {\n  stdout: {\n    write(text, color){\n      $__Signal('write', [text, color]);\n    },\n    clear(){\n      $__Signal('clear');\n    },\n    backspace(count){\n      $__Signal('backspace', $_ToInteger(count));\n    }\n  },\n  console: {\n    log(...values){\n      var text = '';\n      for (var i=0; i < values.length; i++) {\n        text += $__ToString(values[i]);\n      }\n      $__Signal('write', [text, '#fff']);\n    }\n  }\n});\n";
+exports.builtins.global = "$__defineProps(this, {\n  Math: $__MathCreate(),\n  JSON: $__JSONCreate(),\n  parseInt: $__parseInt,\n  parseFloat: $__parseFloat,\n  decodeURI: $__decodeURI,\n  encodeURI: $__encodeURI,\n  decodeURIComponent: $__decodeURIComponent,\n  encodeURIComponent: $__encodeURIComponent,\n  escape: $__escape,\n  eval: $__eval,\n  isNaN(number){\n    number = $__ToNumber(number);\n    return number !== number;\n  },\n  isFinite(number){\n    number = $__ToNumber(number);\n    return number === number && number !== Infinity && number !== -Infinity;\n  },\n  stdout: {\n    write(text, color){\n      $__Signal('write', [text, color]);\n    },\n    clear(){\n      $__Signal('clear');\n    },\n    backspace(count){\n      $__Signal('backspace', $_ToInteger(count));\n    }\n  },\n  console: {\n    log(...values){\n      var text = '';\n      for (var i=0; i < values.length; i++) {\n        text += $__ToString(values[i]);\n      }\n      $__Signal('write', [text + '\\n', '#fff']);\n    }\n  }\n});\n";
 
 
 
