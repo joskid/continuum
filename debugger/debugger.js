@@ -1437,7 +1437,9 @@ function createRealm(){
     runInContext(evt.value, realm);
   });
 
-  realm.on('write', stdout.append.bind(stdout));
+  realm.on('write', function(args){
+    stdout.append.apply(stdout, args);
+  });
   realm.on('clear', stdout.clear.bind(stdout));
   realm.on('backspace', stdout.backspace.bind(stdout));
   realm.on('pause', function(){
@@ -1455,6 +1457,8 @@ function createRealm(){
       realm.resume();
     });
   });
+
+  realm.on('throw', console.log.bind(console));
 
   runInContext('this', realm);
 }
