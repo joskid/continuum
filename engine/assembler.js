@@ -1020,13 +1020,12 @@ var assembler = (function(exports){
             update = current();
         block(function(){
           lexical(function(){
-            var lexicals = LexicalDeclarations(node.body.body);
-            var names = LexicalDeclarations(node.left);
-            push.apply(lexicals, names);
+            var lexicals = LexicalDeclarations(node);
+            var name = node.left.declarations[node.left.declarations.length - 1].id;
             record(BLOCK, { LexicalDeclarations: lexicals });
             recurse(node.left);
             pop();
-            record(REF, names[names.length - 1]);
+            record(REF, name ? name.name : '');
             op = record(NEXT);
 
             for (var i=0, item; item = node.body.body[i]; i++) {
