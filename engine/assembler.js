@@ -606,6 +606,10 @@ var assembler = (function(exports){
     return context.code.ops[context.code.ops.length - 1];
   }
 
+  function pop(){
+    return context.code.ops.pop();
+  }
+
   function adjust(op){
     return op[0] = context.code.ops.length;
   }
@@ -922,6 +926,7 @@ var assembler = (function(exports){
         var init = node.init;
         if (init){
           if (init.type === 'VariableDeclaration') {
+            recurse(init);
             if (init.kind === 'let' || init.kind === 'const') {
               var decl = init.declarations[init.declarations.length - 1].id;
               scope[0].LexicalDeclarations = BoundNames(decl);
@@ -935,8 +940,8 @@ var assembler = (function(exports){
                 }],
               };
               lexicalDecl.BoundNames = BoundNames(lexicalDecl);
+              recurse(decl);
             }
-            recurse(init);
           } else {
             record(GET);
             record(POP);
@@ -954,12 +959,11 @@ var assembler = (function(exports){
         var update = current();
 
         if (node.body.body && decl) {
-          recurse(decl);
-          record(GET);
           block(function(){
             lexical(function(){
               var lexicals = LexicalDeclarations(node.body.body);
               lexicals.push(lexicalDecl);
+              record(GET);
               record(BLOCK, { LexicalDeclarations: lexicals });
               recurse(decl);
               record(ROTATE, 1);
@@ -990,22 +994,67 @@ var assembler = (function(exports){
     });
   }
 
+  // function ForInStatement(node){
+  //   entrance(function(){
+  //     recurse(node.left);
+  //     record(REF, last()[0].name);
+  //     recurse(node.right);
+  //     record(GET);
+  //     record(ENUM);
+  //     var update = current();
+  //     var op = record(NEXT);
+  //     recurse(node.body);
+  //     record(JUMP, update);
+  //     adjust(op);
+  //     return update;
+  //   });
+  // }
+
   function ForInStatement(node){
     entrance(function(){
-      recurse(node.left);
-      record(REF, last()[0].name);
-      recurse(node.right);
-      record(GET);
-      record(ENUM);
-      var update = current();
-      var op = record(NEXT);
-      recurse(node.body);
-      record(JUMP, update);
-      adjust(op);
+      if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
+        recurse(node.right);
+        record(GET);
+        record(ENUM);
+        var op,
+            update = current();
+        block(function(){
+          lexical(function(){
+            var lexicals = LexicalDeclarations(node.body.body);
+            var names = LexicalDeclarations(node.left);
+            push.apply(lexicals, names);
+            record(BLOCK, { LexicalDeclarations: lexicals });
+            recurse(node.left);
+            pop();
+            record(REF, names[names.length - 1]);
+            op = record(NEXT);
+
+            for (var i=0, item; item = node.body.body[i]; i++) {
+              recurse(item);
+            }
+
+            record(UPSCOPE);
+          });
+        });
+        record(JUMP, update);
+        adjust(op);
+        record(UPSCOPE);
+      } else {
+        recurse(node.left);
+        var name = last()[0].name;
+        recurse(node.right);
+        record(GET);
+        record(ENUM);
+        var update = current();
+        record(REF, name);
+        var op = record(NEXT);
+        recurse(node.body);
+        record(JUMP, update);
+        adjust(op);
+      }
       return update;
     });
   }
-
   function ForOfStatement(node){
     entrance(function(){
       recurse(node.right);

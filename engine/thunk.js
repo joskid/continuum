@@ -239,8 +239,7 @@ var thunk = (function(exports){
     }
 
     function ENUM(){
-      a = stack[sp - 1].Enumerate(true, true);
-      stack[sp - 1] = a;
+      stack[sp - 1] = stack[sp - 1].Enumerate(true, true);
       stack[sp++] = 0;
       return cmds[++ip];
     }
@@ -381,13 +380,16 @@ var thunk = (function(exports){
     }
 
     function NEXT(){
-      a = stack[sp - 2];
-      b = stack[sp - 1];
-      if (b < a.length) {
-        PutValue(stack[sp - 3], a[b]);
-        stack[sp - 1] = b + 1;
+      a = stack[--sp];
+      b = stack[--sp];
+      c = stack[--sp];
+      if (b < c.length) {
+        PutValue(a, c[b]);
+        stack[++sp] = b + 1;
+        ++sp;
       } else {
         ip = ops[ip][0];
+        return cmds[ip];
       }
       return cmds[++ip];
     }
@@ -634,16 +636,11 @@ var thunk = (function(exports){
           if (entry.type === ENTRY.ENV) {
             trace(context.popBlock());
           } else {
-
-            //sp = entry.unwindStack(this);
-            if (entry.type === ENTRY.FINALLY) {
-              stack[sp++] = Empty;
-              stack[sp++] = error;
-              stack[sp++] = ENTRY.FINALLY;
-              ip = entry.end;
+            if (entry.type === ENTRY.TRYCATCH) {
+              stack[sp++] = error.value;
+              ip = entry.end + 1;
+              console.log(code.ops[ip])
               return cmds[ip];
-            } else {
-              stack[sp++] = error;
             }
           }
         }
