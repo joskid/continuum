@@ -36,5 +36,6 @@ $__defineProps(this, {
       }
       $__Signal('write', [text + '\n', '#fff']);
     }
-  }
+  },
+  StopIteration: $__StopIteration
 });

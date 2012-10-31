@@ -67,7 +67,8 @@ var constants = (function(exports){
     StringWrapper     : new NativeBrand('String'),
     NativeError       : new NativeBrand('Error'),
     NativeMath        : new NativeBrand('Math'),
-    NativeJSON        : new NativeBrand('JSON')
+    NativeJSON        : new NativeBrand('JSON'),
+    StopIteration     : new NativeBrand('StopIteration')
   };
 
 

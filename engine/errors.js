@@ -174,7 +174,8 @@ var errors = (function(errors, messages, exports){
     non_object_superproto               : ["non-object superprototype"],
     invalid_super_binding               : ["object has no super binding"],
     not_generic                         : ["$0", " is not generic and was called on an invalid target"],
-    spread_non_object                   : ["Expecting an object as spread argument, but got ", "$0"]
+    spread_non_object                   : ["Expecting an object as spread argument, but got ", "$0"],
+    incompatible_array_iterator         : ["$0", " called on incompatible object"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],

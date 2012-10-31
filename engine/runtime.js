@@ -2755,6 +2755,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         prototype.PrimitiveValue = primitives[k];
     }
 
+    bindings.StopIteration = new $Object(bindings.ObjectProto);
+    bindings.StopIteration.NativeBrand = BRANDS.StopIteration;
+
     for (var i=0; i < 6; i++) {
       var prototype = bindings[$errors[i] + 'Proto'] = create($Error.prototype);
       $Object.call(prototype, bindings.ErrorProto);
@@ -2918,12 +2921,18 @@ var runtime = (function(GLOBAL, exports, undefined){
     GetPrimitiveValue: function(object){
       return object ? object.PrimitiveValue : undefined;
     },
+    IsObject: function(object){
+      return object instanceof $Object;
+    },
     SetInternal: function(object, key, value){
       object[key] = value;
       hide(object, key);
     },
     GetInternal: function(object, key){
       return object[key];
+    },
+    HasInternal: function(object, key){
+      return key in object;
     },
     SetHidden: function(object, key, value){
       object.hiddens[key] = value;

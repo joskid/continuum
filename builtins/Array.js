@@ -141,9 +141,24 @@ $__defineProps(Array.prototype, {
   },
   toString(){
     return joinArray(this, ',');
+  },
+  items(){
+    var object = $__ToObject(this);
+    return new ArrayIterator(object, 'key+value');
+  },
+  keys(){
+    var object = $__ToObject(this);
+    return new ArrayIterator(object, 'key');
+  },
+  values(){
+    var object = $__ToObject(this);
+    return new ArrayIterator(object, 'value');
   }
 });
 
+$__defineProps(Array.prototype, {
+  @@iterator: Array.prototype.items
+});
 
 
 function joinArray(array, separator){
@@ -167,3 +182,74 @@ function joinArray(array, separator){
 
   return out + array[i];
 }
+
+var ARRAY = 'IteratedObject',
+    INDEX  = 'ArrayIteratorNextIndex',
+    KIND  = 'ArrayIterationKind';
+
+
+var K = 0x01,
+    V = 0x02,
+    S = 0x04;
+
+var kinds = {
+  'key': 1,
+  'value': 2,
+  'key+value': 3,
+  'sparse:key': 5,
+  'sparse:value': 6,
+  'sparse:key+value': 7
+};
+
+class ArrayIterator {
+  constructor(array, kind){
+    array = $__ToObject(array);
+    $__SetInternal(this, ARRAY, array);
+    $__SetInternal(this, INDEX, 0);
+    $__SetInternal(this, KIND, kinds[kind]);
+  }
+  next(){
+    if (!$__IsObject(this)) {
+      throw $__Exception('called_on_non_object', ['ArrayIterator.prototype.next']);
+    }
+    if (!$__HasInternal(this, ARRAY) || !$__HasInternal(this, INDEX) || !$__HasInternal(this, KIND)) {
+      throw $__Exception('incompatible_array_iterator', ['ArrayIterator.prototype.next']);
+    }
+    var array = $__GetInternal(this, ARRAY),
+        index = $__GetInternal(this, INDEX),
+        kind = $__GetInternal(this, KIND),
+        len = $__ToUint32(array.length),
+        key = $__ToString(index);
+
+    if (kind & S) {
+      var found = false;
+      while (!found && index < len) {
+        found = index in array;
+        if (!found) {
+          index++;
+        }
+      }
+    }
+    if (index >= len) {
+      $__SetInternal(this, INDEX, Infinity);
+      throw $__StopIteration;
+    }
+    $__SetInternal(this, INDEX, index + 1);
+
+    if (kind & V) {
+      var value = array[key];
+      if (kind & K) {
+        return [key, value];
+      }
+      return value;
+    }
+    return key;
+  }
+  @@iterator(){
+    return this;
+  }
+};
+
+$__defineProps(ArrayIterator.prototype, {
+  @@toStringTag: 'Array Iterator'
+});
