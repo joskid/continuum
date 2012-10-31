@@ -192,6 +192,48 @@ var utility = (function(exports){
 
   exports.copy = copy;
 
+  function clone(o, hidden){
+    var queue = new Queue,
+        tag = uid(),
+        tagged = [],
+        list = hidden ? getProperties : ownKeys;
+
+    var out = enqueue(o);
+
+    while (queue.length) {
+      recurse.apply(this, queue.shift());
+    }
+
+    for (var i=0; i < tagged.length; i++) {
+      delete tagged[tag];
+    }
+
+    return out;
+
+    function recurse(from, to, key){
+      if (!isObject(from[key])) {
+        return to[key] = from[key];
+      }
+      if (hasOwn.call(from[key], tag)) {
+        return to[key] = from[key][tag];
+      }
+      to[key] = enqueue(from[key]);
+    }
+
+    function enqueue(o){
+      var out = o instanceof Array ? [] : create(getPrototypeOf(o));
+      tagged.push(o);
+      var keys = list(o);
+      for (var i=0; i < keys.length; i++) {
+        queue.push([o, out, keys[i]]);
+      }
+      o[tag] = out;
+      return out;
+    }
+  }
+
+  exports.clone = clone;
+
 
   function iterate(o, callback, context){
     if (!o) return;
@@ -961,7 +1003,6 @@ var utility = (function(exports){
     define(Feeder.prototype, [push, pause]);
     return Feeder;
   })();
-
 
 
 
