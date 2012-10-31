@@ -106,6 +106,9 @@ var debug = (function(exports){
     props: null
   }, [
     function get(key){
+      if (key === '__proto__') {
+        return this.getPrototype();
+      }
       var prop = this.props.getProperty(key);
       if (!prop) {
         return this.getPrototype().get(key);
@@ -227,7 +230,7 @@ var debug = (function(exports){
               : this.getterAttrs(true);
 
       for (var k in props) {
-        if (hidden || props[k] & ENUMERABLE) {
+        if (hidden || (props[k] & ENUMERABLE)) {
           keys.push(k);
         }
       }
@@ -784,6 +787,8 @@ var debug = (function(exports){
         return util.inspect(wrap(this), true, 2, false);
       }
     });
+
+    exports.wrap = wrap;
 
     function wrap(target){
       if (isObject(target) && target instanceof $Object) {
