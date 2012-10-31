@@ -3361,19 +3361,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     return this;
   }
 
-  function ScriptFile(location){
-    Script.call(this, {
-      source: ScriptFile.load(location),
-      filename: location
-    });
-  }
-
-  ScriptFile.load = function load(location){
-    return require('fs').readFileSync(location, 'utf8');
-  };
-
-  inherit(ScriptFile, Script);
-
   function NativeScript(source, location){
     Script.call(this, {
       source: '(function(global, undefined){\n'+source+'\n})(this)',
@@ -3382,7 +3369,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     });
   }
 
-  inherit(NativeScript, ScriptFile);
+  inherit(NativeScript, Script);
 
 
 
@@ -3527,6 +3514,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   exports.Realm = Realm;
+  exports.Script = Script;
 
   exports.builtins = {
     $Object: $Object
