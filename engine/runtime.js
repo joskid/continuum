@@ -394,30 +394,6 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   // ## Invoke
 
-  function Invoke(key, receiver, args){
-    var obj = ToObject(receiver);
-    if (obj && obj.Completion) {
-      if (obj.Abrupt) {
-        return obj;
-      } else {
-        obj = obj.value;
-      }
-    }
-
-    var func = func.Get(key);
-    if (func && func.Completion) {
-      if (func.Abrupt) {
-        return func;
-      } else {
-        func = func.value;
-      }
-    }
-
-    if (!IsCallable(func))
-      return ThrowException('called_non_callable', key);
-
-    return func.Call(receiver, args);
-  }
 
   // ## GetIdentifierReference
 
@@ -1547,6 +1523,25 @@ var runtime = (function(GLOBAL, exports, undefined){
         return false;
       }
     },
+    function Iterate(){
+      var keys = this.Enumerate(true, true),
+          index = 0,
+          len = keys.length;
+
+      var iterator = new $Object;
+      setDirect(iterator, 'next', new $NativeFunction({
+        length: 0,
+        name: '',
+        call: function(){
+          if (index < len) {
+            return keys[index];
+          } else {
+            return new AbruptCompletion('throw', intrinsics.StopIteration);
+          }
+        }
+      }));
+      return iterator;
+    },
     function Enumerate(includePrototype, onlyEnumerable){
       if (onlyEnumerable) {
         var props = this.properties.filter(function(prop){
@@ -2000,8 +1995,12 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($Array, $Object, {
-    NativeBrand: BRANDS.NativeArray,
-    DefineOwnProperty: function DefineOwnProperty(key, desc, strict){
+    NativeBrand: BRANDS.NativeArray
+  }, [
+    function Iterate(){
+      return Invoke(this, 'iterator', []);
+    },
+    function DefineOwnProperty(key, desc, strict){
       function Reject(str) {
         if (strict) {
           throw new TypeError(str);
@@ -2132,7 +2131,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
       return $Object.prototype.DefineOwnProperty.call(this, key, desc, key);
     }
-  });
+  ]);
 
 
   // ###############
@@ -2735,6 +2734,30 @@ var runtime = (function(GLOBAL, exports, undefined){
 
       defineDirect(array, 'length', i, _CW);
       return array;
+    },
+    function Invoke(key, receiver, args){
+      var obj = ToObject(receiver);
+      if (obj && obj.Completion) {
+        if (obj.Abrupt) {
+          return obj;
+        } else {
+          obj = obj.value;
+        }
+      }
+
+      var func = obj.Get(key);
+      if (func && func.Completion) {
+        if (func.Abrupt) {
+          return func;
+        } else {
+          func = func.value;
+        }
+      }
+
+      if (!IsCallable(func))
+        return ThrowException('called_non_callable', key);
+
+      return func.Call(obj, args);
     }
   ]);
 
