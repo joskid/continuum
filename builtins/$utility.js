@@ -13,7 +13,7 @@ var ___ = 0x00,
 
 
 $__defineMethods = function defineMethods(obj, props){
-  for (var i in props) {
+  for (var i=0; i < props.length; i++) {
     $__SetInternal(props[i], 'Native', true);
     $__defineDirect(obj, props[i].name, props[i], _CW);
     $__deleteDirect(props[i], 'prototype');
@@ -22,9 +22,13 @@ $__defineMethods = function defineMethods(obj, props){
 };
 
 $__defineProps = function defineProps(obj, props){
-  for (var name in props) {
-    var prop = props[name];
+  var keys = $__Enumerate(props, false, false);
+  for (var i=0; i < keys.length; i++) {
+    var name = keys[i],
+        prop = props[name];
+
     $__defineDirect(obj, name, prop, _CW);
+
     if (typeof prop === 'function') {
       $__SetInternal(prop, 'Native', true);
       $__defineDirect(prop, 'name', name, ___);
@@ -35,8 +39,9 @@ $__defineProps = function defineProps(obj, props){
 };
 
 $__defineConstants = function defineConstants(obj, props){
-  for (var k in props) {
-    $__defineDirect(obj, k, props[k], ___);
+  var keys = $__Enumerate(props, false, false);
+  for (var i=0; i < keys.length; i++) {
+    $__defineDirect(obj, keys[i], props[keys[i]], ___);
   }
 };
 
