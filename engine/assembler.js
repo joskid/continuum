@@ -319,6 +319,7 @@ var assembler = (function(exports){
       IFEQ          = new OpCode(2, 'IFEQ'),
       IFNE          = new OpCode(2, 'IFNE'),
       INDEX         = new OpCode(2, 'INDEX'),
+      ITERATE       = new OpCode(0, 'ITERATE'),
       JSR           = new OpCode(2, 'JSR'),
       JUMP          = new OpCode(1, 'JUMP'),
       LET           = new OpCode(1, 'LET'),
@@ -994,22 +995,6 @@ var assembler = (function(exports){
     });
   }
 
-  // function ForInStatement(node){
-  //   entrance(function(){
-  //     recurse(node.left);
-  //     record(REF, last()[0].name);
-  //     recurse(node.right);
-  //     record(GET);
-  //     record(ENUM);
-  //     var update = current();
-  //     var op = record(NEXT);
-  //     recurse(node.body);
-  //     record(JUMP, update);
-  //     adjust(op);
-  //     return update;
-  //   });
-  // }
-
   function ForInStatement(node){
     entrance(function(){
       if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
@@ -1021,11 +1006,11 @@ var assembler = (function(exports){
         block(function(){
           lexical(function(){
             var lexicals = LexicalDeclarations(node);
-            var name = node.left.declarations[node.left.declarations.length - 1].id;
             record(BLOCK, { LexicalDeclarations: lexicals });
             recurse(node.left);
+            var name = last()[0].name;
             pop();
-            record(REF, name ? name.name : '');
+            record(REF, name);
             op = record(NEXT);
 
             for (var i=0, item; item = node.body.body[i]; i++) {
@@ -1039,12 +1024,13 @@ var assembler = (function(exports){
         adjust(op);
         record(UPSCOPE);
       } else {
-        recurse(node.left);
-        var name = last()[0].name;
         recurse(node.right);
         record(GET);
         record(ENUM);
         var update = current();
+        recurse(node.left);
+        var name = last()[0].name;
+        pop();
         record(REF, name);
         var op = record(NEXT);
         recurse(node.body);
@@ -1054,27 +1040,55 @@ var assembler = (function(exports){
       return update;
     });
   }
+
   function ForOfStatement(node){
-    entrance(function(){
-      recurse(node.right);
-      record(GET);
-      record(MEMBER, intern('iterator'));
-      record(GET);
-      record(ARGS);
-      record(CALL);
-      record(ROTATE, 4);
-      record(POPN, 3);
-      var update = current();
-      record(MEMBER, intern('next'));
-      record(GET);
-      record(ARGS);
-      record(CALL);
-      recurse(node.left);
-      recurse(node.body);
-      record(JUMP, update);
-      adjust(op);
-      record(POPN, 2);
-      return update;
+    iteration(node, ITERATE);
+  }
+
+  function iteration(node, type){
+    lexical(ENTRY.FOROF, function(){
+      entrance(function(){
+        if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
+          recurse(node.right);
+          record(GET);
+          record(type);
+          var op,
+              update = current();
+          block(function(){
+            lexical(function(){
+              var lexicals = LexicalDeclarations(node);
+              var name = node.left.declarations[node.left.declarations.length - 1].id;
+              record(BLOCK, { LexicalDeclarations: lexicals });
+              recurse(node.left);
+              pop();
+              record(REF, name ? name.name : '');
+              op = record(NEXT);
+
+              for (var i=0, item; item = node.body.body[i]; i++) {
+                recurse(item);
+              }
+
+              record(UPSCOPE);
+            });
+          });
+          record(JUMP, update);
+          adjust(op);
+          record(UPSCOPE);
+        } else {
+          recurse(node.left);
+          var name = last()[0].name;
+          recurse(node.right);
+          record(GET);
+          record(type);
+          var update = current();
+          record(REF, name);
+          var op = record(NEXT);
+          recurse(node.body);
+          record(JUMP, update);
+          adjust(op);
+        }
+        return update;
+      });
     });
   }
 

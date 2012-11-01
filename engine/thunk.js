@@ -57,7 +57,7 @@ var thunk = (function(exports){
   function Thunk(code){
     var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
       CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT,
-      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, JSR, JUMP, LET,
+      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, ITERATE, JSR, JUMP, LET,
       LITERAL, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, NEXT, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
       SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, THIS,
@@ -309,6 +309,10 @@ var thunk = (function(exports){
         }
       }
       return cmds[++ip];
+    }
+
+    function ITERATE(){
+
     }
 
     function LITERAL(){
