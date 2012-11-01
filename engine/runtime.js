@@ -680,6 +680,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
+  function Brand(name){
+    this.name = name;
+  }
 
   // ## ClassDefinitionEvaluation
 
@@ -741,7 +744,8 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
     ctor.SetPrototype(superctor);
-    setDirect(ctor, 'name', name ? name.name || name : '');
+    var brand = name ? name.name || name : '';
+    setDirect(ctor, 'name', brand);
     MakeConstructor(ctor, false, proto);
     defineDirect(proto, 'constructor', ctor, _CW);
     defineDirect(ctor, 'prototype', proto, ___);
@@ -751,7 +755,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
     ctor.Class = true;
-    if (name) proto.Brand = name;
+    proto.Brand = new Brand(brand);
 
     context.LexicalEnvironment = lex;
     return ctor;

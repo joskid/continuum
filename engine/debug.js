@@ -247,10 +247,7 @@ var debug = (function(exports){
       return prop ? prop[2] : this.getPrototype().propAttributes(key);
     },
     function label(){
-      if (this.subject.Brand) {
-        return this.subject.Brand;
-      }
-      var brand = this.subject.NativeBrand;
+      var brand = this.subject.Brand || this.subject.NativeBrand;
       if (brand && brand.name !== 'Object') {
         return brand.name;
       }
