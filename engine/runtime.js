@@ -1815,10 +1815,12 @@ var runtime = (function(GLOBAL, exports, undefined){
     Native: true,
   }, [
     function Call(receiver, args){
+      "use strict";
       var result = this.call.apply(receiver, [].concat(args));
       return result && result.type === Return ? result.value : result;
     },
     function Construct(args){
+      "use strict";
       if (this.construct) {
         if (hasDirect(this, 'prototype')) {
           var instance = new $Object(getDirect(this, 'prototype'));
