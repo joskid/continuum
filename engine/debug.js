@@ -953,7 +953,7 @@ var debug = (function(exports){
         if (key === 'toString') {
           var mirror = this.mirror;
           return function toString(){
-            return '[object '+ mirror.subject.NativeBrand+']';
+            return '[object '+ mirror.subject.NativeBrand.name+']';
           };
         }
         var result = this.mirror.get(key);

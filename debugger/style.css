@@ -105,7 +105,7 @@ h1, h2
 .ƒtree
 { padding: 0 0 0 15px; margin: 0 0 0 10px; list-style: none; position: relative; display: inline-block; }
   .ƒproperty
-  {}
+  { padding-right: 15px }
     .ƒkey, .ƒbranch, .ƒleaf
     { display: inline-block; }
     .ƒkey
@@ -117,9 +117,9 @@ h1, h2
       .ƒbranch.ƒexpanded
       { }
       .ƒtree:before
-      { content: '{'; color: #aaa; position: absolute; left: 0 }
-      .ƒtree:after
-      { content: '}'; color: #aaa; position: absolute; right: -15px; bottom: 0; }
+      { content: '{'; color: #fff; position: absolute; left: 0 }
+      .ƒtree > :last-child:after
+      { content: '}'; color: #fff; position: absolute; right: 0; bottom: 0; }
     .ƒleaf
     {}
       .ƒlabel
