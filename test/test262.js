@@ -141,7 +141,11 @@ TestCase.prototype = {
   },
   getSource: function getSource(){
     var source = 'var strict_mode = ';
-    source = this.strict ? '"use strict";\n'+source+'true;\n' : source+'false;\n';
+    if (this.strict || this.onlyStrict) {
+      source = '"use strict";\n'+source+'true;\n';
+    } else {
+      source += 'false;\n';
+    }
     return source + this.test + '\n';
   }
 };
@@ -205,6 +209,7 @@ TestSuite.prototype.summary = function summary(progress) {
 
 
 TestSuite.prototype.enqueue = function enqueue(path){
+  if (this.queue.length >= this.max) return this;
   if (isDirectory(path)) {
     dir(path).forEach(this.enqueue, this);
   } else {
@@ -214,13 +219,13 @@ TestSuite.prototype.enqueue = function enqueue(path){
 }
 
 TestSuite.prototype.chapter = function chapter(chapter){
-  if (!isInt(chapter)) {
-    var subchapter = ''+chapter;
+  chapter = chapter.toString().split('.');
+  var path = resolve(this.tests, 'ch' + ('00'+ (chapter[0] | 0)).slice(-2));
+  if (chapter[1]) {
+    path = resolve(path, chapter[0] + '.' + chapter[1]);
   }
-  chapter = 'ch' + ('00'+ (chapter | 0)).slice(-2);
-  var path = resolve(this.tests, chapter);
-  if (subchapter) {
-    path = resolve(path, subchapter);
+  if (chapter[2]) {
+    path = resolve(path, chapter[0] + '.' + chapter[1] + '.' + chapter[2]);
   }
   if (exists(path)) {
     this.enqueue(path);
@@ -231,10 +236,11 @@ TestSuite.prototype.chapter = function chapter(chapter){
 TestSuite.prototype.next = function next(){
   var item = this.queue.shift();
   if (item) {
-    var test = new TestCase(item, this.strict),
-        comps = test.path.split('/');
+    var test = new TestCase(item, this.strict);
 
-    comps.reduce(function(r, s, i, a){
+    test.paths = test.path.split('/');
+
+    test.paths.reduce(function(r, s, i, a){
       if (!(s in r)) {
         if (i === a.length - 1) {
           r[s] = test;
@@ -248,31 +254,54 @@ TestSuite.prototype.next = function next(){
     var context = continuum();
     test.global = context.global;
     context.on('throw', function(e){
-      print(e.Get('code'), e.Get('message'))
+      print(e.Get('message'))
     });
     context.evaluate(this.includes);
     context.global.properties.forEach(function(prop){
       prop[2] &= ~1;
     });
     var src = test.getSource();
-    console.log(src)
     test.result = context.evaluate(src);
-    //test.result = context.evaluate('runTestCase(function(){ return eval('+escapeJS(test.getSource())+') })');
     return test;
   }
 }
 
-TestSuite.prototype.deplete = function deplete(){
-  var results = [], result;
-  while (result = this.next()) {
-    results.push(result);
+function formatPath(name){
+  return name.split(/\/|\\/).slice(3).join('/');
+}
+
+TestSuite.prototype.run = function run(count){
+  var test;
+  var record = __dirname+'/tested.json';
+  var tested = fs.existsSync(record) ? require(record) : {};
+  count = count || 40;
+  while (count-- && this.queue.length) {
+    var name = formatPath(path.relative(__dirname, this.queue.front()));
+    if (name in tested) {
+      this.queue.shift();
+      count++;
+      continue;
+    }
+    tested[name] = true;
+    test = this.next();
+    var name = test.paths.slice(-1);
+    delete test.abspath;
+    delete test.path;
+    delete test.paths;
+    if (test.result === undefined) {
+      test.result = 'PASS';
+    }
+    fs.writeFileSync(__dirname + '/results/'+name+'.js', require('util').inspect(test));
+    test.global = null;
   }
-  return results;
+
+  fs.writeFileSync(record, JSON.stringify(tested, null, '  '));
+  return 'done';
 }
 
 var x = new TestSuite;
 
-x.chapter(8.7);
-print(x.deplete());
+x.chapter('12.3');
+print(x.run());
 // print(x.includes);
 //print(realm.global);
