@@ -999,10 +999,10 @@ var assembler = (function(exports){
   function ForInStatement(node){
     iteration(node, ENUM);
   }
+
   function ForOfStatement(node){
     iteration(node, ITERATE);
   }
-
 
   function iteration(node, kind){
     lexical(ENTRY.FOROF, function(){
@@ -1161,13 +1161,14 @@ var assembler = (function(exports){
 
   function Property(node){
     if (node.kind === 'init'){
+      var key = node.key.type === 'Identifier' ? node.key.name : node.key.value;
       if (node.method) {
-        FunctionExpression(node.value, node.key.name);
+        FunctionExpression(node.value, intern(key));
       } else {
         recurse(node.value);
       }
       record(GET);
-      record(PROPERTY, intern(node.key.name));
+      record(PROPERTY, intern(key));
     } else {
       var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, false, context.code.strict);
       context.queue(code);
