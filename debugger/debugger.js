@@ -300,7 +300,7 @@ inherit(Span, Component, []);
 
 function Div(text, name){
   Component.call(this, 'div');
-  if (text[0] === '.') {
+  if (text && text[0] === '.') {
     name = text.slice(1);
     text = '';
   }
