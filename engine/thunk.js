@@ -91,16 +91,18 @@ var thunk = (function(exports){
     }
 
     function BINARY(){
-      a = BinaryOp(BINARYOPS[ops[ip][0]], stack[--sp], stack[--sp]);
-      if (a && a.Completion) {
-        if (a.Abrupt) {
-          error = a;
+      a = stack[--sp];
+      b = stack[--sp];
+      c = BinaryOp(BINARYOPS[ops[ip][0]], b, a);
+      if (c && c.Completion) {
+        if (c.Abrupt) {
+          error = c;
           return ƒ;
         } else {
-          a = a.value;
+          c = c.value;
         }
       }
-      stack[sp++] = a;
+      stack[sp++] = c;
       return cmds[++ip];
     }
 
@@ -110,9 +112,9 @@ var thunk = (function(exports){
     }
 
     function CALL(){
-      a = stack[sp - 1];
-      b = stack[sp - 2];
-      c = stack[sp - 3];
+      a = stack[--sp];
+      b = stack[--sp];
+      c = stack[--sp];
       d = context.EvaluateCall(c, b, a);
       if (d && d.Completion) {
         if (d.Abrupt) {

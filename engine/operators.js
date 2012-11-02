@@ -434,7 +434,7 @@ var operators = (function(exports){
           rval = rval.value;
         }
       }
-      return finalize(rval, lval);
+      return finalize(lval, rval);
     };
   });
 
@@ -461,7 +461,7 @@ var operators = (function(exports){
     return a + b;
   }
 
-  function ADD(rval, lval) {
+  function ADD(lval, rval) {
     lval = ToPrimitive(lval);
     if (lval && lval.Completion) {
       if (lval.Abrupt) {
@@ -617,7 +617,7 @@ var operators = (function(exports){
         rval = temp;
       }
 
-      var result = COMPARE(lval, rval, left);
+      var result = COMPARE(rval, lval, left);
       if (result && result.Completion) {
         if (result.Abrupt) {
           return result;
@@ -638,11 +638,11 @@ var operators = (function(exports){
 
 
   function INSTANCE_OF(lval, rval) {
-    if (lval === null || typeof lval !== OBJECT || !('HasInstance' in lval)) {
+    if (rval === null || typeof rval !== OBJECT || !('HasInstance' in rval)) {
       return ThrowException('instanceof_function_expected', lval);
     }
 
-    return lval.HasInstance(rval);
+    return rval.HasInstance(lval);
   }
   exports.INSTANCE_OF = INSTANCE_OF;
 
@@ -683,20 +683,20 @@ var operators = (function(exports){
 
 
   function IN(lval, rval) {
-    if (lval === null || typeof lval !== OBJECT) {
-      return ThrowException('invalid_in_operator_use', [rval, lval]);
+    if (rval === null || typeof rval !== OBJECT) {
+      return ThrowException('invalid_in_operator_use', [lval, rval]);
     }
 
-    rval = ToPropertyName(rval);
-    if (rval && rval.Completion) {
-      if (rval.Abrupt) {
-        return rval;
+    lval = ToPropertyName(lval);
+    if (lval && lval.Completion) {
+      if (lval.Abrupt) {
+        return lval;
       } else {
-        rval = rval.value;
+        lval = lval.value;
       }
     }
 
-    return lval.HasProperty(rval);
+    return rval.HasProperty(lval);
   }
   exports.IN = IN;
 
@@ -759,26 +759,29 @@ var operators = (function(exports){
       }
     }
 
-
     var ltype = typeof x,
         rtype = typeof y;
 
     if (ltype === rtype) {
-      return STRICT_EQUAL(x, y);
-    } else if (x == null && x == y) {
+      return x === y;
+    } else if (x == null && y == null) {
       return true;
-    } else if (ltype === NUMBER && rtype === STRING) {
+    } else if (ltype === NUMBER || rtype === STRING) {
       return EQUAL(x, ToNumber(y));
-    } else if (ltype === STRING && rtype === NUMBER) {
+    } else if (ltype === STRING || rtype === NUMBER) {
       return EQUAL(ToNumber(x), y);
-    } else if (rtype === OBJECT && ltype === STRING || ltype === OBJECT) {
+    } else if (rtype === BOOLEAN) {
+      return EQUAL(x, ToNumber(y));
+    } else if (ltype === BOOLEAN) {
+      return EQUAL(ToNumber(x), y);
+    } else if (rtype === OBJECT && ltype === NUMBER || ltype === STRING) {
       return EQUAL(x, ToPrimitive(y));
-    } else if (ltype === OBJECT && rtype === STRING || rtype === OBJECT) {
+    } else if (ltype === OBJECT && rtype === NUMBER || rtype === OBJECT) {
       return EQUAL(ToPrimitive(x), y);
-    } else {
-      return false;
     }
+    return false;
   }
+
   exports.EQUAL = EQUAL;
 
 

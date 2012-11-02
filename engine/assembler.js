@@ -54,7 +54,7 @@ var assembler = (function(exports){
     ObjectPattern      : visit.RECURSE,
     ArrayPattern       : visit.RECURSE,
     VariableDeclaration: visit.RECURSE,
-    VariableDeclarator : visit.RECURSE,
+    VariableDeclarator : ['id', 'name'],
     BlockStatement     : visit.RECURSE,
     Property           : visit.RECURSE,
     Identifier         : ['name'],

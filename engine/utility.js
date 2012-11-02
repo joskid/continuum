@@ -548,13 +548,19 @@ var utility = (function(exports){
     function collector(o){
       var handlers = Object.create(null);
       for (var k in o) {
-        handlers[k] = o[k] instanceof Array ? path(o[k]) : o[k];
+        if (o[k] instanceof Array) {
+          handlers[k] = path(o[k]);
+        } else if (typeof o[k] === 'function') {
+          handlers[k] = o[k];
+        } else {
+          handlers[k] = o[k];
+        }
       }
 
       return function(node){
         var items  = [];
 
-        visit(node, function(node, parent){
+        function visitor(node, parent){
           if (!node) return CONTINUE;
 
           var handler = handlers[node.type];
@@ -573,7 +579,9 @@ var utility = (function(exports){
           }
 
           return CONTINUE;
-        });
+        }
+
+        visit(node, visitor);
 
         return items;
       };
