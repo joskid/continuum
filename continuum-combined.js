@@ -5853,13 +5853,19 @@ exports.utility = (function(exports){
     function collector(o){
       var handlers = Object.create(null);
       for (var k in o) {
-        handlers[k] = o[k] instanceof Array ? path(o[k]) : o[k];
+        if (o[k] instanceof Array) {
+          handlers[k] = path(o[k]);
+        } else if (typeof o[k] === 'function') {
+          handlers[k] = o[k];
+        } else {
+          handlers[k] = o[k];
+        }
       }
 
       return function(node){
         var items  = [];
 
-        visit(node, function(node, parent){
+        function visitor(node, parent){
           if (!node) return CONTINUE;
 
           var handler = handlers[node.type];
@@ -5878,7 +5884,9 @@ exports.utility = (function(exports){
           }
 
           return CONTINUE;
-        });
+        }
+
+        visit(node, visitor);
 
         return items;
       };
@@ -6779,7 +6787,7 @@ exports.assembler = (function(exports){
     ObjectPattern      : visit.RECURSE,
     ArrayPattern       : visit.RECURSE,
     VariableDeclaration: visit.RECURSE,
-    VariableDeclarator : visit.RECURSE,
+    VariableDeclarator : ['id', 'name'],
     BlockStatement     : visit.RECURSE,
     Property           : visit.RECURSE,
     Identifier         : ['name'],
@@ -8564,7 +8572,7 @@ exports.operators = (function(exports){
           rval = rval.value;
         }
       }
-      return finalize(rval, lval);
+      return finalize(lval, rval);
     };
   });
 
@@ -8591,7 +8599,7 @@ exports.operators = (function(exports){
     return a + b;
   }
 
-  function ADD(rval, lval) {
+  function ADD(lval, rval) {
     lval = ToPrimitive(lval);
     if (lval && lval.Completion) {
       if (lval.Abrupt) {
@@ -8747,7 +8755,7 @@ exports.operators = (function(exports){
         rval = temp;
       }
 
-      var result = COMPARE(lval, rval, left);
+      var result = COMPARE(rval, lval, left);
       if (result && result.Completion) {
         if (result.Abrupt) {
           return result;
@@ -8768,11 +8776,11 @@ exports.operators = (function(exports){
 
 
   function INSTANCE_OF(lval, rval) {
-    if (lval === null || typeof lval !== OBJECT || !('HasInstance' in lval)) {
+    if (rval === null || typeof rval !== OBJECT || !('HasInstance' in rval)) {
       return ThrowException('instanceof_function_expected', lval);
     }
 
-    return lval.HasInstance(rval);
+    return rval.HasInstance(lval);
   }
   exports.INSTANCE_OF = INSTANCE_OF;
 
@@ -8813,20 +8821,20 @@ exports.operators = (function(exports){
 
 
   function IN(lval, rval) {
-    if (lval === null || typeof lval !== OBJECT) {
-      return ThrowException('invalid_in_operator_use', [rval, lval]);
+    if (rval === null || typeof rval !== OBJECT) {
+      return ThrowException('invalid_in_operator_use', [lval, rval]);
     }
 
-    rval = ToPropertyName(rval);
-    if (rval && rval.Completion) {
-      if (rval.Abrupt) {
-        return rval;
+    lval = ToPropertyName(lval);
+    if (lval && lval.Completion) {
+      if (lval.Abrupt) {
+        return lval;
       } else {
-        rval = rval.value;
+        lval = lval.value;
       }
     }
 
-    return lval.HasProperty(rval);
+    return rval.HasProperty(lval);
   }
   exports.IN = IN;
 
@@ -8889,26 +8897,29 @@ exports.operators = (function(exports){
       }
     }
 
-
     var ltype = typeof x,
         rtype = typeof y;
 
     if (ltype === rtype) {
-      return STRICT_EQUAL(x, y);
-    } else if (x == null && x == y) {
+      return x === y;
+    } else if (x == null && y == null) {
       return true;
-    } else if (ltype === NUMBER && rtype === STRING) {
+    } else if (ltype === NUMBER || rtype === STRING) {
       return EQUAL(x, ToNumber(y));
-    } else if (ltype === STRING && rtype === NUMBER) {
+    } else if (ltype === STRING || rtype === NUMBER) {
       return EQUAL(ToNumber(x), y);
-    } else if (rtype === OBJECT && ltype === STRING || ltype === OBJECT) {
+    } else if (rtype === BOOLEAN) {
+      return EQUAL(x, ToNumber(y));
+    } else if (ltype === BOOLEAN) {
+      return EQUAL(ToNumber(x), y);
+    } else if (rtype === OBJECT && ltype === NUMBER || ltype === STRING) {
       return EQUAL(x, ToPrimitive(y));
-    } else if (ltype === OBJECT && rtype === STRING || rtype === OBJECT) {
+    } else if (ltype === OBJECT && rtype === NUMBER || rtype === OBJECT) {
       return EQUAL(ToPrimitive(x), y);
-    } else {
-      return false;
     }
+    return false;
   }
+
   exports.EQUAL = EQUAL;
 
 
@@ -9055,16 +9066,18 @@ exports.thunk = (function(exports){
     }
 
     function BINARY(){
-      a = BinaryOp(BINARYOPS[ops[ip][0]], stack[--sp], stack[--sp]);
-      if (a && a.Completion) {
-        if (a.Abrupt) {
-          error = a;
+      a = stack[--sp];
+      b = stack[--sp];
+      c = BinaryOp(BINARYOPS[ops[ip][0]], b, a);
+      if (c && c.Completion) {
+        if (c.Abrupt) {
+          error = c;
           return ƒ;
         } else {
-          a = a.value;
+          c = c.value;
         }
       }
-      stack[sp++] = a;
+      stack[sp++] = c;
       return cmds[++ip];
     }
 
@@ -9074,9 +9087,9 @@ exports.thunk = (function(exports){
     }
 
     function CALL(){
-      a = stack[sp - 1];
-      b = stack[sp - 2];
-      c = stack[sp - 3];
+      a = stack[--sp];
+      b = stack[--sp];
+      c = stack[--sp];
       d = context.EvaluateCall(c, b, a);
       if (d && d.Completion) {
         if (d.Abrupt) {
@@ -10367,18 +10380,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
-    if (func.Strict) {
-      var ao = CompleteStrictArgumentsObject(args);
-      var status = ArgumentBindingInitialization(formals, ao, env);
-    } else {
-      var ao = env.arguments = CompleteMappedArgumentsObject(params, env, args, func)
-      var status = ArgumentBindingInitialization(formals, ao);
-    }
-
-    if (status && status.Abrupt) {
-      return status;
-    }
-
     var decls = func.Code.LexicalDeclarations;
 
     for (var i=0, decl; decl = decls[i]; i++) {
@@ -10403,6 +10404,18 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       env.InitializeBinding(ARGUMENTS, ao);
     }
 
+    if (func.Strict) {
+      var ao = CompleteStrictArgumentsObject(args);
+      var status = ArgumentBindingInitialization(formals, ao, env);
+    } else {
+      var ao = env.arguments = CompleteMappedArgumentsObject(params, env, args, func)
+      var status = ArgumentBindingInitialization(formals, ao);
+    }
+
+    if (status && status.Abrupt) {
+      return status;
+    }
+
     var vardecls = func.Code.VarDeclaredNames;
     for (var i=0; i < vardecls.length; i++) {
       if (!env.HasBinding(vardecls[i])) {
@@ -10424,6 +10437,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         }
       }
     }
+
+
   }
 
   function Brand(name){
@@ -11056,7 +11071,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       return this.Prototype;
     },
     function SetPrototype(value){
-      if (typeof value === 'object') {
+      if (typeof value === 'object' && this.GetExtensible()) {
         this.Prototype = value;
         return true;
       } else {
@@ -12426,18 +12441,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         return ThrowException('spread_non_object');
       }
 
-      var len = ToUint32(spread.Get('length'));
+      var value, iterator = spread.Iterate();
 
-      if (len && len.Completion) {
-        if (len.Abrupt) {
-          return len;
-        } else {
-          return len.value;
-        }
-      }
-
-      for (var i=0; i < len; i++) {
-        var value = spread.Get(i);
+      while (!(value = Invoke('next', iterator, [])) || value.value !== intrinsics.StopIteration) {
         if (value && value.Completion) {
           if (value.Abrupt) {
             return value;
@@ -12445,12 +12451,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
             value = value.value;
           }
         }
-
-        defineDirect(array, i + offset, value, ECW);
+        defineDirect(array, offset++, value, ECW);
       }
 
-      defineDirect(array, 'length', i + offset, _CW);
-      return i + offset;
+      defineDirect(array, 'length', offset, _CW);
+      return offset;
     },
     function SpreadDestructuring(target, index){
       var array = new $Array(0);
@@ -12786,6 +12791,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       return new $String(string);
     },
 
+    DateToNumber: function(object){
+      return +object.PrimitiveValue;
+    },
     DateToString: function(object){
       return ''+object.PrimitiveValue;
     },
@@ -13608,7 +13616,7 @@ exports.debug = (function(exports){
           props = this.ownAttrs();
 
       for (var k in props) {
-        if (own || props[k] & ACCESSOR) {
+        if (own || (props[k] & ACCESSOR)) {
           inherited[k] = props[k];
         }
       }
@@ -14250,13 +14258,13 @@ exports.debug = (function(exports){
 
     RenderHandler.prototype = {
       getOwnPropertyNames: function(){
-        return this.mirror.list(true, true);
+        return this.mirror.list(false, true);
       },
       getPropertyNames: function(){
-        return this.mirror.list(true, false);
+        return this.mirror.list(false, true);
       },
       enumerate: function(){
-        return this.mirror.list(false, false);
+        return this.mirror.list(false, true);
       },
       keys: function(){
         return this.mirror.list(false, true);
