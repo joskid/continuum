@@ -13,7 +13,7 @@ var operators = (function(exports){
       Continue      = SYMBOLS.Continue,
       Reference     = SYMBOLS.Reference,
       Completion    = SYMBOLS.Completion,
-      Uninitialized = SYMBOLS.Uninitialized;
+      Uninitialized = SYMBOLS.Uninitialized,
       NativePrivateName = require('./constants').BRANDS.NativePrivateName;
 
   var BOOLEAN   = 'boolean',
