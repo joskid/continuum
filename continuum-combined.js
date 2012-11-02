@@ -7054,7 +7054,6 @@ exports.assembler = (function(exports){
       METHOD        = new OpCode(3, 'METHOD'),
       NATIVE_CALL   = new OpCode(0, 'NATIVE_CALL'),
       NATIVE_REF    = new OpCode(1, 'NATIVE_REF'),
-      NEXT          = new OpCode(1, 'NEXT'),
       OBJECT        = new OpCode(0, 'OBJECT'),
       POP           = new OpCode(0, 'POP'),
       POPN          = new OpCode(1, 'POPN'),
@@ -9003,7 +9002,7 @@ exports.thunk = (function(exports){
     var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
       CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT,
       DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, ITERATE, JSR, JUMP, LET,
-      LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, NEXT, OBJECT, POP,
+      LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
       SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, THIS,
       THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
@@ -9330,21 +9329,6 @@ exports.thunk = (function(exports){
         return ƒ;
       }
       stack[sp++] = context.realm.natives.reference(code.lookup(ops[ip][0]), false);
-      return cmds[++ip];
-    }
-
-    function NEXT(){
-      a = stack[--sp];
-      b = stack[--sp];
-      c = stack[--sp];
-      if (b < c.length) {
-        PutValue(a, c[b]);
-        stack[++sp] = b + 1;
-        ++sp;
-      } else {
-        ip = ops[ip][0];
-        return cmds[ip];
-      }
       return cmds[++ip];
     }
 
@@ -11533,10 +11517,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     Native: true,
   }, [
     function Call(receiver, args){
+      "use strict";
       var result = this.call.apply(receiver, [].concat(args));
       return result && result.type === Return ? result.value : result;
     },
     function Construct(args){
+      "use strict";
       if (this.construct) {
         if (hasDirect(this, 'prototype')) {
           var instance = new $Object(getDirect(this, 'prototype'));
