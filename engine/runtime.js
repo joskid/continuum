@@ -660,15 +660,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
-    if (!env.HasBinding(ARGUMENTS)) {
-      if (func.Strict) {
-        env.CreateImmutableBinding(ARGUMENTS);
-      } else {
-        env.CreateMutableBinding(ARGUMENTS);
-      }
-      env.InitializeBinding(ARGUMENTS, ao);
-    }
-
     if (func.Strict) {
       var ao = CompleteStrictArgumentsObject(args);
       var status = ArgumentBindingInitialization(formals, ao, env);
@@ -680,6 +671,16 @@ var runtime = (function(GLOBAL, exports, undefined){
     if (status && status.Abrupt) {
       return status;
     }
+
+    if (!env.HasBinding(ARGUMENTS)) {
+      if (func.Strict) {
+        env.CreateImmutableBinding(ARGUMENTS);
+      } else {
+        env.CreateMutableBinding(ARGUMENTS);
+      }
+      env.InitializeBinding(ARGUMENTS, ao);
+    }
+
 
     var vardecls = func.Code.VarDeclaredNames;
     for (var i=0; i < vardecls.length; i++) {
