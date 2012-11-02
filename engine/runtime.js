@@ -38,6 +38,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       ToInteger        = operators.ToInteger,
       ToUint32         = operators.ToUint32,
       ToInt32          = operators.ToInt32,
+      ToUint16          = operators.ToUint16,
       ToString         = operators.ToString,
       UnaryOp          = operators.UnaryOp,
       BinaryOp         = operators.BinaryOp,
@@ -2936,6 +2937,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     ToInteger: ToInteger,
     ToInt32: ToInt32,
     ToUint32: ToUint32,
+    ToUint16: ToUint16,
     IsConstructCall: function(){
       return context.isConstruct;
     },
@@ -3092,7 +3094,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
       return string.replace(search, replace);
     },
-
+    FromCharCode: String.fromCharCode,
     GetExtensible: function(obj){
       return obj.GetExtensible();
     },

@@ -10,6 +10,17 @@ function String(string){
 $__setupConstructor(String, $__StringProto);
 $__wrapStringMethods(String.prototype);
 
+$__defineProps(String, {
+  fromCharCode(...codeUnits){
+    var length = codeUnits.length,
+        str = '';
+    for (var i=0; i < length; i++) {
+      str += $__FromCharCode($__ToUint16(codeUnits[i]));
+    }
+    return str;
+  }
+});
+
 $__defineProps(String.prototype, {
   repeat(count){
     var s = $__ToString(this),

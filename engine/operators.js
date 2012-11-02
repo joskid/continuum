@@ -230,28 +230,44 @@ var operators = (function(exports){
   // ## ToUint32
 
   function ToUint32(argument){
+    argument = ToNumber(argument);
     if (argument && typeof argument === OBJECT && argument.Completion) {
       if (argument.Abrupt) {
         return argument;
       }
-      argument = argument.value;
+      return ToUint32(argument.value);
     }
-    return ToNumber(argument) >>> 0;
+    return argument >>> 0;
   }
   exports.ToUint32 = ToUint32;
 
   // ## ToInt32
 
   function ToInt32(argument){
+    argument = ToNumber(argument);
     if (argument && typeof argument === OBJECT && argument.Completion) {
       if (argument.Abrupt) {
         return argument;
       }
-      argument = argument.value;
+      return ToInt32(argument.value);
     }
-    return ToNumber(argument) >> 0;
+    return argument >> 0;
   }
   exports.ToInt32 = ToInt32;
+
+  // ## ToUint16
+
+  function ToUint16(argument){
+    argument = ToNumber(argument);
+    if (argument && typeof argument === OBJECT && argument.Completion) {
+      if (argument.Abrupt) {
+        return argument;
+      }
+      return ToUint16(argument.value);
+    }
+    return (argument >>> 0) % (1 << 16);
+  }
+  exports.ToUint16 = ToUint16;
 
 
   // ## ToPropertyName
