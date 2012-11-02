@@ -329,7 +329,6 @@ var assembler = (function(exports){
       METHOD        = new OpCode(3, 'METHOD'),
       NATIVE_CALL   = new OpCode(0, 'NATIVE_CALL'),
       NATIVE_REF    = new OpCode(1, 'NATIVE_REF'),
-      NEXT          = new OpCode(1, 'NEXT'),
       OBJECT        = new OpCode(0, 'OBJECT'),
       POP           = new OpCode(0, 'POP'),
       POPN          = new OpCode(1, 'POPN'),
