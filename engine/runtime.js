@@ -645,18 +645,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
-    if (func.Strict) {
-      var ao = CompleteStrictArgumentsObject(args);
-      var status = ArgumentBindingInitialization(formals, ao, env);
-    } else {
-      var ao = env.arguments = CompleteMappedArgumentsObject(params, env, args, func)
-      var status = ArgumentBindingInitialization(formals, ao);
-    }
-
-    if (status && status.Abrupt) {
-      return status;
-    }
-
     var decls = func.Code.LexicalDeclarations;
 
     for (var i=0, decl; decl = decls[i]; i++) {
@@ -681,6 +669,18 @@ var runtime = (function(GLOBAL, exports, undefined){
       env.InitializeBinding(ARGUMENTS, ao);
     }
 
+    if (func.Strict) {
+      var ao = CompleteStrictArgumentsObject(args);
+      var status = ArgumentBindingInitialization(formals, ao, env);
+    } else {
+      var ao = env.arguments = CompleteMappedArgumentsObject(params, env, args, func)
+      var status = ArgumentBindingInitialization(formals, ao);
+    }
+
+    if (status && status.Abrupt) {
+      return status;
+    }
+
     var vardecls = func.Code.VarDeclaredNames;
     for (var i=0; i < vardecls.length; i++) {
       if (!env.HasBinding(vardecls[i])) {
@@ -702,6 +702,8 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
     }
+
+
   }
 
   function Brand(name){
@@ -1334,7 +1336,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       return this.Prototype;
     },
     function SetPrototype(value){
-      if (typeof value === 'object') {
+      if (typeof value === 'object' && this.GetExtensible()) {
         this.Prototype = value;
         return true;
       } else {
@@ -2704,18 +2706,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         return ThrowException('spread_non_object');
       }
 
-      var len = ToUint32(spread.Get('length'));
+      var value, iterator = spread.Iterate();
 
-      if (len && len.Completion) {
-        if (len.Abrupt) {
-          return len;
-        } else {
-          return len.value;
-        }
-      }
-
-      for (var i=0; i < len; i++) {
-        var value = spread.Get(i);
+      while (!(value = Invoke('next', iterator, [])) || value.value !== intrinsics.StopIteration) {
         if (value && value.Completion) {
           if (value.Abrupt) {
             return value;
@@ -2723,12 +2716,11 @@ var runtime = (function(GLOBAL, exports, undefined){
             value = value.value;
           }
         }
-
-        defineDirect(array, i + offset, value, ECW);
+        defineDirect(array, offset++, value, ECW);
       }
 
-      defineDirect(array, 'length', i + offset, _CW);
-      return i + offset;
+      defineDirect(array, 'length', offset, _CW);
+      return offset;
     },
     function SpreadDestructuring(target, index){
       var array = new $Array(0);
@@ -3064,6 +3056,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       return new $String(string);
     },
 
+    DateToNumber: function(object){
+      return +object.PrimitiveValue;
+    },
     DateToString: function(object){
       return ''+object.PrimitiveValue;
     },
