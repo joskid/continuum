@@ -244,5 +244,8 @@ $__defineProps(ArrayIterator.prototype, {
       return value;
     }
     return key;
+  },
+  iterator(){
+    return this;
   }
 });
