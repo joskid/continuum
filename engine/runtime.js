@@ -3007,7 +3007,11 @@ var runtime = (function(GLOBAL, exports, undefined){
         source: code,
         eval: true
       });
-      return script.thunk.run(context);
+      if (script.error) {
+        return script.error;
+      } else if (script.thunk) {
+        return script.thunk.run(context);
+      }
     },
     CallFunction: function(func, receiver, args){
       return func.Call(receiver, toInternalArray(args));
@@ -3030,6 +3034,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         natives: false,
         source: '(function anonymous('+args.join(', ')+') {\n'+body+'\n})'
       });
+      if (script.error) {
+        return script.error;
+      }
       var ctx = new ExecutionContext(context, NewDeclarativeEnvironment(realm.globalEnv), realm, script.bytecode);
       ExecutionContext.push(ctx);
       var func = script.thunk.run(ctx);
