@@ -278,7 +278,7 @@ var debug = (function(exports){
           props = this.ownAttrs();
 
       for (var k in props) {
-        if (own || props[k] & ACCESSOR) {
+        if (own || (props[k] & ACCESSOR)) {
           inherited[k] = props[k];
         }
       }
@@ -920,13 +920,13 @@ var debug = (function(exports){
 
     RenderHandler.prototype = {
       getOwnPropertyNames: function(){
-        return this.mirror.list(true, true);
+        return this.mirror.list(false, true);
       },
       getPropertyNames: function(){
-        return this.mirror.list(true, false);
+        return this.mirror.list(false, true);
       },
       enumerate: function(){
-        return this.mirror.list(false, false);
+        return this.mirror.list(false, true);
       },
       keys: function(){
         return this.mirror.list(false, true);
