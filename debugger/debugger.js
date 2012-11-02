@@ -956,13 +956,26 @@ inherit(PreviewProperty, Property);
 function Index(mirror, index){
   Component.call(this, 'li');
   this.mirror = mirror;
+  this._key = index;
   this.addClass('index');
   this.prop = mirror.get(index);
   this.property = previewRenderer.render(this.prop);
   this.append(this.property);
 }
 
-inherit(Index, PreviewProperty);
+inherit(Index, PreviewProperty, [
+  function refresh(){
+    if (this.prop) {
+      var prop = this.mirror.get(this._key);
+      if (prop.subject !== this.prop.subject) {
+        this.prop = prop;
+        this.replace(this.property, renderer.render(prop));
+      } else if (this.property.tree) {
+        this.property.tree.refresh();
+      }
+    }
+  }
+]);
 
 function Label(kind){
   Component.call(this, 'div');
