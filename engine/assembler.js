@@ -1299,10 +1299,9 @@ var assembler = (function(exports){
       }
     }
 
-    i--;
     adjust(tryer);
     while (i--) {
-      adjust(handlers[i]);
+      handlers[i] && adjust(handlers[i]);
     }
 
     if (node.finalizer) {
