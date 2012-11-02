@@ -65,6 +65,8 @@ h1, h2
 .ƒTHIS
 { color: hsl(100, 50%, 75%); }
 
+.ƒpanel > *, .ƒscroll-thumb, .ƒscroll-track, .ƒscroll-top, .ƒscroll-bottom
+{ box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box }
 
 #input
 { background: #000; }
@@ -73,14 +75,12 @@ h1, h2
 .CodeMirror
 { width: 100%; height: 100%; color: #fff }
 .ƒinspector
-{ background: #000; color: #fff; width: 100%; height: 100%; overflow-y: auto; padding: 15px; margin: 0; list-style: none; }
+{ background: #000; color: #fff; width: 100%; height: 100%; padding: 15px; margin: 0; list-style: none; }
 
 .ƒroot
 { top: 50px; left: 0; right: 0; bottom: 0; }
   .ƒpanel
   { position: absolute; }
-    .ƒpanel > *
-    { box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box }
     .ƒtop    { left: 0; right: 0; top: 0; }
     .ƒbottom { left: 0; right: 0; bottom: 0; }
 
@@ -95,6 +95,8 @@ h1, h2
       .ƒpanel-label
       { position: absolute; color: #8ff; right: 8px; text-shadow: 1px 1px 0 #066, 0 0 0 #0ff; opacity: .1;
         -webkit-transition: .3s; -moz-transition: .3s; transition: .3s }
+      .ƒscroll-container > .ƒpanel-label
+      { right: 45px }
       .ƒpanel:focus > .ƒpanel-label
       { opacity: 1; text-shadow: 1px 1px 0 #066, 0 0 15px #0ff; }
       .ƒtop > .ƒpanel-label
@@ -191,7 +193,7 @@ h1, h2
 
 
 .ƒsplitter
-{ position: absolute; z-index: 1001; border: 0 solid #068; }
+{ position: absolute; z-index: 10001; border: 0 solid #068; }
 .ƒsplitter-vertical
 { top: 0; left: 0; width: 100%; height: 3px; cursor: row-resize; border-top-width: 1px;
   box-shadow: 1px 3px 5px 0 rgba(0,0,0,.6); }
@@ -230,6 +232,47 @@ h1, h2
   background:    -moz-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:     -ms-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:         linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1)); }
+
+.ƒscrolled      { }
+.ƒscroll        { position: absolute; top: 0; right: 19px; bottom: 0; width: 15px; }
+.ƒscroll-track,
+.ƒscroll-thumb,
+.ƒscroll-top,
+.ƒscroll-bottom { position: absolute; z-index: 10; width: 100%; }
+.ƒscroll-track  { top: 15px; bottom: 15px; z-index: 9; }
+.ƒscroll-thumb  { }
+.ƒscroll-top    { top: 0; left: 0; height: 15px; }
+.ƒscroll-bottom { bottom: 0; left: 0; height: 15px; }
+
+
+.ƒscroll
+{ background: #000408; box-shadow: 0 0 30px #024; border-left: 1px solid #014; }
+.ƒscroll.ƒdisabled
+{ opacity: .5 }
+.ƒscroll-track
+{ background: -webkit-linear-gradient(bottom, #012, #000408);
+  background:    -moz-linear-gradient(bottom, #012, #000408);
+  background:     -ms-linear-gradient(bottom, #012, #000408);
+  background:         linear-gradient(to top, #013, #024); }
+
+.ƒscroll-thumb, .ƒscroll-top, .ƒscroll-bottom
+{ cursor: pointer; box-shadow: 0 0 7px 0 #06a; border-radius: 3px;
+  background: -webkit-linear-gradient(left, #013, #024);
+  background:    -moz-linear-gradient(left, #013, #024);
+  background:     -ms-linear-gradient(left, #013, #024);
+  background:         linear-gradient(to right, #013, #024); }
+.ƒscroll-thumb
+{  }
+.ƒscroll-top, .ƒscroll-bottom
+{  }
+.ƒscroll-thumb:hover, .ƒscroll-top:hover, .ƒscroll-bottom:hover
+{ box-shadow: 0 0 10px 2px #06a;
+  background: -webkit-linear-gradient(left, #001a6c, #002c50);
+  background:    -moz-linear-gradient(left, #001a6c, #002c50);
+  background:     -ms-linear-gradient(left, #001a6c, #002c50);
+  background:         linear-gradient(to right, #001a6c, #002c50); }
+.ƒscroll-top:hover, .ƒscroll-bottom:hover
+{  }
 
 
 

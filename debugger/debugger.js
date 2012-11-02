@@ -30,6 +30,7 @@ function Component(tag){
     this.classes = this.element.classList;
   }
   this.styles = this.element.style;
+  this.element.component = this;
 }
 
 define(Component.prototype, {
@@ -121,14 +122,14 @@ define(Component.prototype, [
   },
   function width(value){
     if (value === undefined) {
-      return this.element.getBoundingClientRect().width;
+      return this.element.offsetWidth;
     } else {
       this.styles.width = value + 'px';
     }
   },
   function height(value){
     if (value === undefined) {
-      return this.element.getBoundingClientRect().height;
+      return this.element.offsetHeight;
     } else {
       this.styles.height = value + 'px';
     }
@@ -140,11 +141,25 @@ define(Component.prototype, [
       this.styles.left = value + 'px';
     }
   },
+  function right(value){
+    if (value === undefined) {
+      return this.element.getBoundingClientRect().right;
+    } else {
+      this.styles.right = value + 'px';
+    }
+  },
   function top(value){
     if (value === undefined) {
       return this.element.getBoundingClientRect().top;
     } else {
       this.styles.top = value + 'px';
+    }
+  },
+  function bottom(value){
+    if (value === undefined) {
+      return this.element.getBoundingClientRect().bottom;
+    } else {
+      this.styles.bottom = value + 'px';
     }
   },
   function bounds(){
@@ -181,6 +196,32 @@ define(Component.prototype, [
   },
   function show(){
     this.element.style.display = '';
+  },
+  function parent(){
+    var node = this.element.parentNode;
+    if (node) {
+      if (!node.component) {
+        return new Component(node);
+      } else {
+        return node.component;
+      }
+    }
+  },
+  function style(name, val){
+    if (typeof name === 'string') {
+      if (typeof val === 'number') {
+        val += 'px';
+      }
+      this.element.style[name] = val;
+    } else {
+      for (var k in name) {
+        var val = name[k];
+        if (typeof val === 'number') {
+          val += 'px';
+        }
+        this.element.style[k] = val;
+      }
+    }
   }
 ]);
 
@@ -259,15 +300,16 @@ inherit(Span, Component, []);
 
 function Div(text, name){
   Component.call(this, 'div');
-  this.name = name;
-  this.text(text);
-  if (name) {
-    this.addClass(name);
+  if (text[0] === '.') {
+    name = text.slice(1);
+    text = '';
   }
+  this.name = name;
+  text && this.text(text);
+  name && this.addClass(name);
 }
 
 inherit(Div, Component, []);
-
 
 function Button(text, name){
   Component.call(this, 'button');
@@ -284,24 +326,91 @@ inherit(Button, Component, [
   }
 ]);
 
-// var handlers = {};
 
-// function registerHandler(type, handler){
-//   handlers[type] = handler
-// }
+var scrollbarWidth = (function() {
+  var el = document.createElement('div');
+  el.style.width = '50px';
+  el.style.height = '50px';
+  el.style.overflowX = 'scroll';
+  var measure = document.createElement('div');
+  measure.style.width = '100px';
+  el.appendChild(measure);
+  document.body.appendChild(el);
+  var width = el.offsetHeight - el.clientHeight;
+  document.body.removeChild(el);
+  el = null;
+  measure = null;
+  return width;
+})();
 
-// registerHandler('mouseenter', function(target, callback){
-//   target.on('mouseover', function(e){
-//     var from = window.event ? e.srcElement : e.target,
-//         to = e.relatedTarget || e.toElement;
+function VerticalScrollbar(container){
+  Component.call(this, 'div');
+  this.addClass('scroll');
+  this.track = this.append(new Div('.scroll-track'));
+  this.thumb = this.track.append(new Div('.scroll-thumb'));
+  this.up = this.append(new Div('.scroll-top'));
+  this.down = this.append(new Div('.scroll-bottom'));
+  if (container instanceof Element) {
+    container = new Component(container);
+  }
+  var parent = container.parent();
+  parent.right(-scrollbarWidth);
+  parent.width(parent.width() + scrollbarWidth);
+  parent.width = function width(value){
+    if (value === undefined) {
+      return this.element.offsetWidth - scrollbarWidth;
+    } else {
+      this.styles.width = (value + scrollbarWidth) + 'px';
+    }
+  };
+  container.resize = function resize(){
+    this.scrollbar.refresh();
+  };
+  parent.style('overflowX', 'hidden');
+  container.style({
+    paddingRight: parseFloat(container.getComputed('paddingRight')) + scrollbarWidth,
+    overflowY: 'scroll'
+  });
+  parent.addClass('scroll-container');
+  container.addClass('scrolled');
+  this.container = container;
+  container.append(this);
+  container.scrollbar = this;
+  container.on('scroll', this.refresh, this);
+  container.on('click', this.refresh, this);
+}
 
-//     while (related !== from && to.nodeName !== document.body) {
-//       to = to.parentNode;
-//     }
-//   });
-// });
-// if (type === 'mouseenter') {
+inherit(VerticalScrollbar, Component, [
+  function scrollHeight(){
+    return this.container.element.scrollHeight - this.container.element.clientHeight;
+  },
+  function scrollTo(percent){
+    this.container.element.scrollTop = percent * this.scrollHeight();
+  },
+  function resize(){
+    this.refresh();
+  },
+  function refresh(){
+    var el = this.container.element,
+        height = this.track.height(),
+        clientHeight = el.clientHeight,
+        scrollHeight = el.scrollHeight,
+        scrollTop = el.scrollTop,
+        scrollBottom = clientHeight + scrollTop,
+        top = scrollTop / scrollHeight * height | 0,
+        bottom = height - scrollBottom / scrollHeight * height | 0;
 
+    this.thumb.top(top);
+    this.thumb.bottom(bottom);
+    if (!this.disabled && !top && !bottom) {
+      this.disabled = true;
+      this.addClass('disabled');
+    } else if (this.disabled && top || bottom) {
+      this.disabled = false;
+      this.removeClass('disabled');
+    }
+  }
+]);
 
 function PanelOptions(o){
   o = Object(o);
@@ -322,6 +431,7 @@ PanelOptions.prototype = {
   right: null,
   bottom: null,
   content: null,
+  scroll: null
 };
 
 
@@ -333,7 +443,7 @@ function Panel(parent, options){
   if (options.label) {
     var label = _('h2');
     label.textContent = options.label;
-    label.className = this.ns + 'panel-label'
+    label.className = this.ns + 'panel-label';
     this.append(label);
   }
 
@@ -345,10 +455,10 @@ function Panel(parent, options){
   this.addClass('panel');
 
   if (parent) {
-    this.parent = parent;
+    this._parent = parent;
     this.size = options.size;
   } else {
-    this.parent = null;
+    this._parent = null;
     this.addClass('root');
   }
 
@@ -385,13 +495,16 @@ function Panel(parent, options){
     if (options.splitter) {
       this.splitter = new Splitter(first, second, this.orient);
     }
+    if (options.scroll) {
+      this.scrollbar = new VerticalScrollbar(this);
+    }
   }
 
   if (!parent) {
     var update = function(){
-      var rect = self.bounds();
-      self.calcWidth = rect.width;
-      self.calcHeight = rect.height;
+      //var rect = self.bounds();
+      self.calcWidth = self.element.clientWidth;
+      self.calcHeight = self.element.clientHeight;
       self.recalc();
       self.resize();
     };
@@ -532,11 +645,11 @@ var Splitter = (function(){
     Component.call(this, 'div');
     this.near = near;
     this.far = far;
-    this.parent = near.parent;
+    this._parent = near._parent;
 
     this.addClass('splitter');
     this.addClass('splitter-'+orientation);
-    this.parent.addClass('splitter-container');
+    this._parent.addClass('splitter-container');
     far.addClass('splitter-side');
     near.addClass('splitter-side');
     far.append(this);
@@ -582,8 +695,8 @@ var Splitter = (function(){
         this.lastFar = far;
         this.near.size = near / container;
         this.far.size = 'auto';
-        this.parent.recalc();
-        this.parent.resize();
+        this._parent.recalc();
+        this._parent.resize();
       }
     },
   ]);
@@ -603,7 +716,7 @@ var Splitter = (function(){
       return this.far.height(v);
     },
     function parentSize(v){
-      return this.parent.height(v);
+      return this._parent.height(v);
     },
     function size(v){
       return this.height(v);
@@ -632,7 +745,7 @@ var Splitter = (function(){
       return this.far.width(v);
     },
     function parentSize(v){
-      return this.parent.width(v);
+      return this._parent.width(v);
     },
     function size(v){
       return this.width(v);
@@ -1038,7 +1151,7 @@ inherit(Tree, Component, [
   function refresh(){
     var children = this.children || [];
     for (var i=0; i < children.length; i++) {
-      children[i].refresh();
+      children[i].refresh && children[i].refresh();
     }
     return this;
   },
@@ -1598,6 +1711,7 @@ var body = new Component(document.body),
     input = new Editor,
     instructions = new Instructions;
 
+
 inspector.removeClass('tree');
 inspector.addClass('inspector');
 inspector.show();
@@ -1632,6 +1746,7 @@ var main = new Panel(null, {
   }
 });
 
+inspector.scroll = new VerticalScrollbar(inspector);
 
 function runInContext(code, realm){
   var result = renderer.render(realm.evaluate(code));
