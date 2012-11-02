@@ -154,6 +154,10 @@ $__defineProps(Array.prototype, {
     var object = $__ToObject(this);
     return new ArrayIterator(object, 'value');
   }
+  iterator(){
+    var object = $__ToObject(this);
+    return new ArrayIterator(object, 'key+value');
+  }
 });
 
 function joinArray(array, separator){

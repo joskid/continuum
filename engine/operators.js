@@ -14,6 +14,7 @@ var operators = (function(exports){
       Reference     = SYMBOLS.Reference,
       Completion    = SYMBOLS.Completion,
       Uninitialized = SYMBOLS.Uninitialized;
+      NativePrivateName = require('./constants').BRANDS.NativePrivateName;
 
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',

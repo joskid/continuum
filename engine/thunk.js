@@ -58,7 +58,7 @@ var thunk = (function(exports){
     var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
       CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT,
       DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, ITERATE, JSR, JUMP, LET,
-      LITERAL, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, NEXT, OBJECT, POP,
+      LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, NEXT, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
       SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, THIS,
       THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
@@ -110,9 +110,9 @@ var thunk = (function(exports){
     }
 
     function CALL(){
-      a = stack[--sp];
-      b = stack[--sp];
-      c = stack[--sp];
+      a = stack[sp - 1];
+      b = stack[sp - 2];
+      c = stack[sp - 3];
       d = context.EvaluateCall(c, b, a);
       if (d && d.Completion) {
         if (d.Abrupt) {
@@ -239,8 +239,7 @@ var thunk = (function(exports){
     }
 
     function ENUM(){
-      stack[sp - 1] = stack[sp - 1].Enumerate(true, true);
-      stack[sp++] = 0;
+      stack[sp - 1] = stack[sp - 1].enumerator();
       return cmds[++ip];
     }
 
@@ -312,7 +311,8 @@ var thunk = (function(exports){
     }
 
     function ITERATE(){
-
+      stack[sp - 1] = stack[sp - 1].Iterate();
+      return cmds[++ip];
     }
 
     function LITERAL(){
@@ -331,6 +331,11 @@ var thunk = (function(exports){
 
     function LET(){
       context.initializeBindings(ops[ip][0], stack[--sp], true);
+      return cmds[++ip];
+    }
+
+    function LOG(){
+      console.log(sp, stack);
       return cmds[++ip];
     }
 
@@ -642,8 +647,11 @@ var thunk = (function(exports){
           } else {
             if (entry.type === ENTRY.TRYCATCH) {
               stack[sp++] = error.value;
-              ip = entry.end + 1;
-              console.log(code.ops[ip])
+              ip = entry.end;
+              console.log(ops[ip])
+              return cmds[ip];
+            } else if (entry.type === ENTRY.FOROF && error.value === context.realm.intrinsics.StopIteration) {
+              ip = entry.end;
               return cmds[ip];
             }
           }

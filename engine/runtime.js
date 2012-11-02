@@ -393,7 +393,30 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   // ## Invoke
+  function Invoke(key, receiver, args){
+    var obj = ToObject(receiver);
+    if (obj && obj.Completion) {
+      if (obj.Abrupt) {
+        return obj;
+      } else {
+        obj = obj.value;
+      }
+    }
 
+    var func = obj.Get(key);
+    if (func && func.Completion) {
+      if (func.Abrupt) {
+        return func;
+      } else {
+        func = func.value;
+      }
+    }
+
+    if (!IsCallable(func))
+      return ThrowException('called_non_callable', key);
+
+    return func.Call(obj, args);
+  }
 
   // ## GetIdentifierReference
 
@@ -931,7 +954,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
 
-      var itr = Invoke(iterator, object, []);
+      var itr = Invoke('iterator', object, []);
     }
   }
 
@@ -1528,6 +1551,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function Iterate(){
+      return Invoke('iterator', this, []);
+    },
+    function enumerator(){
       var keys = this.Enumerate(true, true),
           index = 0,
           len = keys.length;
@@ -1535,10 +1561,10 @@ var runtime = (function(GLOBAL, exports, undefined){
       var iterator = new $Object;
       setDirect(iterator, 'next', new $NativeFunction({
         length: 0,
-        name: '',
+        name: 'next',
         call: function(){
           if (index < len) {
-            return keys[index];
+            return keys[index++];
           } else {
             return new AbruptCompletion('throw', intrinsics.StopIteration);
           }
@@ -1789,7 +1815,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     Native: true,
   }, [
     function Call(receiver, args){
-      "use strict";
       var result = this.call.apply(receiver, [].concat(args));
       return result && result.type === Return ? result.value : result;
     },
@@ -2001,9 +2026,6 @@ var runtime = (function(GLOBAL, exports, undefined){
   inherit($Array, $Object, {
     NativeBrand: BRANDS.NativeArray
   }, [
-    function Iterate(){
-      return Invoke(this, 'iterator', []);
-    },
     function DefineOwnProperty(key, desc, strict){
       function Reject(str) {
         if (strict) {
@@ -2636,7 +2658,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     function EvaluateCall(ref, func, args){
       if (typeof func !== OBJECT || !IsCallable(func)) {
-        return ThrowException('called_non_callable', [ref.name]);
+        return ThrowException('called_non_callable', [ref && ref.name]);
       }
 
       if (ref instanceof Reference) {
@@ -2738,30 +2760,6 @@ var runtime = (function(GLOBAL, exports, undefined){
 
       defineDirect(array, 'length', i, _CW);
       return array;
-    },
-    function Invoke(key, receiver, args){
-      var obj = ToObject(receiver);
-      if (obj && obj.Completion) {
-        if (obj.Abrupt) {
-          return obj;
-        } else {
-          obj = obj.value;
-        }
-      }
-
-      var func = obj.Get(key);
-      if (func && func.Completion) {
-        if (func.Abrupt) {
-          return func;
-        } else {
-          func = func.value;
-        }
-      }
-
-      if (!IsCallable(func))
-        return ThrowException('called_non_callable', key);
-
-      return func.Call(obj, args);
     }
   ]);
 

@@ -324,6 +324,7 @@ var assembler = (function(exports){
       JUMP          = new OpCode(1, 'JUMP'),
       LET           = new OpCode(1, 'LET'),
       LITERAL       = new OpCode(1, 'LITERAL'),
+      LOG           = new OpCode(0, 'LOG'),
       MEMBER        = new OpCode(1, 'MEMBER'),
       METHOD        = new OpCode(3, 'METHOD'),
       NATIVE_CALL   = new OpCode(0, 'NATIVE_CALL'),
@@ -996,97 +997,43 @@ var assembler = (function(exports){
   }
 
   function ForInStatement(node){
-    entrance(function(){
-      if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
-        recurse(node.right);
-        record(GET);
-        record(ENUM);
-        var op,
-            update = current();
-        block(function(){
-          lexical(function(){
-            var lexicals = LexicalDeclarations(node);
-            record(BLOCK, { LexicalDeclarations: lexicals });
-            recurse(node.left);
-            var name = last()[0].name;
-            pop();
-            record(REF, name);
-            op = record(NEXT);
-
-            for (var i=0, item; item = node.body.body[i]; i++) {
-              recurse(item);
-            }
-
-            record(UPSCOPE);
-          });
-        });
-        record(JUMP, update);
-        adjust(op);
-        record(UPSCOPE);
-      } else {
-        recurse(node.right);
-        record(GET);
-        record(ENUM);
-        var update = current();
-        recurse(node.left);
-        var name = last()[0].name;
-        pop();
-        record(REF, name);
-        var op = record(NEXT);
-        recurse(node.body);
-        record(JUMP, update);
-        adjust(op);
-      }
-      return update;
-    });
+    iteration(node, ENUM);
   }
-
   function ForOfStatement(node){
     iteration(node, ITERATE);
   }
 
-  function iteration(node, type){
+
+  function iteration(node, kind){
     lexical(ENTRY.FOROF, function(){
       entrance(function(){
+        recurse(node.right);
+        record(GET);
+        record(kind);
+        record(GET);
+        record(MEMBER, 'next');
+        record(DUP);
+        record(GET);
+        var update = current();
+        record(ARGS);
+        record(CALL);
+        record(ROTATE, 1);
+        var compare = record(IFEQ, 0, false);
         if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
-          recurse(node.right);
-          record(GET);
-          record(type);
-          var op,
-              update = current();
           block(function(){
             lexical(function(){
-              var lexicals = LexicalDeclarations(node);
-              var name = node.left.declarations[node.left.declarations.length - 1].id;
-              record(BLOCK, { LexicalDeclarations: lexicals });
+              record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.left) });
               recurse(node.left);
-              pop();
-              record(REF, name ? name.name : '');
-              op = record(NEXT);
-
-              for (var i=0, item; item = node.body.body[i]; i++) {
-                recurse(item);
-              }
-
+              recurse(node.body);
               record(UPSCOPE);
             });
           });
-          record(JUMP, update);
-          adjust(op);
-          record(UPSCOPE);
         } else {
           recurse(node.left);
-          var name = last()[0].name;
-          recurse(node.right);
-          record(GET);
-          record(type);
-          var update = current();
-          record(REF, name);
-          var op = record(NEXT);
           recurse(node.body);
-          record(JUMP, update);
-          adjust(op);
         }
+        record(JUMP, update);
+        adjust(compare);
         return update;
       });
     });
