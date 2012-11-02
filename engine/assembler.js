@@ -620,7 +620,8 @@ var assembler = (function(exports){
       var entry = new Entry(context.labels, context.levels.length);
       context.jumps.push(entry);
       context.labels = create(null);
-      entry.updateBreaks(callback());
+      callback();
+      entry.updateBreaks(current());
       context.jumps.pop();
     } else {
       callback();
@@ -921,8 +922,9 @@ var assembler = (function(exports){
   }
 
   function ForStatement(node){
-    lexical(function(){
-      entrance(function(){
+    entrance(function(){
+      var update;
+      lexical(function(){
         var scope = record(BLOCK, { LexicalDeclarations: [] });
         var init = node.init;
         if (init){
@@ -957,7 +959,7 @@ var assembler = (function(exports){
           var op = record(IFEQ, 0, false);
         }
 
-        var update = current();
+        update = current();
 
         if (node.body.body && decl) {
           block(function(){
@@ -989,9 +991,9 @@ var assembler = (function(exports){
 
         record(JUMP, test);
         adjust(op);
-        return update;
+        record(UPSCOPE);
       });
-      record(UPSCOPE);
+      return update;
     });
   }
 
@@ -1004,8 +1006,9 @@ var assembler = (function(exports){
   }
 
   function iteration(node, kind){
-    lexical(ENTRY.FOROF, function(){
-      entrance(function(){
+    entrance(function(){
+      var update;
+      lexical(ENTRY.FOROF, function(){
         recurse(node.right);
         record(GET);
         record(kind);
@@ -1013,7 +1016,7 @@ var assembler = (function(exports){
         record(MEMBER, 'next');
         record(DUP);
         record(GET);
-        var update = current();
+        update = current();
         record(ARGS);
         record(CALL);
         record(ROTATE, 1);
@@ -1033,8 +1036,8 @@ var assembler = (function(exports){
         }
         record(JUMP, update);
         adjust(compare);
-        return update;
       });
+      return update;
     });
   }
 
@@ -1202,6 +1205,7 @@ var assembler = (function(exports){
 
     for (var len = context.levels.length; len > 0; --len){
       var level = context.levels[len - 1];
+      console.log(level)
       levels[level.type](level);
     }
 
