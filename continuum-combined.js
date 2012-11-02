@@ -4765,24 +4765,24 @@ parseYieldExpression: true
     }
 
     function trackGroupExpression() {
-        var marker, expr, parenCount;
+        var marker, expr;
 
         skipComment();
         marker = createLocationMarker();
         expect('(');
 
-        parenCount = ++state.parenthesizedCount;
         state.allowArrowFunction = true;
         expr = parseExpression();
         state.allowArrowFunction = false;
 
-        if (parenCount === state.parenthesizedCount) {
+
+        if (expr.type === 'ArrowFunctionExpression') {
+            marker.end();
+            marker.apply(expr);
+        } else {
             expect(')');
             marker.end();
             marker.applyGroup(expr);
-        } else if (expr.type === 'ArrowFunctionExpression') {
-            marker.end();
-            marker.apply(expr);
         }
 
         return expr;
@@ -8032,10 +8032,9 @@ exports.assembler = (function(exports){
       }
     }
 
-    i--;
     adjust(tryer);
     while (i--) {
-      adjust(handlers[i]);
+      handlers[i] && adjust(handlers[i]);
     }
 
     if (node.finalizer) {
@@ -12742,7 +12741,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         source: code,
         eval: true
       });
-      return script.thunk.run(context);
+      if (script.error) {
+        return script.error;
+      } else if (script.thunk) {
+        return script.thunk.run(context);
+      }
     },
     CallFunction: function(func, receiver, args){
       return func.Call(receiver, toInternalArray(args));
@@ -12765,6 +12768,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         natives: false,
         source: '(function anonymous('+args.join(', ')+') {\n'+body+'\n})'
       });
+      if (script.error) {
+        return script.error;
+      }
       var ctx = new ExecutionContext(context, NewDeclarativeEnvironment(realm.globalEnv), realm, script.bytecode);
       ExecutionContext.push(ctx);
       var func = script.thunk.run(ctx);
