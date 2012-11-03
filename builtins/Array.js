@@ -205,6 +205,7 @@ function ArrayIterator(array, kind){
   $__SetInternal(this, ARRAY, array);
   $__SetInternal(this, INDEX, 0);
   $__SetInternal(this, KIND, kinds[kind]);
+  this.next = () => next.call(this);
 }
 
 $__defineProps(ArrayIterator.prototype, {
@@ -249,3 +250,5 @@ $__defineProps(ArrayIterator.prototype, {
     return this;
   }
 });
+
+var next = ArrayIterator.prototype.next;

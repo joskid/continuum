@@ -1013,13 +1013,15 @@ var assembler = (function(exports){
         record(GET);
         record(kind);
         record(GET);
-        record(MEMBER, 'next');
         record(DUP);
+        record(MEMBER, 'next');
         record(GET);
         update = current();
+        record(DUP);
+        record(DUP);
         record(ARGS);
         record(CALL);
-        record(ROTATE, 1);
+        record(DUP);
         var compare = record(IFEQ, 0, false);
         if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
           block(function(){
