@@ -151,9 +151,8 @@ module.exports = function(){
     host: 'irc.freenode.net',
     port: 6667,
     nick: 'continuum',
-    password: 'jscont',
     user: 'continuum',
     real: 'continuum',
-    channels: ['#continuum', '##javascript', '#node.js']
+    channels: ['#continuum', '##javascript', '#node.js', '#appjs']
   }]);
 }
