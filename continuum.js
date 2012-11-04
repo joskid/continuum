@@ -35,9 +35,3 @@ continuum.debug = debug;
 continuum.Realm = runtime.Realm;
 continuum.createBytecode = createBytecode;
 utility.define(continuum, 'utility', utility);
-
-
-
-console.log(continuum().evaluate('for (let [i, k] of [5, 10, 20]){ this[i] = function(){ return k }; } this'))
-//console.log(continuum().evaluate('stdout').Iterate().Get('next').Call(undefined, []))
-//console.log(continuum().evaluate())
