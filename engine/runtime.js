@@ -980,13 +980,13 @@ var runtime = (function(GLOBAL, exports, undefined){
 
       var next;
       while (next = Invoke('next', itr, [])) {
+        if (IsStopIteration(next)) {
+          return object;
+        }
+
         if (next && next.Completion) {
           if (next.Abrupt) {
-            if (next.value === intrinsics.StopIteration) {
-              return object;
-            } else {
-              return next;
-            }
+            return next;
           } else {
             next = next.value;
           }

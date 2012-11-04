@@ -23,7 +23,8 @@ var thunk = (function(exports){
       AST       = constants.AST.array,
       Pause     = constants.SYMBOLS.Pause,
       Empty     = constants.SYMBOLS.Empty,
-      Resume    = constants.SYMBOLS.Resume;
+      Resume    = constants.SYMBOLS.Resume,
+      StopIteration = constants.BRANDS.StopIteration;
 
   var AbruptCompletion = require('./errors').AbruptCompletion;
 
@@ -66,6 +67,54 @@ var thunk = (function(exports){
     var thunk = this,
         ops = code.ops,
         cmds = instructions(ops, opcodes);
+
+
+    function ƒ(){
+      for (var i = 0, entry; entry = code.entrances[i]; i++) {
+        if (entry.begin < ip && ip <= entry.end) {
+          if (entry.type === ENTRY.ENV) {
+            trace(context.popBlock());
+          } else {
+            if (entry.type === ENTRY.TRYCATCH) {
+              stack[sp++] = error.value;
+              ip = entry.end;
+              console.log(ops[ip])
+              return cmds[ip];
+            } else if (entry.type === ENTRY.FOROF) {
+              if (error && error.value && error.value.NativeBrand === StopIteration) {
+                ip = entry.end;
+                return cmds[ip];
+              }
+            }
+          }
+        }
+      }
+
+
+      if (error) {
+        if (error.value && error.value.setCode) {
+          var range = code.ops[ip].range,
+              loc = code.ops[ip].loc;
+
+          if (!error.value.hasLocation) {
+            error.value.hasLocation = true;
+            error.value.setCode(loc, code.source);
+            error.value.setOrigin(code.filename, code.name);
+          }
+
+          if (stacktrace) {
+            if (error.value.trace) {
+              [].push.apply(error.value.trace, stacktrace);
+            } else {
+              error.value.trace = stacktrace;
+            }
+            error.value.context || (error.value.context = context);
+          }
+        }
+      }
+      completion = error;
+      return false;
+    }
 
     function ARGS(){
       stack[sp++] = [];
@@ -624,50 +673,6 @@ var thunk = (function(exports){
       }
       context.pushWith(a);
       return cmds[++ip];
-    }
-
-    function ƒ(){
-      for (var i = 0, entry; entry = code.entrances[i]; i++) {
-        if (entry.begin < ip && ip <= entry.end) {
-          if (entry.type === ENTRY.ENV) {
-            trace(context.popBlock());
-          } else {
-            if (entry.type === ENTRY.TRYCATCH) {
-              stack[sp++] = error.value;
-              ip = entry.end;
-              console.log(ops[ip])
-              return cmds[ip];
-            } else if (entry.type === ENTRY.FOROF && error.value === context.realm.intrinsics.StopIteration) {
-              ip = entry.end;
-              return cmds[ip];
-            }
-          }
-        }
-      }
-      if (error) {
-
-        if (error.value && error.value.setCode) {
-          var range = code.ops[ip].range,
-              loc = code.ops[ip].loc;
-
-          if (!error.value.hasLocation) {
-            error.value.hasLocation = true;
-            error.value.setCode(loc, code.source);
-            error.value.setOrigin(code.filename, code.name);
-          }
-
-          if (stacktrace) {
-            if (error.value.trace) {
-              [].push.apply(error.value.trace, stacktrace);
-            } else {
-              error.value.trace = stacktrace;
-            }
-            error.value.context || (error.value.context = context);
-          }
-        }
-      }
-      completion = error;
-      return false;
     }
 
 
