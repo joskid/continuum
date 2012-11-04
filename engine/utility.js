@@ -651,6 +651,9 @@ var utility = (function(exports){
   exports.Hash = Hash;
 
 
+  var proto = Math.random().toString(36).slice(2);
+
+
   var PropertyList = exports.PropertyList = (function(){
     function PropertyList(){
       this.hash = new Hash;
@@ -660,14 +663,16 @@ var utility = (function(exports){
     }
 
     function get(key){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
         return this.props[index][1];
       }
     }
 
     function getAttribute(key){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
         return this.props[index][2];
       } else {
@@ -676,7 +681,8 @@ var utility = (function(exports){
     }
 
     function getProperty(key){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
         return this.props[index];
       } else {
@@ -685,11 +691,12 @@ var utility = (function(exports){
     }
 
     function set(key, value, attr){
-      var index = this.hash[key],
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name],
           prop;
 
       if (index === undefined) {
-        index = this.hash[key] = this.props.length;
+        index = this.hash[name] = this.props.length;
         prop = this.props[index] = [key, value, 0];
         this.length++;
       } else {
@@ -704,7 +711,8 @@ var utility = (function(exports){
     }
 
     function setAttribute(key, attr){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
         this.props[index][2] = attr;
         return true;
@@ -715,17 +723,20 @@ var utility = (function(exports){
 
     function setProperty(prop){
       var key = prop[0],
-          index = this.hash[key];
+          name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index === undefined) {
-        index = this.hash[key] = this.props.length;
+        index = this.hash[name] = this.props.length;
+        this.length++;
       }
       this.props[index] = prop;
     }
 
     function remove(key){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
-        this.hash[key] = undefined;
+        this.hash[name] = undefined;
         this.props[index] = undefined;
         this.holes++;
         this.length--;
@@ -736,11 +747,13 @@ var utility = (function(exports){
     }
 
     function has(key){
-      return this.hash[key] !== undefined;
+      var name = key === '__proto__' ? proto : key;
+      return this.hash[name] !== undefined;
     }
 
     function hasAttribute(key, mask){
-      var attr = this.getAttribute(key);
+      var name = key === '__proto__' ? proto : key,
+          attr = this.getAttribute(name);
       if (attr !== null) {
         return (attr & mask) > 0;
       }
@@ -758,8 +771,9 @@ var utility = (function(exports){
 
       for (var i=0; i < len; i++) {
         if (prop = props[i]) {
+          var name = prop[0] === '__proto__' ? proto : prop[0];
           this.props[index] = prop;
-          this.hash[prop[0]] = index++;
+          this.hash[name] = index++;
         }
       }
     }
@@ -803,8 +817,9 @@ var utility = (function(exports){
 
       this.forEach(function(prop, index){
         prop = callback.call(context, prop, index, this);
+        var name = prop[0] === '__proto__' ? proto : prop[0];
         out.props[index] = prop;
-        out.hash[prop[0]] = index;
+        out.hash[name] = index;
       });
 
       return out;
@@ -818,8 +833,9 @@ var utility = (function(exports){
 
       this.forEach(function(prop, i){
         if (callback.call(context, prop, i, this)) {
+          var name = prop[0] === '__proto__' ? proto : prop[0];
           out.props[index] = prop;
-          out.hash[prop[0]] = index++;
+          out.hash[name] = index++;
         }
       });
 

@@ -5956,6 +5956,9 @@ exports.utility = (function(exports){
   exports.Hash = Hash;
 
 
+  var proto = Math.random().toString(36).slice(2);
+
+
   var PropertyList = exports.PropertyList = (function(){
     function PropertyList(){
       this.hash = new Hash;
@@ -5965,14 +5968,16 @@ exports.utility = (function(exports){
     }
 
     function get(key){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
         return this.props[index][1];
       }
     }
 
     function getAttribute(key){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
         return this.props[index][2];
       } else {
@@ -5981,7 +5986,8 @@ exports.utility = (function(exports){
     }
 
     function getProperty(key){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
         return this.props[index];
       } else {
@@ -5990,11 +5996,12 @@ exports.utility = (function(exports){
     }
 
     function set(key, value, attr){
-      var index = this.hash[key],
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name],
           prop;
 
       if (index === undefined) {
-        index = this.hash[key] = this.props.length;
+        index = this.hash[name] = this.props.length;
         prop = this.props[index] = [key, value, 0];
         this.length++;
       } else {
@@ -6009,7 +6016,8 @@ exports.utility = (function(exports){
     }
 
     function setAttribute(key, attr){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
         this.props[index][2] = attr;
         return true;
@@ -6020,17 +6028,20 @@ exports.utility = (function(exports){
 
     function setProperty(prop){
       var key = prop[0],
-          index = this.hash[key];
+          name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index === undefined) {
-        index = this.hash[key] = this.props.length;
+        index = this.hash[name] = this.props.length;
+        this.length++;
       }
       this.props[index] = prop;
     }
 
     function remove(key){
-      var index = this.hash[key];
+      var name = key === '__proto__' ? proto : key,
+          index = this.hash[name];
       if (index !== undefined) {
-        this.hash[key] = undefined;
+        this.hash[name] = undefined;
         this.props[index] = undefined;
         this.holes++;
         this.length--;
@@ -6041,11 +6052,13 @@ exports.utility = (function(exports){
     }
 
     function has(key){
-      return this.hash[key] !== undefined;
+      var name = key === '__proto__' ? proto : key;
+      return this.hash[name] !== undefined;
     }
 
     function hasAttribute(key, mask){
-      var attr = this.getAttribute(key);
+      var name = key === '__proto__' ? proto : key,
+          attr = this.getAttribute(name);
       if (attr !== null) {
         return (attr & mask) > 0;
       }
@@ -6063,8 +6076,9 @@ exports.utility = (function(exports){
 
       for (var i=0; i < len; i++) {
         if (prop = props[i]) {
+          var name = prop[0] === '__proto__' ? proto : prop[0];
           this.props[index] = prop;
-          this.hash[prop[0]] = index++;
+          this.hash[name] = index++;
         }
       }
     }
@@ -6108,8 +6122,9 @@ exports.utility = (function(exports){
 
       this.forEach(function(prop, index){
         prop = callback.call(context, prop, index, this);
+        var name = prop[0] === '__proto__' ? proto : prop[0];
         out.props[index] = prop;
-        out.hash[prop[0]] = index;
+        out.hash[name] = index;
       });
 
       return out;
@@ -6123,8 +6138,9 @@ exports.utility = (function(exports){
 
       this.forEach(function(prop, i){
         if (callback.call(context, prop, i, this)) {
+          var name = prop[0] === '__proto__' ? proto : prop[0];
           out.props[index] = prop;
-          out.hash[prop[0]] = index++;
+          out.hash[name] = index++;
         }
       });
 
@@ -8238,15 +8254,7 @@ exports.operators = (function(exports){
     } else {
       var base = v.base;
 
-      if (v.name === '__proto__') {
-        if (base.SetPrototype) {
-          base.SetPrototype(w);
-        } else if (base.bindings && base.bindings.SetPrototype) {
-          base.bindings.SetPrototype(w);
-        } else {
-          console.log(v);
-        }
-      } else if (exports.IsPropertyReference(v)) {
+      if (exports.IsPropertyReference(v)) {
         if (HasPrimitiveBase(v)) {
           base = new exports.$PrimitiveBase(base);
         }
@@ -11223,19 +11231,36 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
 
 
+  var Proto = {
+    Get: {
+      Call: function(receiver){
+        return receiver.GetPrototype();
+      }
+    },
+    Set: {
+      Call: function(receiver, args){
+        return receiver.SetPrototype(args[0]);
+      }
+    }
+  };
+
 
   // ###############
   // ### $Object ###
   // ###############
 
   function $Object(proto){
-    if (proto === undefined)
+    if (proto === undefined) {
       proto = intrinsics.ObjectProto;
+    }
     this.Prototype = proto;
     this.properties = new PropertyList;
     this.hiddens = create(null);
     this.storage = create(null);
     $Object.tag(this);
+    if (proto === null) {
+      this.properties.setProperty(['__proto__', null, 6, Proto]);
+    }
     hide(this, 'hiddens');
     hide(this, 'storage');
     hide(this, 'Prototype');
@@ -11274,19 +11299,23 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     },
     function GetOwnProperty(key){
       if (key === '__proto__') {
-        return undefined;
+        var val = this.GetP(this, '__proto__');
+        return typeof val === OBJECT ? new DataDescriptor(val, 6) : undefined;
       }
 
       var prop = this.properties.getProperty(key);
       if (prop) {
-        var Descriptor = prop[2] & A ? AccessorDescriptor : DataDescriptor;
-        return new Descriptor(prop[1], prop[2]);
+        if (prop[2] & A) {
+          var Descriptor = AccessorDescriptor,
+              val = prop[2];
+        } else {
+          var val = prop[3] ? prop[3](this) : prop[2],
+              Descriptor = DataDescriptor;
+        }
+        return new Descriptor(val, prop[2]);
       }
     },
     function GetProperty(key){
-      if (key === '__proto__') {
-        return undefined;
-      }
       var desc = this.GetOwnProperty(key);
       if (desc) {
         return desc;
@@ -11298,53 +11327,48 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function Get(key){
-      if (key === '__proto__') {
-        return this.GetPrototype();
-      }
       return this.GetP(this, key);
     },
     function Put(key, value, strict){
-      if (key === '__proto__') {
-        return this.SetPrototype(value);
-      }
       if (!this.SetP(this, key, value) && strict) {
         return ThrowException('strict_cannot_assign', [key]);
       }
     },
     function GetP(receiver, key){
-      if (key === '__proto__') {
-        return receiver.GetPrototype();
-      }
-      var desc = this.GetOwnProperty(key);
-      if (!desc) {
+      var prop = this.properties.getProperty(key);
+      if (!prop) {
         var proto = this.GetPrototype();
         if (proto) {
           return proto.GetP(receiver, key);
         }
-      } else if (IsAccessorDescriptor(desc)) {
-        var getter = desc.Get;
+      } else if (prop[3]) {
+        var getter = prop[3].Get;
+        return getter.Call(receiver, [key]);
+      } else if (prop[2] & A) {
+        var getter = prop[1].Get;
         if (IsCallable(getter)) {
           return getter.Call(receiver, []);
         }
       } else {
-        return desc.Value;
+        return prop[1];
       }
     },
     function SetP(receiver, key, value) {
-      if (key === '__proto__') {
-        return receiver.SetPrototype(value);
-      }
-      var desc = this.GetOwnProperty(key);
-      if (desc) {
-        if (IsAccessorDescriptor(desc)) {
-          var setter = desc.Set;
+      var prop = this.properties.getProperty(key);
+      if (prop) {
+        if (prop[3]) {
+          var setter = prop[3].Set;
+          setter.Call(receiver, [key, value]);
+          return true;
+        } else if (prop[2] & A) {
+          var setter = prop[1].Set;
           if (IsCallable(setter)) {
             setter.Call(receiver, [value]);
             return true;
           } else {
             return false;
           }
-        } else if (desc.Writable) {
+        } else if (prop[2] & W) {
           if (this === receiver) {
             return this.DefineOwnProperty(key, new Value(value), false);
           } else if (!receiver.GetExtensible()) {
@@ -11372,14 +11396,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       var reject = strict
           ? function(e, a){ return ThrowException(e, a) }
           : function(e, a){ return false };
-
-      if (key === '__proto__') {
-        if (isObject(desc) && 'Value' in desc) {
-          return this.SetPrototype(desc.Value);
-        } else {
-          return false;
-        }
-      }
 
       var current = this.GetOwnProperty(key);
 
@@ -11451,10 +11467,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function HasOwnProperty(key){
-      return key === '__proto__' ? false : this.properties.has(key);
+      return this.properties.has(key);
     },
     function HasProperty(key){
-      if (key === '__proto__' || this.properties.has(key)) {
+      if (this.properties.has(key)) {
         return true;
       } else {
         var proto = this.GetPrototype();
@@ -11466,9 +11482,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function Delete(key, strict){
-      if (key === '__proto__') {
-        return false;
-      } else if (!this.properties.has(key)) {
+      if (!this.properties.has(key)) {
         return true;
       } else if (this.properties.hasAttribute(key, C)) {
         this.properties.remove(key);
@@ -11550,6 +11564,19 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       return ThrowException('cannot_convert_to_primitive', []);
     },
   ]);
+
+  function PrivateName(name){
+    this.name = name;
+    this.key = Math.random().toString(36).slice(2);
+  }
+
+  define(PrivateName.prototype, [
+    function toString(){
+      return this.key;
+    }
+  ]);
+
+
 
   var DefineOwn = $Object.prototype.DefineOwnProperty;
 
@@ -11828,6 +11855,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       if (key < this.PrimitiveValue.length && key >= 0) {
         return new StringIndice(this.PrimitiveValue[key]);
       }
+    },
+    function Get(key){
+      if (key < this.PrimitiveValue.length && key >= 0) {
+        return this.PrimitiveValue[key];
+      }
+      return this.GetP(this, key);
     },
     function HasOwnProperty(key){
       key = ToPropertyName(key);
@@ -12121,8 +12154,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($PrivateName, $Object, {
-    NativeBrand: BRANDS.NativePrivateName,
-    Match: null,
+    NativeBrand: BRANDS.NativePrivateName
   });
 
 
@@ -12155,7 +12187,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       if (hasOwnDirect(this.ParameterMap, key)) {
         return this.ParameterMap.Get(key);
       } else {
-        var val = $Object.prototype.Get.call(this, key);
+        var val = this.GetP(this, key);
         if (key === 'caller' && IsCallable(val) && val.Strict) {
           return ThrowException('strict_poison_pill');
         }
@@ -13700,7 +13732,7 @@ exports.debug = (function(exports){
   });
 
 
-
+  var proto = Math.random().toString(36).slice(2);
 
 
   function MirrorObject(subject){
@@ -13716,13 +13748,10 @@ exports.debug = (function(exports){
     props: null
   }, [
     function get(key){
-      if (key === '__proto__') {
-        return this.getPrototype();
-      }
       var prop = this.props.getProperty(key);
       if (!prop) {
         return this.getPrototype().get(key);
-      } else if (prop[2] & ACCESSOR) {
+      } else if (prop[2] & ACCESSOR || prop[3]) {
         realm().enterMutationContext();
         var ret = introspect(this.subject.Get(key));
         realm().exitMutationContext();
@@ -13752,12 +13781,7 @@ exports.debug = (function(exports){
     function set(key, value){
       var ret;
       realm().enterMutationContext();
-      if (key === '__proto__') {
-        this.subject.SetPrototype(value);
-        ret = true;
-      } else {
-        ret = this.subject.Put(key, value, false);
-      }
+      ret = this.subject.Put(key, value, false);
       realm().exitMutationContext();
       return ret;
     },
@@ -13877,7 +13901,8 @@ exports.debug = (function(exports){
     function ownAttrs(props){
       props || (props = create(null));
       this.props.forEach(function(prop){
-        props[prop[0]] = prop[2];
+        var key = prop[0] === '__proto__' ? proto : prop[0];
+        props[key] = prop[2];
       });
       return props;
     },
@@ -13902,7 +13927,7 @@ exports.debug = (function(exports){
 
       for (var k in props) {
         if (hidden || (props[k] & ENUMERABLE)) {
-          keys.push(k);
+          keys.push(k === proto ? '__proto__' : k);
         }
       }
 
@@ -13946,7 +13971,7 @@ exports.debug = (function(exports){
       for (var k in props) {
         if (hidden || props[k] & ENUMERABLE) {
           if (k !== 'length' && !utility.isInteger(+k)) {
-            keys.push(k);
+            keys.push(k === proto ? '__proto__' : k);
           }
         }
       }
@@ -14115,7 +14140,7 @@ exports.debug = (function(exports){
       } else {
         value += '';
       }
-      return 'Number('+value+')';
+      return value;
     }
   ]);
 
@@ -14163,7 +14188,8 @@ exports.debug = (function(exports){
         props[i] = 1;
       }
       this.props.forEach(function(prop){
-        props[prop[0]] = prop[2];
+        var key = prop[0] === '__proto__' ? proto : prop[0];
+        props[key] = prop[2];
       });
       return props;
     },

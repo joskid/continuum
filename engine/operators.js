@@ -98,15 +98,7 @@ var operators = (function(exports){
     } else {
       var base = v.base;
 
-      if (v.name === '__proto__') {
-        if (base.SetPrototype) {
-          base.SetPrototype(w);
-        } else if (base.bindings && base.bindings.SetPrototype) {
-          base.bindings.SetPrototype(w);
-        } else {
-          console.log(v);
-        }
-      } else if (exports.IsPropertyReference(v)) {
+      if (exports.IsPropertyReference(v)) {
         if (HasPrimitiveBase(v)) {
           base = new exports.$PrimitiveBase(base);
         }

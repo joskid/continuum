@@ -92,7 +92,7 @@ var debug = (function(exports){
   });
 
 
-
+  var proto = Math.random().toString(36).slice(2);
 
 
   function MirrorObject(subject){
@@ -108,13 +108,10 @@ var debug = (function(exports){
     props: null
   }, [
     function get(key){
-      if (key === '__proto__') {
-        return this.getPrototype();
-      }
       var prop = this.props.getProperty(key);
       if (!prop) {
         return this.getPrototype().get(key);
-      } else if (prop[2] & ACCESSOR) {
+      } else if (prop[2] & ACCESSOR || prop[3]) {
         realm().enterMutationContext();
         var ret = introspect(this.subject.Get(key));
         realm().exitMutationContext();
@@ -144,12 +141,7 @@ var debug = (function(exports){
     function set(key, value){
       var ret;
       realm().enterMutationContext();
-      if (key === '__proto__') {
-        this.subject.SetPrototype(value);
-        ret = true;
-      } else {
-        ret = this.subject.Put(key, value, false);
-      }
+      ret = this.subject.Put(key, value, false);
       realm().exitMutationContext();
       return ret;
     },
@@ -269,7 +261,8 @@ var debug = (function(exports){
     function ownAttrs(props){
       props || (props = create(null));
       this.props.forEach(function(prop){
-        props[prop[0]] = prop[2];
+        var key = prop[0] === '__proto__' ? proto : prop[0];
+        props[key] = prop[2];
       });
       return props;
     },
@@ -294,7 +287,7 @@ var debug = (function(exports){
 
       for (var k in props) {
         if (hidden || (props[k] & ENUMERABLE)) {
-          keys.push(k);
+          keys.push(k === proto ? '__proto__' : k);
         }
       }
 
@@ -338,7 +331,7 @@ var debug = (function(exports){
       for (var k in props) {
         if (hidden || props[k] & ENUMERABLE) {
           if (k !== 'length' && !utility.isInteger(+k)) {
-            keys.push(k);
+            keys.push(k === proto ? '__proto__' : k);
           }
         }
       }
@@ -507,7 +500,7 @@ var debug = (function(exports){
       } else {
         value += '';
       }
-      return 'Number('+value+')';
+      return value;
     }
   ]);
 
@@ -555,7 +548,8 @@ var debug = (function(exports){
         props[i] = 1;
       }
       this.props.forEach(function(prop){
-        props[prop[0]] = prop[2];
+        var key = prop[0] === '__proto__' ? proto : prop[0];
+        props[key] = prop[2];
       });
       return props;
     },

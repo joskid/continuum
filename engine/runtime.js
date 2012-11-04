@@ -1486,19 +1486,36 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
+  var Proto = {
+    Get: {
+      Call: function(receiver){
+        return receiver.GetPrototype();
+      }
+    },
+    Set: {
+      Call: function(receiver, args){
+        return receiver.SetPrototype(args[0]);
+      }
+    }
+  };
+
 
   // ###############
   // ### $Object ###
   // ###############
 
   function $Object(proto){
-    if (proto === undefined)
+    if (proto === undefined) {
       proto = intrinsics.ObjectProto;
+    }
     this.Prototype = proto;
     this.properties = new PropertyList;
     this.hiddens = create(null);
     this.storage = create(null);
     $Object.tag(this);
+    if (proto === null) {
+      this.properties.setProperty(['__proto__', null, 6, Proto]);
+    }
     hide(this, 'hiddens');
     hide(this, 'storage');
     hide(this, 'Prototype');
@@ -1537,19 +1554,23 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     function GetOwnProperty(key){
       if (key === '__proto__') {
-        return undefined;
+        var val = this.GetP(this, '__proto__');
+        return typeof val === OBJECT ? new DataDescriptor(val, 6) : undefined;
       }
 
       var prop = this.properties.getProperty(key);
       if (prop) {
-        var Descriptor = prop[2] & A ? AccessorDescriptor : DataDescriptor;
-        return new Descriptor(prop[1], prop[2]);
+        if (prop[2] & A) {
+          var Descriptor = AccessorDescriptor,
+              val = prop[2];
+        } else {
+          var val = prop[3] ? prop[3](this) : prop[2],
+              Descriptor = DataDescriptor;
+        }
+        return new Descriptor(val, prop[2]);
       }
     },
     function GetProperty(key){
-      if (key === '__proto__') {
-        return undefined;
-      }
       var desc = this.GetOwnProperty(key);
       if (desc) {
         return desc;
@@ -1561,53 +1582,48 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function Get(key){
-      if (key === '__proto__') {
-        return this.GetPrototype();
-      }
       return this.GetP(this, key);
     },
     function Put(key, value, strict){
-      if (key === '__proto__') {
-        return this.SetPrototype(value);
-      }
       if (!this.SetP(this, key, value) && strict) {
         return ThrowException('strict_cannot_assign', [key]);
       }
     },
     function GetP(receiver, key){
-      if (key === '__proto__') {
-        return receiver.GetPrototype();
-      }
-      var desc = this.GetOwnProperty(key);
-      if (!desc) {
+      var prop = this.properties.getProperty(key);
+      if (!prop) {
         var proto = this.GetPrototype();
         if (proto) {
           return proto.GetP(receiver, key);
         }
-      } else if (IsAccessorDescriptor(desc)) {
-        var getter = desc.Get;
+      } else if (prop[3]) {
+        var getter = prop[3].Get;
+        return getter.Call(receiver, [key]);
+      } else if (prop[2] & A) {
+        var getter = prop[1].Get;
         if (IsCallable(getter)) {
           return getter.Call(receiver, []);
         }
       } else {
-        return desc.Value;
+        return prop[1];
       }
     },
     function SetP(receiver, key, value) {
-      if (key === '__proto__') {
-        return receiver.SetPrototype(value);
-      }
-      var desc = this.GetOwnProperty(key);
-      if (desc) {
-        if (IsAccessorDescriptor(desc)) {
-          var setter = desc.Set;
+      var prop = this.properties.getProperty(key);
+      if (prop) {
+        if (prop[3]) {
+          var setter = prop[3].Set;
+          setter.Call(receiver, [key, value]);
+          return true;
+        } else if (prop[2] & A) {
+          var setter = prop[1].Set;
           if (IsCallable(setter)) {
             setter.Call(receiver, [value]);
             return true;
           } else {
             return false;
           }
-        } else if (desc.Writable) {
+        } else if (prop[2] & W) {
           if (this === receiver) {
             return this.DefineOwnProperty(key, new Value(value), false);
           } else if (!receiver.GetExtensible()) {
@@ -1635,14 +1651,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       var reject = strict
           ? function(e, a){ return ThrowException(e, a) }
           : function(e, a){ return false };
-
-      if (key === '__proto__') {
-        if (isObject(desc) && 'Value' in desc) {
-          return this.SetPrototype(desc.Value);
-        } else {
-          return false;
-        }
-      }
 
       var current = this.GetOwnProperty(key);
 
@@ -1714,10 +1722,10 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function HasOwnProperty(key){
-      return key === '__proto__' ? false : this.properties.has(key);
+      return this.properties.has(key);
     },
     function HasProperty(key){
-      if (key === '__proto__' || this.properties.has(key)) {
+      if (this.properties.has(key)) {
         return true;
       } else {
         var proto = this.GetPrototype();
@@ -1729,9 +1737,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     },
     function Delete(key, strict){
-      if (key === '__proto__') {
-        return false;
-      } else if (!this.properties.has(key)) {
+      if (!this.properties.has(key)) {
         return true;
       } else if (this.properties.hasAttribute(key, C)) {
         this.properties.remove(key);
@@ -1813,6 +1819,19 @@ var runtime = (function(GLOBAL, exports, undefined){
       return ThrowException('cannot_convert_to_primitive', []);
     },
   ]);
+
+  function PrivateName(name){
+    this.name = name;
+    this.key = Math.random().toString(36).slice(2);
+  }
+
+  define(PrivateName.prototype, [
+    function toString(){
+      return this.key;
+    }
+  ]);
+
+
 
   var DefineOwn = $Object.prototype.DefineOwnProperty;
 
@@ -2091,6 +2110,12 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (key < this.PrimitiveValue.length && key >= 0) {
         return new StringIndice(this.PrimitiveValue[key]);
       }
+    },
+    function Get(key){
+      if (key < this.PrimitiveValue.length && key >= 0) {
+        return this.PrimitiveValue[key];
+      }
+      return this.GetP(this, key);
     },
     function HasOwnProperty(key){
       key = ToPropertyName(key);
@@ -2384,8 +2409,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
   inherit($PrivateName, $Object, {
-    NativeBrand: BRANDS.NativePrivateName,
-    Match: null,
+    NativeBrand: BRANDS.NativePrivateName
   });
 
 
@@ -2418,7 +2442,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (hasOwnDirect(this.ParameterMap, key)) {
         return this.ParameterMap.Get(key);
       } else {
-        var val = $Object.prototype.Get.call(this, key);
+        var val = this.GetP(this, key);
         if (key === 'caller' && IsCallable(val) && val.Strict) {
           return ThrowException('strict_poison_pill');
         }

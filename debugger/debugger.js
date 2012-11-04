@@ -1028,7 +1028,7 @@ function Proto(mirror){
   Component.call(this, 'li');
   this.mirror = mirror;
   this.addClass('property');
-  this.key = new Key('__proto__');
+  this.key = new Key('[[proto]]');
   this.key.addClass('Proto');
   this.key.addClass(this.attrs);
   this.append(this.key);
@@ -1497,7 +1497,7 @@ function Instruction(instruction, item){
           }
 
           if (base.NativeBrand) {
-            item = item.name === '__proto__' ? base.GetPrototype() : base.properties.get(item.name);
+            item = base.properties.get(item.name);
           }
         }
       }
@@ -1762,7 +1762,7 @@ var ops = new utility.Feeder(function(op){
 
 
 function createRealm(){
-  var realm = new Realm;
+  realm = new Realm;
 
   realm.on('op', function(op){
     ops.push(op);
