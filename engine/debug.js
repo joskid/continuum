@@ -108,16 +108,18 @@ var debug = (function(exports){
     props: null
   }, [
     function get(key){
-      var prop = this.props.getProperty(key);
-      if (!prop) {
-        return this.getPrototype().get(key);
-      } else if (prop[2] & ACCESSOR || prop[3]) {
+      if (this.isPropAccessor(key)) {
         realm().enterMutationContext();
         var ret = introspect(this.subject.Get(key));
         realm().exitMutationContext();
         return ret;
       } else {
-        return introspect(prop[1]);
+        var prop = this.props.getProperty(key);
+        if (prop) {
+          return introspect(prop[1]);
+        } else {
+          return _Undefined;
+        }
       }
     },
     function isClass(){
