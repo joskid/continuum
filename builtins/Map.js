@@ -1,20 +1,23 @@
-var Empty = {};
-
 function Map(iterable){
+  var map;
   if ($__IsConstructCall()) {
-    var map = this;
-    $__MapInitialization(map, iterable);
-    return map;
+    map = this;
   } else {
     if (this === undefined || this === $__MapProto) {
-      var map = $__ObjectCreate($__MapProto) ;
+      map = $__ObjectCreate($__MapProto) ;
     } else {
-      var map = $__ToObject(this);
+      map = $__ToObject(this);
     }
-    $__MapInitialization(map, iterable);
-    return map;
   }
+
+  if ($__HasInternal(map, 'MapData')) {
+    throw $__Exception('double_initialization', ['Map'])
+  }
+
+  $__MapInitialization(map, iterable);
+  return map;
 }
+
 
 $__setupConstructor(Map, $__MapProto);
 
