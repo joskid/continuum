@@ -12856,6 +12856,13 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     });
   }
 
+  function wrapMapFunction(name){
+    return function(map, key, val){
+      return map.MapData[name](key, val);
+    };
+  }
+
+  var timers = {};
 
   var applybind = Function.prototype.apply.bind(Function.prototype.bind);
 
@@ -13098,6 +13105,30 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     escape: function(value){
       return escape(ToString(value));
     },
+    SetTimer: function(f, time, repeating){
+      if (typeof f === 'string') {
+        f = natives.FunctionCreate(f);
+      }
+      var id = Math.random() * 1000000 << 10;
+      timers[id] = setTimeout(function trigger(){
+        if (timers[id]) {
+          f.Call(global, []);
+          if (repeating) {
+            timers[id] = setTimeout(trigger, time);
+          } else {
+            timers[id] = f = null;
+          }
+        } else {
+          f = null;
+        }
+      }, time);
+      return id;
+    },
+    ClearTimer: function(id){
+      if (timers[id]) {
+        timers[id] = null;
+      }
+    },
     JSONCreate: function(){
       var json = new $JSON;
       defineDirect(json, 'stringify', new $NativeFunction({
@@ -13289,72 +13320,22 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     })(Math),
 
     MapInitialization: MapInitialization,
-    MapSize: function(map){
-      var data = map && map.MapData;
-      if (data) {
-        return data.size;
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.size');
-      }
-    },
-    MapClear: function(map){
-      var data = map && map.MapData;
-      if (data) {
-        return data.clear();
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.clear');
-      }
-    },
-    MapSet: function(map, key, value){
-      var data = map && map.MapData;
-      if (data) {
-        data.set(key, value);
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.set');
-      }
-    },
-    MapDelete: function(map, key){
-      var data = map && map.MapData;
-      if (data) {
-        return data.remove(key);
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.delete');
-      }
-    },
-    MapGet: function(map, key){
-      var data = map && map.MapData;
-      if (data) {
-        return data.get(key);
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.get');
-      }
-    },
-    MapHas: function(map, key){
-      var data = map && map.MapData;
-      if (data) {
-        return data.has(key);
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.has');
-      }
-    },
-    MapNext: function(map, key){
-      var data = map && map.MapData;
-      if (data) {
-        var result = data.after(key);
-        if (result instanceof Array) {
-          return fromInternalArray(result);
-        } else {
-          return result;
-        }
-      } else {
-        return ThrowException('called_on_incompatible_object', 'MapIterator.prototype.next');
-      }
-    },
     MapSigil: function(){
       return MapData.sigil;
+    },
+    MapSize: function(map){
+      return map.MapData.size;
+    },
+    MapClear: wrapMapFunction('clear'),
+    MapSet: wrapMapFunction('set'),
+    MapDelete: wrapMapFunction('remove'),
+    MapGet: wrapMapFunction('get'),
+    MapHas: wrapMapFunction('has'),
+    MapNext: function(map, key){
+      var result = map.MapData.after(key);
+      return result instanceof Array ? fromInternalArray(result) : result;
     }
   };
-
 
 
   function parse(src, options){
@@ -13737,16 +13718,18 @@ exports.debug = (function(exports){
     props: null
   }, [
     function get(key){
-      var prop = this.props.getProperty(key);
-      if (!prop) {
-        return this.getPrototype().get(key);
-      } else if (prop[2] & ACCESSOR || prop[3]) {
+      if (this.isPropAccessor(key)) {
         realm().enterMutationContext();
         var ret = introspect(this.subject.Get(key));
         realm().exitMutationContext();
         return ret;
       } else {
-        return introspect(prop[1]);
+        var prop = this.props.getProperty(key);
+        if (prop) {
+          return introspect(prop[1]);
+        } else {
+          return _Undefined;
+        }
       }
     },
     function isClass(){
@@ -14656,7 +14639,7 @@ exports.builtins.String = "function String(string){\n  string = arguments.length
 
 exports.builtins.WeakMap = "function WeakMap(iterable){}\n$__setupConstructor(WeakMap, $__WeakMapProto);\n";
 
-exports.builtins.global = "$__defineProps(this, {\n  Math: $__MathCreate(),\n  JSON: $__JSONCreate(),\n  parseInt: $__parseInt,\n  parseFloat: $__parseFloat,\n  decodeURI: $__decodeURI,\n  encodeURI: $__encodeURI,\n  decodeURIComponent: $__decodeURIComponent,\n  encodeURIComponent: $__encodeURIComponent,\n  escape: $__escape,\n  eval: $__eval,\n  isNaN(number){\n    number = $__ToNumber(number);\n    return number !== number;\n  },\n  isFinite(number){\n    number = $__ToNumber(number);\n    return number === number && number !== Infinity && number !== -Infinity;\n  },\n  stdout: {\n    write(text, color){\n      $__Signal('write', [text, color]);\n    },\n    clear(){\n      $__Signal('clear');\n    },\n    backspace(count){\n      $__Signal('backspace', $_ToInteger(count));\n    }\n  },\n  console: {\n    log(...values){\n      var text = '';\n      for (var i=0; i < values.length; i++) {\n        text += $__ToString(values[i]);\n      }\n      $__Signal('write', [text + '\\n', '#fff']);\n    }\n  },\n  StopIteration: $__StopIteration\n});\n";
+exports.builtins.global = "$__defineProps(this, {\n  JSON: $__JSONCreate(),\n  Math: $__MathCreate(),\n  StopIteration: $__StopIteration,\n  clearInterval(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  clearTimeout(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  console: {\n    log(...values){\n      var text = '';\n      for (var i=0; i < values.length; i++) {\n        text += $__ToString(values[i]);\n      }\n      $__Signal('write', [text + '\\n', '#fff']);\n    }\n  },\n  decodeURI: $__decodeURI,\n  decodeURIComponent: $__decodeURIComponent,\n  encodeURI: $__encodeURI,\n  encodeURIComponent: $__encodeURIComponent,\n  escape: $__escape,\n  eval: $__eval,\n  isFinite(number){\n    number = $__ToNumber(number);\n    return number === number && number !== Infinity && number !== -Infinity;\n  },\n  isNaN(number){\n    number = $__ToNumber(number);\n    return number !== number;\n  },\n  parseInt: $__parseInt,\n  parseFloat: $__parseFloat,\n  setInterval(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, true);\n  },\n  setTimeout(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, false);\n  },\n  stdout: {\n    write(text, color){\n      $__Signal('write', [text, color]);\n    },\n    clear(){\n      $__Signal('clear');\n    },\n    backspace(count){\n      $__Signal('backspace', $_ToInteger(count));\n    }\n  }\n});\n";
 
 
 
