@@ -3122,6 +3122,13 @@ var runtime = (function(GLOBAL, exports, undefined){
     });
   }
 
+  function wrapMapFunction(name){
+    return function(map, key, val){
+      return map.MapData[name](key, val);
+    };
+  }
+
+  var timers = {};
 
   var applybind = Function.prototype.apply.bind(Function.prototype.bind);
 
@@ -3364,6 +3371,30 @@ var runtime = (function(GLOBAL, exports, undefined){
     escape: function(value){
       return escape(ToString(value));
     },
+    SetTimer: function(f, time, repeating){
+      if (typeof f === 'string') {
+        f = natives.FunctionCreate(f);
+      }
+      var id = Math.random() * 1000000 << 10;
+      timers[id] = setTimeout(function trigger(){
+        if (timers[id]) {
+          f.Call(global, []);
+          if (repeating) {
+            timers[id] = setTimeout(trigger, time);
+          } else {
+            timers[id] = f = null;
+          }
+        } else {
+          f = null;
+        }
+      }, time);
+      return id;
+    },
+    ClearTimer: function(id){
+      if (timers[id]) {
+        timers[id] = null;
+      }
+    },
     JSONCreate: function(){
       var json = new $JSON;
       defineDirect(json, 'stringify', new $NativeFunction({
@@ -3555,72 +3586,22 @@ var runtime = (function(GLOBAL, exports, undefined){
     })(Math),
 
     MapInitialization: MapInitialization,
-    MapSize: function(map){
-      var data = map && map.MapData;
-      if (data) {
-        return data.size;
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.size');
-      }
-    },
-    MapClear: function(map){
-      var data = map && map.MapData;
-      if (data) {
-        return data.clear();
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.clear');
-      }
-    },
-    MapSet: function(map, key, value){
-      var data = map && map.MapData;
-      if (data) {
-        data.set(key, value);
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.set');
-      }
-    },
-    MapDelete: function(map, key){
-      var data = map && map.MapData;
-      if (data) {
-        return data.remove(key);
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.delete');
-      }
-    },
-    MapGet: function(map, key){
-      var data = map && map.MapData;
-      if (data) {
-        return data.get(key);
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.get');
-      }
-    },
-    MapHas: function(map, key){
-      var data = map && map.MapData;
-      if (data) {
-        return data.has(key);
-      } else {
-        return ThrowException('called_on_incompatible_object', 'Map.prototype.has');
-      }
-    },
-    MapNext: function(map, key){
-      var data = map && map.MapData;
-      if (data) {
-        var result = data.after(key);
-        if (result instanceof Array) {
-          return fromInternalArray(result);
-        } else {
-          return result;
-        }
-      } else {
-        return ThrowException('called_on_incompatible_object', 'MapIterator.prototype.next');
-      }
-    },
     MapSigil: function(){
       return MapData.sigil;
+    },
+    MapSize: function(map){
+      return map.MapData.size;
+    },
+    MapClear: wrapMapFunction('clear'),
+    MapSet: wrapMapFunction('set'),
+    MapDelete: wrapMapFunction('remove'),
+    MapGet: wrapMapFunction('get'),
+    MapHas: wrapMapFunction('has'),
+    MapNext: function(map, key){
+      var result = map.MapData.after(key);
+      return result instanceof Array ? fromInternalArray(result) : result;
     }
   };
-
 
 
   function parse(src, options){
