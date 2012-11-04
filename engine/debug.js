@@ -118,7 +118,7 @@ var debug = (function(exports){
         if (prop) {
           return introspect(prop[1]);
         } else {
-          return _Undefined;
+          return this.getPrototype().get(key);
         }
       }
     },

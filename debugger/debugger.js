@@ -1337,12 +1337,20 @@ function ThrownBranch(mirror){
 
 creator(ThrownBranch);
 inherit(ThrownBranch, Branch, [
+  function createLabel(){
+    var label = new Label('Exception');
+    label.append(new Div('Uncaught Exception'));
+    label.append(new Div(this.mirror.getError()));
+    return label;
+  },
+  function createPreview(){
+    var label = new Div('.error');
+    label.append(new Div('Line ' + this.mirror.getValue('line') + ' Column '+this.mirror.getValue('column')));
+    label.append(new Component('pre')).text(this.mirror.getValue('code'));
+    label.refresh = function(){};
+    return label;
+  },
   function refresh(){
-    this.label.innerHTML = '';
-    this.label.append(new Div('Uncaught Exception', 'Exception'));
-    this.label.append(new Div(this.mirror.getError(), 'Exception'));
-    this.label.append(new Div(this.mirror.getValue('scope'), 'Scope'));
-    this.label.append(new Div(this.mirror.getValue('code'), 'Code'));
     this.preview && this.preview.refresh();
     this.tree && this.tree.refresh();
   }

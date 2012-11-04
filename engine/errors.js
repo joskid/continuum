@@ -176,7 +176,8 @@ var errors = (function(errors, messages, exports){
     not_generic                         : ["$0", " is not generic and was called on an invalid target"],
     spread_non_object                   : ["Expecting an object as spread argument, but got ", "$0"],
     called_on_incompatible_object       : ["$0", " called on incompatible object"],
-    double_initialization               : ["Initializating an already initialized ", "$0"]
+    double_initialization               : ["Initializating an already initialized ", "$0"],
+    construct_arrow_function            : ["Arrow functions cannot be constructed"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],

@@ -2523,10 +2523,6 @@ var runtime = (function(GLOBAL, exports, undefined){
   inherit($Error, $Object, {
     NativeBrand: BRANDS.NativeError
   }, [
-    function setLocation(loc){
-      setDirect(this, 'line', loc.start.line);
-      setDirect(this, 'column', loc.start.column);
-    },
     function setOrigin(filename, scopename){
       if (filename) {
         setDirect(this, 'filename', filename);
@@ -2535,19 +2531,11 @@ var runtime = (function(GLOBAL, exports, undefined){
         setDirect(this, 'scope', scopename);
       }
     },
-    function setCode(range, code){
-      var eol = range[1],
-          bol = range[0],
-          len = code.length;
-      while (eol < len && code[eol + 1] !== '\n') {
-        eol++;
-      }
-      while (bol >= 0 && code[bol - 1] !== '\n') {
-        bol--;
-      }
-      var line = code.slice(bol, eol);
-      var pad = new Array(range[0] - bol + 1).join(' ');
-      pad += '|'+new Array(range[1] - range[0]).join('_')+'|';
+    function setCode(loc, code){
+      var line = code.split('\n')[loc.start.line - 1];
+      var pad = new Array(loc.start.column).join('-') + '^';
+      setDirect(this, 'line', loc.start.line);
+      setDirect(this, 'column', loc.start.column);
       setDirect(this, 'code', line + '\n' + pad);
     }
   ]);
@@ -3613,7 +3601,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     try {
       return esprima.parse(src, options || parse.options);
     } catch (e) {
-      return new AbruptCompletion('throw', new $Error('SyntaxError', undefined, e.message));
+      var err = new $Error('SyntaxError', undefined, e.message);
+      err.setCode({ start: { line: e.lineNumber, column: e.column } }, src);
+      return new AbruptCompletion('throw', err);
     }
   }
 

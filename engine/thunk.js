@@ -646,14 +646,13 @@ var thunk = (function(exports){
       }
       if (error) {
 
-        if (error.value && error.value.setLocation) {
+        if (error.value && error.value.setCode) {
           var range = code.ops[ip].range,
               loc = code.ops[ip].loc;
 
           if (!error.value.hasLocation) {
             error.value.hasLocation = true;
-            error.value.setLocation(loc);
-            error.value.setCode(range, code.source);
+            error.value.setCode(loc, code.source);
             error.value.setOrigin(code.filename, code.name);
           }
 
