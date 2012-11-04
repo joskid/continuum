@@ -6672,7 +6672,7 @@ exports.errors = (function(errors, messages, exports){
     invalid_super_binding               : ["object has no super binding"],
     not_generic                         : ["$0", " is not generic and was called on an invalid target"],
     spread_non_object                   : ["Expecting an object as spread argument, but got ", "$0"],
-    incompatible_array_iterator         : ["$0", " called on incompatible object"]
+    called_on_incompatible_object       : ["$0", " called on incompatible object"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],
@@ -9948,7 +9948,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   var descProps = [VALUE, WRITABLE, ENUMERABLE, CONFIGURABLE, GET, SET];
 
   function ToPropertyDescriptor(obj) {
-    if (obj.Completion) {
+    if (obj && obj.Completion) {
       if (obj.Abrupt) {
         return obj;
       } else {
@@ -9965,7 +9965,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     for (var i=0, v; i < 6; i++) {
       if (obj.HasProperty(descFields[i])) {
         v = obj.Get(descFields[i]);
-        if (v.Completion) {
+        if (v && v.Completion) {
           if (v.Abrupt) {
             return v;
           } else {
@@ -9976,14 +9976,16 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
-    if (GET in desc) {
-      if (desc.Get !== undefined && !desc.Get || !desc.Get.Call)
+    if (desc.Get !== undefined) {
+      if (!desc.Get || !desc.Get.Call) {
         return ThrowException('getter_must_be_callable', [typeof desc.Get]);
+      }
     }
 
-    if (SET in desc) {
-      if (desc.Set !== undefined && !desc.Set ||  !desc.Set.Call)
+    if (desc.Set !== undefined) {
+      if (!desc.Set || !desc.Set.Call) {
         return ThrowException('setter_must_be_callable', [typeof desc.Set]);
+      }
     }
 
     if ((GET in desc || SET in desc) && (VALUE in desc || WRITABLE in desc))
@@ -10205,6 +10207,14 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
+
+  function ThrowStopIteration(){
+    return new AbruptCompletion('throw', intrinsics.StopIteration);
+  }
+
+  function IsStopIteration(value){
+    return !!(value && value.Abrupt && value.value === value.value.NativeBrand === StopIteration);
+  }
 
 
 
@@ -10676,14 +10686,15 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   function MapInitialization(object, iterable){
     if (typeof object !== OBJECT) {
-      return ThrowException('mapinit_nonobject', typeof object);
+      return ThrowException('map_init_nonobject', typeof object);
+    } else if (object.MapData) {
+      return ThrowException('map_init_duplicate');
+    } else if (!object.Extensible) {
+      return ThrowException('map_init_nonextensible');
     }
-    if (object.MapData) {
-      return ThrowException('mapinit_duplicate');
-    }
-    if (!object.Extensible) {
-      return ThrowException('mapinit_nonextensible');
-    }
+
+    object.MapData = new MapData;
+
     if (iterable !== undefined) {
       iterable = ToObject(iterable);
       if (iterable && iterable.Completion) {
@@ -10695,8 +10706,182 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
 
       var itr = Invoke('iterator', object, []);
+
+      var adder = object.Get('set');
+      if (adder && adder.Completion) {
+        if (adder.Abrupt) {
+          return adder;
+        } else {
+          adder = adder.value;
+        }
+      }
+
+      if (!IsCallable(adder)) {
+        return ThrowException('map_set_noncallable');
+      }
+
+      var next;
+      while (next = Invoke('next', itr, [])) {
+        if (IsStopIteration(next)) {
+          return obj;
+        }
+
+        next = ToObject(next);
+
+        var k = next.Get(0);
+        if (k && k.Completion) {
+          if (k.Abrupt) {
+            return k;
+          } else {
+            k = k.value;
+          }
+        }
+
+        var v = next.Get(1);
+        if (v && v.Completion) {
+          if (v.Abrupt) {
+            return v;
+          } else {
+            v = v.value;
+          }
+        }
+
+        var status = adder.Call(object, [k, v]);
+        if (status.Abrupt) {
+          return status;
+        }
+      }
     }
+
+    return object;
   }
+
+
+  var uid = Math.random() *  (1 << 30);
+
+
+  function LinkedItem(key, next){
+    this.key = key;
+    this.next = next;
+    this.previous = next.previous;
+    next.previous = next.previous.next = this;
+  }
+
+  define(LinkedItem.prototype, [
+    function setNext(item){
+      this.next = item;
+      item.previous = this;
+    },
+    function setPrevious(item){
+      this.previous = item;
+      item.next = this;
+    },
+    function unlink(){
+      this.next.previous = this.previous;
+      this.previous.next = this.next;
+      this.next = this.previous = this.data = this.key = null;
+      return this.data;
+    }
+  ]);
+
+
+  function MapData(){
+    this.id = uid++ + '';
+    this.size = 0;
+    this.strings = create(null);
+    this.numbers = create(null);
+    this.others = create(null);
+    this.guard = create(LinkedItem.prototype);
+    this.guard.next = this.guard.previous = this.guard;
+    this.guard.key = {};
+    this.lastLookup = this.guard;
+  }
+
+  MapData.sigil = create(null);
+
+  define(MapData.prototype, [
+    function add(key){
+      this.size++;
+      return new LinkedItem(key, this.guard);
+    },
+    function lookup(key){
+      var type = typeof key;
+      if (key === this) {
+        return this.guard;
+      } else if (key !== null && type === OBJECT) {
+        return key.storage[this.id];
+      } else {
+        return this.getStorage(key)[key];
+      }
+    },
+    function getStorage(key){
+      var type = typeof key;
+      if (type === STRING) {
+        return this.strings;
+      } else if (type === NUMBER) {
+        return key === 0 && 1 / key === -Infinity ? this.others : this.numbers;
+      } else {
+        return this.others;
+      }
+    },
+    function set(key, value){
+      var type = typeof key;
+      if (key !== null && type === OBJECT) {
+        var item = key.storage[this.id] || (key.storage[this.id] = this.add(key));
+        item.value = value;
+      } else {
+        var container = this.getStorage(key);
+        var item = container[key] || (container[key] = this.add(key));
+        item.value = value;
+      }
+    },
+    function get(key){
+      var item = this.lookup(key);
+      if (item) {
+        return item.value;
+      }
+    },
+    function has(key){
+      return !!this.lookup(key);
+    },
+    function remove(key){
+      var item;
+      if (key !== null && typeof key === OBJECT) {
+        item = key.storage[this.id];
+        if (item) {
+          delete key.storage[this.id];
+        }
+      } else {
+        var container = this.getStorage(key);
+        item = container[key];
+        if (item) {
+          delete container[key];
+        }
+      }
+
+      if (item) {
+        item.unlink();
+        this.size--;
+        return true;
+      }
+      return false;
+    },
+    function after(key){
+      if (key === MapData.sigil) {
+        var item = this.guard;
+      } else if (key === this.lastLookup.key) {
+        var item = this.lastLookup;
+      } else {
+        var item = this.lookup(key);
+      }
+      if (item && item.next !== this.guard) {
+        this.lastLookup = item.next;
+        return [item.next.key, item.next.value];
+      } else {
+        return ThrowStopIteration();
+      }
+    }
+  ]);
 
 
   function GetTrap(handler, trap){
@@ -11046,10 +11231,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     this.Prototype = proto;
     this.properties = new PropertyList;
     this.hiddens = create(null);
+    this.storage = create(null);
     $Object.tag(this);
     hide(this, 'hiddens');
+    hide(this, 'storage');
     hide(this, 'Prototype');
-    hide(this, 'attributes');
   }
 
   void function(counter){
@@ -11306,7 +11492,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           if (index < len) {
             return keys[index++];
           } else {
-            return new AbruptCompletion('throw', intrinsics.StopIteration);
+            return ThrowStopIteration();
           }
         }
       }));
@@ -11716,6 +11902,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   function $Map(){
     $Object.call(this, intrinsics.MapProto);
+
+
   }
 
   inherit($Map, $Object, {
@@ -12445,7 +12633,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
       var value, iterator = spread.Iterate();
 
-      while (!(value = Invoke('next', iterator, [])) || value.value !== intrinsics.StopIteration) {
+      while (!(value = Invoke('next', iterator, [])) || !IsStopIteration(value)) {
         if (value && value.Completion) {
           if (value.Abrupt) {
             return value;
@@ -13077,8 +13265,76 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         }
         return math;
       };
-    })(Math)
+    })(Math),
+
+    MapInitialization: MapInitialization,
+    MapSize: function(map){
+      var data = map && map.MapData;
+      if (data) {
+        return data.size;
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.size');
+      }
+    },
+    MapClear: function(map){
+      var data = map && map.MapData;
+      if (data) {
+        return data.clear();
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.clear');
+      }
+    },
+    MapSet: function(map, key, value){
+      var data = map && map.MapData;
+      console.log(map);
+      if (data) {
+        data.set(key, value);
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.set');
+      }
+    },
+    MapDelete: function(map, key){
+      var data = map && map.MapData;
+      if (data) {
+        return data.remove(key);
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.delete');
+      }
+    },
+    MapGet: function(map, key){
+      var data = map && map.MapData;
+      if (data) {
+        return data.get(key);
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.get');
+      }
+    },
+    MapHas: function(map, key){
+      var data = map && map.MapData;
+      if (data) {
+        return data.has(key);
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.has');
+      }
+    },
+    MapNext: function(map, key){
+      var data = map && map.MapData;
+      if (data) {
+        var result = data.after(key);
+        if (result instanceof Array) {
+          return fromInternalArray(result);
+        } else {
+          return result;
+        }
+      } else {
+        return ThrowException('called_on_incompatible_object', 'MapIterator.prototype.next');
+      }
+    },
+    MapSigil: function(){
+      return MapData.sigil;
+    }
   };
+
 
 
   function parse(src, options){
@@ -13205,7 +13461,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         realm.active = false;
         realm.emit('deactivate');
       }
-      realms.push(realm);
+      realmStack.push(realm);
       realm = target;
       global = operators.global = target.global;
       intrinsics = target.intrinsics;
@@ -13215,9 +13471,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   function deactivate(target){
-    if (realm === target) {
+    if (realm === target && realmStack.length) {
       target.active = false;
-      realm = realms.pop();
+      realm = realmStack.pop();
       target.emit('dectivate');
     }
   }
@@ -13243,14 +13499,17 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   var builtins,
       realms = [],
+      realmStack = [],
       realm = null,
       global = null,
       context = null,
       intrinsics = null;
 
 
+
   function Realm(listener){
     Emitter.call(this);
+    realms.push(this);
     this.state = 'initializing';
     this.active = false;
     this.scripts = [];
@@ -13328,6 +13587,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   exports.Script = Script;
   exports.NativeScript = NativeScript;
   exports.activeRealm = function activeRealm(){
+    if (!realm && realms.length) {
+      activate(realms[realms.length - 1]);
+    }
     return realm;
   };
   exports.activeContext = function activeContext(){
@@ -14312,10 +14574,11 @@ exports.debug = (function(exports){
 
       },
       set: function(receiver, key, value){
-        this.mirror.set(key, unwrap(value));
         return true;
+        this.mirror.set(key, unwrap(value));
       },
       defineProperty: function(key, desc){
+        return true;
         if ('value' in desc) {
           desc.value = unwrap(desc.value);
         } else {
@@ -14335,9 +14598,11 @@ exports.debug = (function(exports){
         return this.mirror.hasOwn(key);
       },
       apply: function(receiver, args){
+        return
         return wrap(this.mirror.apply(unwrap(receiver), args.map(unwrap)));
       },
       construct: function(args){
+        return
         return wrap(this.mirror.construct(args.map(unwrap)));
       }
     };
@@ -14366,7 +14631,7 @@ exports.builtins.Error = "function Error(message){\n  this.message = message;\n}
 
 exports.builtins.Function = "function Function(...args){\n  return $__FunctionCreate(args);\n}\n\n$__setupConstructor(Function, $__FunctionProto);\n\n$__defineDirect(Function.prototype, 'name', 'Empty', 0);\n\n$__defineProps(Function.prototype, {\n  apply(receiver, args){\n    ensureFunction(this, 'apply');\n    if (args == null || typeof args !== 'object', typeof args.length !== 'number') {\n      throw $__Exception('apply_wrong_args', []);\n    }\n\n    if ($__GetNativeBrand(args) !== 'Array') {\n      args = [...args];\n    }\n\n    return $__CallFunction(this, receiver, args);\n  },\n  bind(receiver, ...args){\n    ensureFunction(this, 'bind');\n    return $__BoundFunctionCreate(this, receiver, args);\n  },\n  call(receiver, ...args){\n    ensureFunction(this, 'call');\n    return $__CallFunction(this, receiver, args);\n  },\n  toString(radix){\n    ensureFunction(this, 'toString');\n    if (radix !== undefined) {\n      radix = $__ToInteger(radix);\n    }\n    return $__FunctionToString(this, radix);\n  }\n});\n\n\nfunction ensureFunction(o, name){\n  if (typeof o !== 'function') {\n    throw $__Exception('called_on_non_object', ['Function.prototype.'+name]);\n  }\n}\n";
 
-exports.builtins.Map = "function Map(iterable){}\n$__setupConstructor(Map, $__MapProto);\n";
+exports.builtins.Map = "var Empty = {};\n\nfunction Map(iterable){\n  if ($__IsConstructCall()) {\n    var map = this;\n    $__MapInitialization(map, iterable);\n    return map;\n  } else {\n    if (this === undefined || this === $__MapProto) {\n      var map = $__ObjectCreate($__MapProto) ;\n    } else {\n      var map = $__ToObject(this);\n    }\n    $__MapInitialization(map, iterable);\n    return map;\n  }\n}\n\n$__setupConstructor(Map, $__MapProto);\n\n\n$__defineProps(Map.prototype, {\n  clear(){\n    return $__MapClear(this, key);\n  },\n  set(key, value){\n    return $__MapSet(this, key, value);\n  },\n  get(key){\n    return $__MapGet(this, key);\n  },\n  has(key){\n    return $__MapHas(this, key);\n  },\n  delete: function(key){\n    return $__MapDelete(this, key);\n  },\n  items(){\n    return new MapIterator(this, 'key+value');\n  },\n  keys(){\n    return new MapIterator(this, 'key');\n  },\n  values(){\n    return new MapIterator(this, 'value');\n  },\n  iterator(){\n    return new MapIterator(this, 'key+value');\n  }\n});\n\n$__defineDirect(Map.prototype.delete, 'name', 'delete', 0);\n\n$__DefineOwnProperty(Map.prototype, 'size', {\n  configurable: true,\n  enumerable: false,\n  get: function(){\n    if (this === $__MapProto) {\n      return 0;\n    }\n    return $__MapSize(this);\n  },\n  set: undefined\n});\n\nvar MAP = 'Map',\n    KEY  = 'MapNextKey',\n    KIND  = 'MapIterationKind';\n\n\nvar K = 0x01,\n    V = 0x02;\n\nvar kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3\n};\n\n\nfunction MapIterator(map, kind){\n  map = $__ToObject(map);\n  $__SetInternal(this, MAP, map);\n  $__SetInternal(this, KEY,  $__MapSigil());\n  $__SetInternal(this, KIND, kinds[kind]);\n  this.next = () => next.call(this);\n}\n\n$__defineProps(MapIterator.prototype, {\n  next(){\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['MapIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, MAP) || !$__HasInternal(this, KEY) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('called_on_incompatible_object', ['MapIterator.prototype.next']);\n    }\n    var map = $__GetInternal(this, MAP),\n        key = $__GetInternal(this, KEY),\n        kind = $__GetInternal(this, KIND);\n\n    var item = $__MapNext(map, key);\n    $__SetInternal(this, KEY, item[0]);\n\n    if (kind & V) {\n      if (kind & K) {\n        return item;\n      }\n      return item[1];\n    }\n    return item[0];\n  },\n  iterator(){\n    return this;\n  }\n});\n\nvar next = MapIterator.prototype.next;\n";
 
 exports.builtins.Number = "function Number(value){\n  value = $__ToNumber(value);\n  if ($__IsConstructCall()) {\n    return $__NumberCreate(value);\n  } else {\n    return value;\n  }\n}\n\n$__setupConstructor(Number, $__NumberProto);\n\n$__defineConstants(Number, {\n  EPSILON: 2.220446049250313e-16,\n  MAX_INTEGER: 9007199254740992,\n  MAX_VALUE: 1.7976931348623157e+308,\n  MIN_VALUE: 5e-324,\n  NaN: NaN,\n  NEGATIVE_INFINITY: -Infinity,\n  POSITIVE_INFINITY: Infinity\n});\n\n$__defineProps(Number, {\n  isNaN(number){\n    return number !== number;\n  },\n  isFinite(number){\n    return typeof value === 'number'\n        && value === value\n        && value < Infinity\n        && value > -Infinity;\n  },\n  isInteger(value) {\n    return typeof value === 'number'\n        && value === value\n        && value > -9007199254740992\n        && value < 9007199254740992\n        && value | 0 === value;\n  },\n  toInteger(value){\n    return (value / 1 || 0) | 0;\n  }\n});\n\nvar isFinite = Number.isFinite;\n\n$__defineProps(Number.prototype, {\n  toString(radix){\n    if ($__GetNativeBrand(this) === 'Number') {\n      return $__ToString($__GetPrimitiveValue(this));\n    } else {\n      throw $__Exception('not_generic', ['Number.prototype.toString']);\n    }\n  },\n  valueOf(){\n    if ($__GetNativeBrand(this) === 'Number') {\n      return $__GetPrimitiveValue(this);\n    } else {\n      throw $__Exception('not_generic', ['Number.prototype.valueOf']);\n    }\n  },\n  clz() {\n    var x = $__ToNumber(this);\n    if (!x || !isFinite(x)) {\n      return 32;\n    } else {\n      x = x < 0 ? x + 1 | 0 : x | 0;\n      x -= (x / 0x100000000 | 0) * 0x100000000;\n      return 32 - $__NumberToString(x, 2).length;\n    }\n  }\n});\n";
 
