@@ -212,7 +212,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   var descProps = [VALUE, WRITABLE, ENUMERABLE, CONFIGURABLE, GET, SET];
 
   function ToPropertyDescriptor(obj) {
-    if (obj.Completion) {
+    if (obj && obj.Completion) {
       if (obj.Abrupt) {
         return obj;
       } else {
@@ -229,7 +229,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     for (var i=0, v; i < 6; i++) {
       if (obj.HasProperty(descFields[i])) {
         v = obj.Get(descFields[i]);
-        if (v.Completion) {
+        if (v && v.Completion) {
           if (v.Abrupt) {
             return v;
           } else {
@@ -240,14 +240,16 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     }
 
-    if (GET in desc) {
-      if (desc.Get !== undefined && !desc.Get || !desc.Get.Call)
+    if (desc.Get !== undefined) {
+      if (!desc.Get || !desc.Get.Call) {
         return ThrowException('getter_must_be_callable', [typeof desc.Get]);
+      }
     }
 
-    if (SET in desc) {
-      if (desc.Set !== undefined && !desc.Set ||  !desc.Set.Call)
+    if (desc.Set !== undefined) {
+      if (!desc.Set || !desc.Set.Call) {
         return ThrowException('setter_must_be_callable', [typeof desc.Set]);
+      }
     }
 
     if ((GET in desc || SET in desc) && (VALUE in desc || WRITABLE in desc))
@@ -469,6 +471,14 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
+
+  function ThrowStopIteration(){
+    return new AbruptCompletion('throw', intrinsics.StopIteration);
+  }
+
+  function IsStopIteration(value){
+    return !!(value && value.Abrupt && value.value === value.value.NativeBrand === StopIteration);
+  }
 
 
 
@@ -940,14 +950,15 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function MapInitialization(object, iterable){
     if (typeof object !== OBJECT) {
-      return ThrowException('mapinit_nonobject', typeof object);
+      return ThrowException('map_init_nonobject', typeof object);
+    } else if (object.MapData) {
+      return ThrowException('map_init_duplicate');
+    } else if (!object.Extensible) {
+      return ThrowException('map_init_nonextensible');
     }
-    if (object.MapData) {
-      return ThrowException('mapinit_duplicate');
-    }
-    if (!object.Extensible) {
-      return ThrowException('mapinit_nonextensible');
-    }
+
+    object.MapData = new MapData;
+
     if (iterable !== undefined) {
       iterable = ToObject(iterable);
       if (iterable && iterable.Completion) {
@@ -959,8 +970,182 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
 
       var itr = Invoke('iterator', object, []);
+
+      var adder = object.Get('set');
+      if (adder && adder.Completion) {
+        if (adder.Abrupt) {
+          return adder;
+        } else {
+          adder = adder.value;
+        }
+      }
+
+      if (!IsCallable(adder)) {
+        return ThrowException('map_set_noncallable');
+      }
+
+      var next;
+      while (next = Invoke('next', itr, [])) {
+        if (IsStopIteration(next)) {
+          return obj;
+        }
+
+        next = ToObject(next);
+
+        var k = next.Get(0);
+        if (k && k.Completion) {
+          if (k.Abrupt) {
+            return k;
+          } else {
+            k = k.value;
+          }
+        }
+
+        var v = next.Get(1);
+        if (v && v.Completion) {
+          if (v.Abrupt) {
+            return v;
+          } else {
+            v = v.value;
+          }
+        }
+
+        var status = adder.Call(object, [k, v]);
+        if (status.Abrupt) {
+          return status;
+        }
+      }
     }
+
+    return object;
   }
+
+
+  var uid = Math.random() *  (1 << 30);
+
+
+  function LinkedItem(key, next){
+    this.key = key;
+    this.next = next;
+    this.previous = next.previous;
+    next.previous = next.previous.next = this;
+  }
+
+  define(LinkedItem.prototype, [
+    function setNext(item){
+      this.next = item;
+      item.previous = this;
+    },
+    function setPrevious(item){
+      this.previous = item;
+      item.next = this;
+    },
+    function unlink(){
+      this.next.previous = this.previous;
+      this.previous.next = this.next;
+      this.next = this.previous = this.data = this.key = null;
+      return this.data;
+    }
+  ]);
+
+
+  function MapData(){
+    this.id = uid++ + '';
+    this.size = 0;
+    this.strings = create(null);
+    this.numbers = create(null);
+    this.others = create(null);
+    this.guard = create(LinkedItem.prototype);
+    this.guard.next = this.guard.previous = this.guard;
+    this.guard.key = {};
+    this.lastLookup = this.guard;
+  }
+
+  MapData.sigil = create(null);
+
+  define(MapData.prototype, [
+    function add(key){
+      this.size++;
+      return new LinkedItem(key, this.guard);
+    },
+    function lookup(key){
+      var type = typeof key;
+      if (key === this) {
+        return this.guard;
+      } else if (key !== null && type === OBJECT) {
+        return key.storage[this.id];
+      } else {
+        return this.getStorage(key)[key];
+      }
+    },
+    function getStorage(key){
+      var type = typeof key;
+      if (type === STRING) {
+        return this.strings;
+      } else if (type === NUMBER) {
+        return key === 0 && 1 / key === -Infinity ? this.others : this.numbers;
+      } else {
+        return this.others;
+      }
+    },
+    function set(key, value){
+      var type = typeof key;
+      if (key !== null && type === OBJECT) {
+        var item = key.storage[this.id] || (key.storage[this.id] = this.add(key));
+        item.value = value;
+      } else {
+        var container = this.getStorage(key);
+        var item = container[key] || (container[key] = this.add(key));
+        item.value = value;
+      }
+    },
+    function get(key){
+      var item = this.lookup(key);
+      if (item) {
+        return item.value;
+      }
+    },
+    function has(key){
+      return !!this.lookup(key);
+    },
+    function remove(key){
+      var item;
+      if (key !== null && typeof key === OBJECT) {
+        item = key.storage[this.id];
+        if (item) {
+          delete key.storage[this.id];
+        }
+      } else {
+        var container = this.getStorage(key);
+        item = container[key];
+        if (item) {
+          delete container[key];
+        }
+      }
+
+      if (item) {
+        item.unlink();
+        this.size--;
+        return true;
+      }
+      return false;
+    },
+    function after(key){
+      if (key === MapData.sigil) {
+        var item = this.guard;
+      } else if (key === this.lastLookup.key) {
+        var item = this.lastLookup;
+      } else {
+        var item = this.lookup(key);
+      }
+      if (item && item.next !== this.guard) {
+        this.lastLookup = item.next;
+        return [item.next.key, item.next.value];
+      } else {
+        return ThrowStopIteration();
+      }
+    }
+  ]);
 
 
   function GetTrap(handler, trap){
@@ -1310,10 +1495,11 @@ var runtime = (function(GLOBAL, exports, undefined){
     this.Prototype = proto;
     this.properties = new PropertyList;
     this.hiddens = create(null);
+    this.storage = create(null);
     $Object.tag(this);
     hide(this, 'hiddens');
+    hide(this, 'storage');
     hide(this, 'Prototype');
-    hide(this, 'attributes');
   }
 
   void function(counter){
@@ -1570,7 +1756,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           if (index < len) {
             return keys[index++];
           } else {
-            return new AbruptCompletion('throw', intrinsics.StopIteration);
+            return ThrowStopIteration();
           }
         }
       }));
@@ -1980,6 +2166,8 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function $Map(){
     $Object.call(this, intrinsics.MapProto);
+
+
   }
 
   inherit($Map, $Object, {
@@ -2709,7 +2897,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
       var value, iterator = spread.Iterate();
 
-      while (!(value = Invoke('next', iterator, [])) || value.value !== intrinsics.StopIteration) {
+      while (!(value = Invoke('next', iterator, [])) || !IsStopIteration(value)) {
         if (value && value.Completion) {
           if (value.Abrupt) {
             return value;
@@ -3341,8 +3529,76 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
         return math;
       };
-    })(Math)
+    })(Math),
+
+    MapInitialization: MapInitialization,
+    MapSize: function(map){
+      var data = map && map.MapData;
+      if (data) {
+        return data.size;
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.size');
+      }
+    },
+    MapClear: function(map){
+      var data = map && map.MapData;
+      if (data) {
+        return data.clear();
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.clear');
+      }
+    },
+    MapSet: function(map, key, value){
+      var data = map && map.MapData;
+      console.log(map);
+      if (data) {
+        data.set(key, value);
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.set');
+      }
+    },
+    MapDelete: function(map, key){
+      var data = map && map.MapData;
+      if (data) {
+        return data.remove(key);
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.delete');
+      }
+    },
+    MapGet: function(map, key){
+      var data = map && map.MapData;
+      if (data) {
+        return data.get(key);
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.get');
+      }
+    },
+    MapHas: function(map, key){
+      var data = map && map.MapData;
+      if (data) {
+        return data.has(key);
+      } else {
+        return ThrowException('called_on_incompatible_object', 'Map.prototype.has');
+      }
+    },
+    MapNext: function(map, key){
+      var data = map && map.MapData;
+      if (data) {
+        var result = data.after(key);
+        if (result instanceof Array) {
+          return fromInternalArray(result);
+        } else {
+          return result;
+        }
+      } else {
+        return ThrowException('called_on_incompatible_object', 'MapIterator.prototype.next');
+      }
+    },
+    MapSigil: function(){
+      return MapData.sigil;
+    }
   };
+
 
 
   function parse(src, options){
@@ -3469,7 +3725,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         realm.active = false;
         realm.emit('deactivate');
       }
-      realms.push(realm);
+      realmStack.push(realm);
       realm = target;
       global = operators.global = target.global;
       intrinsics = target.intrinsics;
@@ -3479,9 +3735,9 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
   function deactivate(target){
-    if (realm === target) {
+    if (realm === target && realmStack.length) {
       target.active = false;
-      realm = realms.pop();
+      realm = realmStack.pop();
       target.emit('dectivate');
     }
   }
@@ -3507,14 +3763,17 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   var builtins,
       realms = [],
+      realmStack = [],
       realm = null,
       global = null,
       context = null,
       intrinsics = null;
 
 
+
   function Realm(listener){
     Emitter.call(this);
+    realms.push(this);
     this.state = 'initializing';
     this.active = false;
     this.scripts = [];
@@ -3592,6 +3851,9 @@ var runtime = (function(GLOBAL, exports, undefined){
   exports.Script = Script;
   exports.NativeScript = NativeScript;
   exports.activeRealm = function activeRealm(){
+    if (!realm && realms.length) {
+      activate(realms[realms.length - 1]);
+    }
     return realm;
   };
   exports.activeContext = function activeContext(){
