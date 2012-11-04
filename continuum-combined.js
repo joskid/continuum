@@ -6672,7 +6672,8 @@ exports.errors = (function(errors, messages, exports){
     invalid_super_binding               : ["object has no super binding"],
     not_generic                         : ["$0", " is not generic and was called on an invalid target"],
     spread_non_object                   : ["Expecting an object as spread argument, but got ", "$0"],
-    called_on_incompatible_object       : ["$0", " called on incompatible object"]
+    called_on_incompatible_object       : ["$0", " called on incompatible object"],
+    double_initialization               : ["Initializating an already initialized ", "$0"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],
@@ -9795,6 +9796,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       Continue      = SYMBOLS.Continue,
       Uninitialized = SYMBOLS.Uninitialized;
 
+  var StopIteration = constants.BRANDS.StopIteration;
+
   var slice = [].slice;
 
   var BINARYOPS = constants.BINARYOPS.array,
@@ -10212,8 +10215,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     return new AbruptCompletion('throw', intrinsics.StopIteration);
   }
 
-  function IsStopIteration(value){
-    return !!(value && value.Abrupt && value.value === value.value.NativeBrand === StopIteration);
+  function IsStopIteration(o){
+    return !!(o && o.Abrupt && o.value === o.value.NativeBrand === StopIteration);
   }
 
 
@@ -10685,14 +10688,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
 
   function MapInitialization(object, iterable){
-    if (typeof object !== OBJECT) {
-      return ThrowException('map_init_nonobject', typeof object);
-    } else if (object.MapData) {
-      return ThrowException('map_init_duplicate');
-    } else if (!object.Extensible) {
-      return ThrowException('map_init_nonextensible');
-    }
-
     object.MapData = new MapData;
 
     if (iterable !== undefined) {
@@ -10705,7 +10700,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         }
       }
 
-      var itr = Invoke('iterator', object, []);
+      var itr = Invoke('iterator', iterable, []);
 
       var adder = object.Get('set');
       if (adder && adder.Completion) {
@@ -10717,13 +10712,21 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
 
       if (!IsCallable(adder)) {
-        return ThrowException('map_set_noncallable');
+        return ThrowException('called_on_incompatible_object', ['Map.prototype.set']);
       }
 
       var next;
       while (next = Invoke('next', itr, [])) {
-        if (IsStopIteration(next)) {
-          return obj;
+        if (next && next.Completion) {
+          if (next.Abrupt) {
+            if (next.value === intrinsics.StopIteration) {
+              return object;
+            } else {
+              return next;
+            }
+          } else {
+            next = next.value;
+          }
         }
 
         next = ToObject(next);
@@ -10747,7 +10750,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         }
 
         var status = adder.Call(object, [k, v]);
-        if (status.Abrupt) {
+        if (status && status.Abrupt) {
           return status;
         }
       }
@@ -10757,7 +10760,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
 
-  var uid = Math.random() *  (1 << 30);
+  var uid = (Math.random() * (1 << 30)) | 0;
 
 
   function LinkedItem(key, next){
@@ -11902,13 +11905,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   function $Map(){
     $Object.call(this, intrinsics.MapProto);
-
-
   }
 
   inherit($Map, $Object, {
-    NativeBrand: BRANDS.NativeMap,
-    MapData: null
+    NativeBrand: BRANDS.NativeMap
   });
 
   // ############
@@ -12701,7 +12701,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
 
     bindings.StopIteration = new $Object(bindings.ObjectProto);
-    bindings.StopIteration.NativeBrand = BRANDS.StopIteration;
+    bindings.StopIteration.NativeBrand = StopIteration;
 
     for (var i=0; i < 6; i++) {
       var prototype = bindings[$errors[i] + 'Proto'] = create($Error.prototype);
@@ -13286,7 +13286,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     },
     MapSet: function(map, key, value){
       var data = map && map.MapData;
-      console.log(map);
       if (data) {
         data.set(key, value);
       } else {
@@ -14574,11 +14573,10 @@ exports.debug = (function(exports){
 
       },
       set: function(receiver, key, value){
-        return true;
         this.mirror.set(key, unwrap(value));
+        return true;
       },
       defineProperty: function(key, desc){
-        return true;
         if ('value' in desc) {
           desc.value = unwrap(desc.value);
         } else {
@@ -14598,11 +14596,9 @@ exports.debug = (function(exports){
         return this.mirror.hasOwn(key);
       },
       apply: function(receiver, args){
-        return
         return wrap(this.mirror.apply(unwrap(receiver), args.map(unwrap)));
       },
       construct: function(args){
-        return
         return wrap(this.mirror.construct(args.map(unwrap)));
       }
     };
@@ -14631,7 +14627,7 @@ exports.builtins.Error = "function Error(message){\n  this.message = message;\n}
 
 exports.builtins.Function = "function Function(...args){\n  return $__FunctionCreate(args);\n}\n\n$__setupConstructor(Function, $__FunctionProto);\n\n$__defineDirect(Function.prototype, 'name', 'Empty', 0);\n\n$__defineProps(Function.prototype, {\n  apply(receiver, args){\n    ensureFunction(this, 'apply');\n    if (args == null || typeof args !== 'object', typeof args.length !== 'number') {\n      throw $__Exception('apply_wrong_args', []);\n    }\n\n    if ($__GetNativeBrand(args) !== 'Array') {\n      args = [...args];\n    }\n\n    return $__CallFunction(this, receiver, args);\n  },\n  bind(receiver, ...args){\n    ensureFunction(this, 'bind');\n    return $__BoundFunctionCreate(this, receiver, args);\n  },\n  call(receiver, ...args){\n    ensureFunction(this, 'call');\n    return $__CallFunction(this, receiver, args);\n  },\n  toString(radix){\n    ensureFunction(this, 'toString');\n    if (radix !== undefined) {\n      radix = $__ToInteger(radix);\n    }\n    return $__FunctionToString(this, radix);\n  }\n});\n\n\nfunction ensureFunction(o, name){\n  if (typeof o !== 'function') {\n    throw $__Exception('called_on_non_object', ['Function.prototype.'+name]);\n  }\n}\n";
 
-exports.builtins.Map = "var Empty = {};\n\nfunction Map(iterable){\n  if ($__IsConstructCall()) {\n    var map = this;\n    $__MapInitialization(map, iterable);\n    return map;\n  } else {\n    if (this === undefined || this === $__MapProto) {\n      var map = $__ObjectCreate($__MapProto) ;\n    } else {\n      var map = $__ToObject(this);\n    }\n    $__MapInitialization(map, iterable);\n    return map;\n  }\n}\n\n$__setupConstructor(Map, $__MapProto);\n\n\n$__defineProps(Map.prototype, {\n  clear(){\n    return $__MapClear(this, key);\n  },\n  set(key, value){\n    return $__MapSet(this, key, value);\n  },\n  get(key){\n    return $__MapGet(this, key);\n  },\n  has(key){\n    return $__MapHas(this, key);\n  },\n  delete: function(key){\n    return $__MapDelete(this, key);\n  },\n  items(){\n    return new MapIterator(this, 'key+value');\n  },\n  keys(){\n    return new MapIterator(this, 'key');\n  },\n  values(){\n    return new MapIterator(this, 'value');\n  },\n  iterator(){\n    return new MapIterator(this, 'key+value');\n  }\n});\n\n$__defineDirect(Map.prototype.delete, 'name', 'delete', 0);\n\n$__DefineOwnProperty(Map.prototype, 'size', {\n  configurable: true,\n  enumerable: false,\n  get: function(){\n    if (this === $__MapProto) {\n      return 0;\n    }\n    return $__MapSize(this);\n  },\n  set: undefined\n});\n\nvar MAP = 'Map',\n    KEY  = 'MapNextKey',\n    KIND  = 'MapIterationKind';\n\n\nvar K = 0x01,\n    V = 0x02;\n\nvar kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3\n};\n\n\nfunction MapIterator(map, kind){\n  map = $__ToObject(map);\n  $__SetInternal(this, MAP, map);\n  $__SetInternal(this, KEY,  $__MapSigil());\n  $__SetInternal(this, KIND, kinds[kind]);\n  this.next = () => next.call(this);\n}\n\n$__defineProps(MapIterator.prototype, {\n  next(){\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['MapIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, MAP) || !$__HasInternal(this, KEY) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('called_on_incompatible_object', ['MapIterator.prototype.next']);\n    }\n    var map = $__GetInternal(this, MAP),\n        key = $__GetInternal(this, KEY),\n        kind = $__GetInternal(this, KIND);\n\n    var item = $__MapNext(map, key);\n    $__SetInternal(this, KEY, item[0]);\n\n    if (kind & V) {\n      if (kind & K) {\n        return item;\n      }\n      return item[1];\n    }\n    return item[0];\n  },\n  iterator(){\n    return this;\n  }\n});\n\nvar next = MapIterator.prototype.next;\n";
+exports.builtins.Map = "function Map(iterable){\n  var map;\n  if ($__IsConstructCall()) {\n    map = this;\n  } else {\n    if (this === undefined || this === $__MapProto) {\n      map = $__ObjectCreate($__MapProto) ;\n    } else {\n      map = $__ToObject(this);\n    }\n  }\n\n  if ($__HasInternal(map, 'MapData')) {\n    throw $__Exception('double_initialization', ['Map'])\n  }\n\n  $__MapInitialization(map, iterable);\n  return map;\n}\n\n\n$__setupConstructor(Map, $__MapProto);\n\n\n$__defineProps(Map.prototype, {\n  clear(){\n    return $__MapClear(this, key);\n  },\n  set(key, value){\n    return $__MapSet(this, key, value);\n  },\n  get(key){\n    return $__MapGet(this, key);\n  },\n  has(key){\n    return $__MapHas(this, key);\n  },\n  delete: function(key){\n    return $__MapDelete(this, key);\n  },\n  items(){\n    return new MapIterator(this, 'key+value');\n  },\n  keys(){\n    return new MapIterator(this, 'key');\n  },\n  values(){\n    return new MapIterator(this, 'value');\n  },\n  iterator(){\n    return new MapIterator(this, 'key+value');\n  }\n});\n\n$__defineDirect(Map.prototype.delete, 'name', 'delete', 0);\n\n$__DefineOwnProperty(Map.prototype, 'size', {\n  configurable: true,\n  enumerable: false,\n  get: function(){\n    if (this === $__MapProto) {\n      return 0;\n    }\n    return $__MapSize(this);\n  },\n  set: undefined\n});\n\nvar MAP = 'Map',\n    KEY  = 'MapNextKey',\n    KIND  = 'MapIterationKind';\n\n\nvar K = 0x01,\n    V = 0x02;\n\nvar kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3\n};\n\n\nfunction MapIterator(map, kind){\n  map = $__ToObject(map);\n  $__SetInternal(this, MAP, map);\n  $__SetInternal(this, KEY,  $__MapSigil());\n  $__SetInternal(this, KIND, kinds[kind]);\n  this.next = () => next.call(this);\n}\n\n$__defineProps(MapIterator.prototype, {\n  next(){\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['MapIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, MAP) || !$__HasInternal(this, KEY) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('called_on_incompatible_object', ['MapIterator.prototype.next']);\n    }\n    var map = $__GetInternal(this, MAP),\n        key = $__GetInternal(this, KEY),\n        kind = $__GetInternal(this, KIND);\n\n    var item = $__MapNext(map, key);\n    $__SetInternal(this, KEY, item[0]);\n\n    if (kind & V) {\n      if (kind & K) {\n        return item;\n      }\n      return item[1];\n    }\n    return item[0];\n  },\n  iterator(){\n    return this;\n  }\n});\n\nvar next = MapIterator.prototype.next;\n";
 
 exports.builtins.Number = "function Number(value){\n  value = $__ToNumber(value);\n  if ($__IsConstructCall()) {\n    return $__NumberCreate(value);\n  } else {\n    return value;\n  }\n}\n\n$__setupConstructor(Number, $__NumberProto);\n\n$__defineConstants(Number, {\n  EPSILON: 2.220446049250313e-16,\n  MAX_INTEGER: 9007199254740992,\n  MAX_VALUE: 1.7976931348623157e+308,\n  MIN_VALUE: 5e-324,\n  NaN: NaN,\n  NEGATIVE_INFINITY: -Infinity,\n  POSITIVE_INFINITY: Infinity\n});\n\n$__defineProps(Number, {\n  isNaN(number){\n    return number !== number;\n  },\n  isFinite(number){\n    return typeof value === 'number'\n        && value === value\n        && value < Infinity\n        && value > -Infinity;\n  },\n  isInteger(value) {\n    return typeof value === 'number'\n        && value === value\n        && value > -9007199254740992\n        && value < 9007199254740992\n        && value | 0 === value;\n  },\n  toInteger(value){\n    return (value / 1 || 0) | 0;\n  }\n});\n\nvar isFinite = Number.isFinite;\n\n$__defineProps(Number.prototype, {\n  toString(radix){\n    if ($__GetNativeBrand(this) === 'Number') {\n      return $__ToString($__GetPrimitiveValue(this));\n    } else {\n      throw $__Exception('not_generic', ['Number.prototype.toString']);\n    }\n  },\n  valueOf(){\n    if ($__GetNativeBrand(this) === 'Number') {\n      return $__GetPrimitiveValue(this);\n    } else {\n      throw $__Exception('not_generic', ['Number.prototype.valueOf']);\n    }\n  },\n  clz() {\n    var x = $__ToNumber(this);\n    if (!x || !isFinite(x)) {\n      return 32;\n    } else {\n      x = x < 0 ? x + 1 | 0 : x | 0;\n      x -= (x / 0x100000000 | 0) * 0x100000000;\n      return 32 - $__NumberToString(x, 2).length;\n    }\n  }\n});\n";
 
@@ -14639,7 +14635,7 @@ exports.builtins.Object = "function Object(value){\n  if ($__IsConstructCall()) 
 
 exports.builtins.RegExp = "function RegExp(pattern, flags){\n  if ($__IsConstructCall()) {\n    if (pattern === undefined) {\n      pattern = '';\n    } else if (typeof pattern === 'string') {\n    } else if (typeof pattern === 'object' && $__GetNativeBrand(pattern) === 'RegExp') {\n      if (flags !== undefined) {\n        throw $__Exception('regexp_flags', []);\n      }\n    } else {\n      pattern = $__ToString(pattern);\n    }\n    return $__RegExpCreate(pattern, flags);\n  } else {\n    if (flags === undefined && pattern) {\n      if (typeof pattern === 'object' && $__GetNativeBrand(pattern) === 'RegExp') {\n        return pattern;\n      }\n    }\n    return $__RegExpCreate(pattern, flags);\n  }\n}\n\n$__setupConstructor(RegExp, $__RegExpProto);\n$__wrapRegExpMethods(RegExp.prototype);\n\n$__defineProps(RegExp.prototype, {\n  toString(){\n    if ($__GetNativeBrand(this) === 'RegExp') {\n      return $__RegExpToString(this);\n    } else {\n      throw $__Exception('not_generic', ['RegExp.prototype.toString']);\n    }\n  }\n});\n";
 
-exports.builtins.Set = "function Set(iterable){}\n$__setupConstructor(Set, $__SetProto);\n";
+exports.builtins.Set = "var Map = this.Map;\n\nfunction Set(iterable){\n  var set;\n  if ($__IsConstructCall()) {\n    set = this;\n  } else {\n    if (this === undefined || this === $__SetProto) {\n      set = $__ObjectCreate($__SetProto) ;\n    } else {\n      set = $__ToObject(this);\n    }\n  }\n  if ($__HasInternal(set, 'SetData')) {\n    throw $__Exception('double_initialization', ['Set'])\n  }\n\n  if (iterable !== undefined) {\n    iterable = $__ToObject(iterable);\n    $__SetInternal(set, 'SetData', new Map(iterable.values()));\n  } else {\n    $__SetInternal(set, 'SetData', new Map);\n  }\n  return set;\n}\n\n$__setupConstructor(Set, $__SetProto);\n\n\n$__defineProps(Set.prototype, {\n  clear(){\n    return $__MapClear(ensureSet(this));\n  },\n  add(key){\n    return $__MapSet(ensureSet(this), key, key);\n  },\n  has(key){\n    return $__MapHas(ensureSet(this), key);\n  },\n  delete: function(key){\n    return $__MapDelete(ensureSet(this), key);\n  },\n  items(){\n    return new SetIterator(this, 'key+value');\n  },\n  keys(){\n    return new SetIterator(this, 'key');\n  },\n  values(){\n    return new SetIterator(this, 'value');\n  },\n  iterator(){\n    return new SetIterator(this, 'value');\n  }\n});\n\n$__defineDirect(Set.prototype.delete, 'name', 'delete', 0);\n\n$__DefineOwnProperty(Set.prototype, 'size', {\n  configurable: true,\n  enumerable: false,\n  get: function size(){\n    if (this === $__SetProto) {\n      return 0;\n    }\n    return $__MapSize(ensureSet(this));\n  },\n  set: undefined\n});\n\nfunction ensureSet(o, name){\n  var type = typeof o;\n  if (type === 'object' ? o === null : type !== 'function') {\n    throw $__Exception('called_on_non_object', [name]);\n  }\n  var data = $__GetInternal(o, 'SetData');\n  if (!data) {\n    throw $__Exception('called_on_incompatible_object', [name]);\n  }\n  return data;\n}\n\nvar SET = 'Set',\n    KEY  = 'SetNextKey',\n    KIND  = 'SetIterationKind';\n\nvar K = 0x01,\n    V = 0x02,\n    KV = 0x03;\n\nvar kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3\n};\n\n\nfunction SetIterator(set, kind){\n  set = $__ToObject(set);\n  $__SetInternal(this, SET, ensureSet(set));\n  $__SetInternal(this, KEY,  $__MapSigil());\n  $__SetInternal(this, KIND, kinds[kind]);\n  this.next = () => next.call(this);\n}\n\n$__defineProps(SetIterator.prototype, {\n  next(){\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['SetIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, SET) || !$__HasInternal(this, KEY) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('called_on_incompatible_object', ['SetIterator.prototype.next']);\n    }\n    var data = $__GetInternal(this, SET),\n        key = $__GetInternal(this, KEY),\n        kind = $__GetInternal(this, KIND);\n\n    var item = $__MapNext(data, key);\n    $__SetInternal(this, KEY, item[0]);\n    return kind === KV ? [item[1], item[1]] : item[1];\n  },\n  iterator(){\n    return this;\n  }\n});\n\nvar next = SetIterator.prototype.next;\n";
 
 exports.builtins.String = "function String(string){\n  string = arguments.length ? $__ToString(string) : '';\n  if ($__IsConstructCall()) {\n    return $__StringCreate(string);\n  } else {\n    return string;\n  }\n}\n\n$__setupConstructor(String, $__StringProto);\n$__wrapStringMethods(String.prototype);\n\n$__defineProps(String, {\n  fromCharCode(...codeUnits){\n    var length = codeUnits.length,\n        str = '';\n    for (var i=0; i < length; i++) {\n      str += $__FromCharCode($__ToUint16(codeUnits[i]));\n    }\n    return str;\n  }\n});\n\n$__defineProps(String.prototype, {\n  repeat(count){\n    var s = $__ToString(this),\n        n = $__ToInteger(count),\n        o = '';\n\n    if (n <= 1 || n === Infinity || n === -Infinity) {\n      throw $__Exception('invalid_repeat_count', []);\n    }\n\n    while (n > 0) {\n      n & 1 && (o += s);\n      n >>= 1;\n      s += s;\n    }\n\n    return o;\n  },\n  charAt(position){\n    var string = $__ToString(this);\n    position = $__ToInteger(position);\n    return position < 0 || position >= string.length ? '' : string[position];\n  },\n  charCodeAt(position){\n    var string = $__ToString(this);\n    position = $__ToInteger(position);\n    return position < 0 || position >= string.length ? NaN : $__CodeUnit(string[position]);\n  },\n  concat(...args){\n    var string = $__ToString(this);\n    for (var i=0; i < args.length; i++) {\n      string += $__ToString(args[i]);\n    }\n    return string;\n  },\n  indexOf(search){\n    return stringIndexOf(this, search, arguments[1]);\n  },\n  lastIndexOf(search){\n    var string = $__ToString(this),\n        len = string.length,\n        position = $__ToNumber(arguments[1]);\n\n    search = $__ToString(search);\n    var searchLen = search.length;\n\n    position = position !== position ? Infinity : $__ToInteger(position);\n    position -= searchLen;\n\n    var i = position > 0 ? position < len ? position : len : 0;\n\n    while (i--) {\n      var j = 0;\n      while (j < searchLen && search[j] === string[i + j]) {\n        if (j++ === searchLen - 1) {\n          return i;\n        }\n      }\n    }\n    return -1;\n  },\n  match(regexp){\n    return stringMatch(this, regexp);\n  },\n  replace(search, replace){\n    var string = $__ToString(this);\n\n    if (typeof replace === 'function') {\n      var match, count;\n      if (isRegExp(search)) {\n        match = stringMatch(string, search);\n        count = matches.length;\n      } else {\n        match = stringIndexOf(string, $__ToString(search));\n        count = 1;\n      }\n      //TODO\n    } else {\n      replace = $__ToString(replace);\n      if (!isRegExp(search)) {\n        search = $__ToString(search);\n      }\n      return $__StringReplace(string, search, replace);\n    }\n  },\n  slice(start, end){\n    var string = $__ToString(this);\n    start = $__ToInteger(start);\n    if (end !== undefined) {\n      end = $_ToInteger(end);\n    }\n    return $__StringSlice(string, start, end);\n  },\n  toString(){\n    if ($__GetNativeBrand(this) === 'String') {\n      return $__GetPrimitiveValue(this);\n    } else {\n      throw $__exception('not_generic', ['String.prototype.toString']);\n    }\n  },\n  valueOf(){\n    if ($__GetNativeBrand(this) === 'String') {\n      return $__GetPrimitiveValue(this);\n    } else {\n      throw $__Exception('not_generic', ['String.prototype.valueOf']);\n    }\n  }\n});\n\n\nfunction isRegExp(subject){\n  return subject != null && typeof subject === 'object' && $__GetNativeBrand(subject) === 'RegExp';\n}\n\nfunction stringIndexOf(string, search, position){\n  string = $__ToString(string);\n  search = $__ToString(search);\n  position = $__ToInteger(position);\n\n  var len = string.length,\n      searchLen = search.length,\n      i = position > 0 ? position < len ? position : len : 0,\n      maxLen = len - searchLen;\n\n  while (i < maxLen) {\n    var j = 0;\n    while (j < searchLen && search[j] === string[i + j]) {\n      if (j++ === searchLen - 1) {\n        return i;\n      }\n    }\n  }\n  return -1;\n}\n\nfunction stringMatch(string, regexp){\n  string = $__ToString(string);\n  if (!isRegExp(regexp)) {\n    regexp = new RegExp(regexp);\n  }\n  if (!regexp.global) {\n    return regexp.exec(string);\n  }\n  regexp.lastIndex = 0;\n  var array = [],\n      previous = 0,\n      lastMatch = true,\n      n = 0;\n\n  while (lastMatch) {\n    var result = regexp.exec(string);\n    if (result === null) {\n      lastMatch = false;\n    } else {\n      var thisIndex = regexp.lastIndex;\n      if (thisIndex === lastIndex) {\n        previous = regexp.lastIndex = thisIndex + 1;\n      } else {\n        previous = thisIndex;\n      }\n      array[n++] = result[0];\n    }\n  }\n\n  return n === 0 ? null : array;\n}\n";
 
