@@ -1803,7 +1803,7 @@ parseYieldExpression: true
     }
 
     function parseObjectProperty() {
-        var token, key, id, param;
+        var token, key, id;
 
         token = lookahead();
 
@@ -1825,14 +1825,10 @@ parseYieldExpression: true
                 };
             } else if (token.value === 'set' && !(match(':') || match('('))) {
                 key = parseObjectPropertyKey();
-                expect('(');
-                token = lookahead();
-                param = [ parseVariableIdentifier() ];
-                expect(')');
                 return {
                     type: Syntax.Property,
                     key: key,
-                    value: parsePropertyFunction({ params: param, generator: false, name: token }),
+                    value: parsePropertyFunction({ params: parseParams().params, generator: false, name: token }),
                     kind: 'set'
                 };
             } else {
@@ -4182,14 +4178,10 @@ parseYieldExpression: true
             };
         } else if (token.value === 'set' && !match('(')) {
             key = parseObjectPropertyKey();
-            expect('(');
-            token = lookahead();
-            param = [ parseVariableIdentifier() ];
-            expect(')');
             return {
                 type: Syntax.MethodDefinition,
                 key: key,
-                value: parsePropertyFunction({ params: param, generator: false, name: token }),
+                value: parsePropertyFunction({ params: parseParams().params, generator: false }),
                 kind: 'set'
             };
         } else {
@@ -8999,7 +8991,8 @@ exports.thunk = (function(exports){
       AST       = constants.AST.array,
       Pause     = constants.SYMBOLS.Pause,
       Empty     = constants.SYMBOLS.Empty,
-      Resume    = constants.SYMBOLS.Resume;
+      Resume    = constants.SYMBOLS.Resume,
+      StopIteration = constants.BRANDS.StopIteration;
 
   var AbruptCompletion = require('./errors').AbruptCompletion;
 
@@ -9042,6 +9035,54 @@ exports.thunk = (function(exports){
     var thunk = this,
         ops = code.ops,
         cmds = instructions(ops, opcodes);
+
+
+    function ƒ(){
+      for (var i = 0, entry; entry = code.entrances[i]; i++) {
+        if (entry.begin < ip && ip <= entry.end) {
+          if (entry.type === ENTRY.ENV) {
+            trace(context.popBlock());
+          } else {
+            if (entry.type === ENTRY.TRYCATCH) {
+              stack[sp++] = error.value;
+              ip = entry.end;
+              console.log(ops[ip])
+              return cmds[ip];
+            } else if (entry.type === ENTRY.FOROF) {
+              if (error && error.value && error.value.NativeBrand === StopIteration) {
+                ip = entry.end;
+                return cmds[ip];
+              }
+            }
+          }
+        }
+      }
+
+
+      if (error) {
+        if (error.value && error.value.setCode) {
+          var range = code.ops[ip].range,
+              loc = code.ops[ip].loc;
+
+          if (!error.value.hasLocation) {
+            error.value.hasLocation = true;
+            error.value.setCode(loc, code.source);
+            error.value.setOrigin(code.filename, code.name);
+          }
+
+          if (stacktrace) {
+            if (error.value.trace) {
+              [].push.apply(error.value.trace, stacktrace);
+            } else {
+              error.value.trace = stacktrace;
+            }
+            error.value.context || (error.value.context = context);
+          }
+        }
+      }
+      completion = error;
+      return false;
+    }
 
     function ARGS(){
       stack[sp++] = [];
@@ -9600,50 +9641,6 @@ exports.thunk = (function(exports){
       }
       context.pushWith(a);
       return cmds[++ip];
-    }
-
-    function ƒ(){
-      for (var i = 0, entry; entry = code.entrances[i]; i++) {
-        if (entry.begin < ip && ip <= entry.end) {
-          if (entry.type === ENTRY.ENV) {
-            trace(context.popBlock());
-          } else {
-            if (entry.type === ENTRY.TRYCATCH) {
-              stack[sp++] = error.value;
-              ip = entry.end;
-              console.log(ops[ip])
-              return cmds[ip];
-            } else if (entry.type === ENTRY.FOROF && error.value === context.realm.intrinsics.StopIteration) {
-              ip = entry.end;
-              return cmds[ip];
-            }
-          }
-        }
-      }
-      if (error) {
-
-        if (error.value && error.value.setCode) {
-          var range = code.ops[ip].range,
-              loc = code.ops[ip].loc;
-
-          if (!error.value.hasLocation) {
-            error.value.hasLocation = true;
-            error.value.setCode(loc, code.source);
-            error.value.setOrigin(code.filename, code.name);
-          }
-
-          if (stacktrace) {
-            if (error.value.trace) {
-              [].push.apply(error.value.trace, stacktrace);
-            } else {
-              error.value.trace = stacktrace;
-            }
-            error.value.context || (error.value.context = context);
-          }
-        }
-      }
-      completion = error;
-      return false;
     }
 
 
@@ -10214,6 +10211,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   function IsStopIteration(o){
+    console.log(o);
     return !!(o && o.Abrupt && o.value === o.value.NativeBrand === StopIteration);
   }
 
@@ -10715,13 +10713,13 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
       var next;
       while (next = Invoke('next', itr, [])) {
+        if (IsStopIteration(next)) {
+          return object;
+        }
+
         if (next && next.Completion) {
           if (next.Abrupt) {
-            if (next.value === intrinsics.StopIteration) {
-              return object;
-            } else {
-              return next;
-            }
+            return next;
           } else {
             next = next.value;
           }
@@ -14611,7 +14609,7 @@ exports.debug = (function(exports){
 
 exports.builtins.$utility = "var ___ = 0x00,\n    E__ = 0x01,\n    _C_ = 0x02,\n    EC_ = 3,\n    __W = 0x04,\n    E_W = 5,\n    _CW = 6,\n    ECW = 7,\n    __A = 0x08,\n    E_A = 9,\n    _CA = 10,\n    ECA = 11;\n\n\n$__defineMethods = function defineMethods(obj, props){\n  for (var i=0; i < props.length; i++) {\n    $__SetInternal(props[i], 'Native', true);\n    $__defineDirect(obj, props[i].name, props[i], _CW);\n    $__deleteDirect(props[i], 'prototype');\n  }\n  return obj;\n};\n\n$__defineProps = function defineProps(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    var name = keys[i],\n        prop = props[name];\n\n    $__defineDirect(obj, name, prop, _CW);\n\n    if (typeof prop === 'function') {\n      $__SetInternal(prop, 'Native', true);\n      $__defineDirect(prop, 'name', name, ___);\n      $__deleteDirect(prop, 'prototype');\n    }\n  }\n  return obj;\n};\n\n$__defineConstants = function defineConstants(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    $__defineDirect(obj, keys[i], props[keys[i]], ___);\n  }\n};\n\n$__setupConstructor = function setupConstructor(ctor, proto){\n  $__defineDirect(ctor, 'prototype', proto, ___);\n  $__defineDirect(ctor.prototype, 'constructor', ctor, ___);\n  $__defineDirect(global, ctor.name, ctor, _CW);\n  $__SetInternal(ctor, 'Native', true);\n  $__SetInternal(ctor, 'NativeConstructor', true);\n};\n\n$__EmptyClass = function constructor(...args){\n  super(...args);\n};\n";
 
-exports.builtins.Array = "function Array(...values){\n  if (values.length === 1 && typeof values[0] === 'number') {\n    var out = [];\n    out.length = values[0];\n    return out;\n  } else {\n    return values;\n  }\n}\n\n$__setupConstructor(Array, $__ArrayProto);\n\n\n$__defineProps(Array, {\n  isArray(array){\n    return $__GetNativeBrand(array) === 'Array';\n  },\n  from(iterable){\n    var out = [];\n    iterable = $__ToObject(iterable);\n\n    for (var i = 0, len = iterable.length >>> 0; i < len; i++) {\n      if (i in iterable) {\n        out[i] = iterable[i];\n      }\n    }\n\n    return out;\n  }\n});\n\n$__defineProps(Array.prototype, {\n  filter(callback){\n    if (this == null) {\n      throw $__Exception('called_on_null_or_undefined', ['Array.prototype.filter']);\n    }\n\n    var array = $__ToObject(this),\n        length = $__ToUint32(this.length);\n\n    var receiver = this;\n\n    if (typeof receiver !== 'object') {\n      receiver = $__ToObject(receiver);\n    }\n\n    var result = [],\n        count = 0;\n\n    for (var i = 0; i < length; i++) {\n      if (i in array) {\n        var element = array[i];\n        if ($__CallFunction(callback, receiver, [element, i, array])) {\n          result[count++] = element;\n        }\n      }\n    }\n\n    return result;\n  },\n  forEach(callback, context){\n    var len = this.length;\n    if (arguments.length === 1) {\n      context = this;\n    } else {\n      context = $__ToObject(this);\n    }\n    for (var i=0; i < len; i++) {\n      $__CallFunction(callback, context, [this[i], i, this]);\n    }\n  },\n  map(callback, context){\n    var out = [];\n    var len = this.length;\n    if (arguments.length === 1) {\n      context = this;\n    } else {\n      context = Object(this);\n    }\n    for (var i=0; i < len; i++) {\n      out[i] = $__CallFunction(callback, context, [this[i], i, this]);\n    }\n    return out;\n  },\n  reduce(callback, initial){\n    var index = 0;\n    if (arguments.length === 1) {\n      initial = this[0];\n      index++;\n    }\n    for (; index < this.length; i++) {\n      if (i in this) {\n        initial = $__CallFunction(callback, this, [initial, this[i], this]);\n      }\n    }\n    return initial;\n  },\n  join(separator){\n    return joinArray(this, separator);\n  },\n  push(...values){\n    var len = this.length,\n        valuesLen = values.length;\n\n    for (var i=0; i < valuesLen; i++) {\n      this[len++] = values[i];\n    }\n    return len;\n  },\n  pop(){\n    var out = this[this.length - 1];\n    this.length--;\n    return out;\n  },\n  slice(start, end){\n    var out = [], len;\n\n    start = start === undefined ? 0 : +start || 0;\n    end = end === undefined ? this.length - 1 : +end || 0;\n\n    if (start < 0) {\n      start += this.length;\n    }\n\n    if (end < 0) {\n      end += this.length;\n    } else if (end >= this.length) {\n      end = this.length - 1;\n    }\n\n    if (start > end || end < start || start === end) {\n      return [];\n    }\n\n    len = start - end;\n    for (var i=0; i < len; i++) {\n      out[i] = this[i + start];\n    }\n\n    return out;\n  },\n  toString(){\n    return joinArray(this, ',');\n  },\n  items(){\n    var object = $__ToObject(this);\n    return new ArrayIterator(object, 'key+value');\n  },\n  keys(){\n    var object = $__ToObject(this);\n    return new ArrayIterator(object, 'key');\n  },\n  values(){\n    var object = $__ToObject(this);\n    return new ArrayIterator(object, 'value');\n  },\n  iterator(){\n    var object = $__ToObject(this);\n    return new ArrayIterator(object, 'key+value');\n  }\n});\n\nfunction joinArray(array, separator){\n  var out = '',\n      len = array.length;\n\n  if (len === 0) {\n    return out;\n  }\n\n  if (arguments.length === 0) {\n    separator = ',';\n  } else if (typeof separator !== 'string') {\n    separator = $__ToString(separator);\n  }\n\n  len--;\n  for (var i=0; i < len; i++) {\n    out += array[i] + separator;\n  }\n\n  return out + array[i];\n}\n\nvar ARRAY = 'IteratedObject',\n    INDEX  = 'ArrayIteratorNextIndex',\n    KIND  = 'ArrayIterationKind';\n\n\nvar K = 0x01,\n    V = 0x02,\n    S = 0x04;\n\nvar kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3,\n  'sparse:key': 5,\n  'sparse:value': 6,\n  'sparse:key+value': 7\n};\n\nfunction ArrayIterator(array, kind){\n  array = $__ToObject(array);\n  $__SetInternal(this, ARRAY, array);\n  $__SetInternal(this, INDEX, 0);\n  $__SetInternal(this, KIND, kinds[kind]);\n  this.next = () => next.call(this);\n}\n\n$__defineProps(ArrayIterator.prototype, {\n  next(){\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['ArrayIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, ARRAY) || !$__HasInternal(this, INDEX) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('incompatible_array_iterator', ['ArrayIterator.prototype.next']);\n    }\n    var array = $__GetInternal(this, ARRAY),\n        index = $__GetInternal(this, INDEX),\n        kind = $__GetInternal(this, KIND),\n        len = $__ToUint32(array.length),\n        key = $__ToString(index);\n\n    if (kind & S) {\n      var found = false;\n      while (!found && index < len) {\n        found = index in array;\n        if (!found) {\n          index++;\n        }\n      }\n    }\n    if (index >= len) {\n      $__SetInternal(this, INDEX, Infinity);\n      throw $__StopIteration;\n    }\n    $__SetInternal(this, INDEX, index + 1);\n\n    if (kind & V) {\n      var value = array[key];\n      if (kind & K) {\n        return [key, value];\n      }\n      return value;\n    }\n    return key;\n  },\n  iterator(){\n    return this;\n  }\n});\n\nvar next = ArrayIterator.prototype.next;\n";
+exports.builtins.Array = "function Array(...values){\n  if (values.length === 1 && typeof values[0] === 'number') {\n    var out = [];\n    out.length = values[0];\n    return out;\n  } else {\n    return values;\n  }\n}\n\n$__setupConstructor(Array, $__ArrayProto);\n\n\n$__defineProps(Array, {\n  isArray(array){\n    return $__GetNativeBrand(array) === 'Array';\n  },\n  from(iterable){\n    var out = [];\n    iterable = $__ToObject(iterable);\n\n    for (var i = 0, len = iterable.length >>> 0; i < len; i++) {\n      if (i in iterable) {\n        out[i] = iterable[i];\n      }\n    }\n\n    return out;\n  }\n});\n\n$__defineProps(Array.prototype, {\n  filter(callback){\n    if (this == null) {\n      throw $__Exception('called_on_null_or_undefined', ['Array.prototype.filter']);\n    }\n\n    var array = $__ToObject(this),\n        length = $__ToUint32(this.length);\n\n    var receiver = this;\n\n    if (typeof receiver !== 'object') {\n      receiver = $__ToObject(receiver);\n    }\n\n    var result = [],\n        count = 0;\n\n    for (var i = 0; i < length; i++) {\n      if (i in array) {\n        var element = array[i];\n        if ($__CallFunction(callback, receiver, [element, i, array])) {\n          result[count++] = element;\n        }\n      }\n    }\n\n    return result;\n  },\n  forEach(callback, context){\n    var len = this.length;\n    if (arguments.length === 1) {\n      context = this;\n    } else {\n      context = $__ToObject(this);\n    }\n    for (var i=0; i < len; i++) {\n      $__CallFunction(callback, context, [this[i], i, this]);\n    }\n  },\n  map(callback, context){\n    var out = [];\n    var len = this.length;\n    if (arguments.length === 1) {\n      context = this;\n    } else {\n      context = Object(this);\n    }\n    for (var i=0; i < len; i++) {\n      out[i] = $__CallFunction(callback, context, [this[i], i, this]);\n    }\n    return out;\n  },\n  reduce(callback, initial){\n    var index = 0;\n    if (arguments.length === 1) {\n      initial = this[0];\n      index++;\n    }\n    for (; index < this.length; i++) {\n      if (i in this) {\n        initial = $__CallFunction(callback, this, [initial, this[i], this]);\n      }\n    }\n    return initial;\n  },\n  join(separator){\n    return joinArray(this, separator);\n  },\n  push(...values){\n    var len = this.length,\n        valuesLen = values.length;\n\n    for (var i=0; i < valuesLen; i++) {\n      this[len++] = values[i];\n    }\n    return len;\n  },\n  pop(){\n    var out = this[this.length - 1];\n    this.length--;\n    return out;\n  },\n  slice(start, end){\n    var out = [], len;\n\n    start = start === undefined ? 0 : +start || 0;\n    end = end === undefined ? this.length - 1 : +end || 0;\n\n    if (start < 0) {\n      start += this.length;\n    }\n\n    if (end < 0) {\n      end += this.length;\n    } else if (end >= this.length) {\n      end = this.length - 1;\n    }\n\n    if (start > end || end < start || start === end) {\n      return [];\n    }\n\n    len = start - end;\n    for (var i=0; i < len; i++) {\n      out[i] = this[i + start];\n    }\n\n    return out;\n  },\n  toString(){\n    return joinArray(this, ',');\n  },\n  items(){\n    var object = $__ToObject(this);\n    return new ArrayIterator(object, 'key+value');\n  },\n  keys(){\n    var object = $__ToObject(this);\n    return new ArrayIterator(object, 'key');\n  },\n  values(){\n    var object = $__ToObject(this);\n    return new ArrayIterator(object, 'value');\n  },\n  iterator(){\n    var object = $__ToObject(this);\n    return new ArrayIterator(object, 'value');\n  }\n});\n\nfunction joinArray(array, separator){\n  var out = '',\n      len = array.length;\n\n  if (len === 0) {\n    return out;\n  }\n\n  if (arguments.length === 0) {\n    separator = ',';\n  } else if (typeof separator !== 'string') {\n    separator = $__ToString(separator);\n  }\n\n  len--;\n  for (var i=0; i < len; i++) {\n    out += array[i] + separator;\n  }\n\n  return out + array[i];\n}\n\nvar ARRAY = 'IteratedObject',\n    INDEX  = 'ArrayIteratorNextIndex',\n    KIND  = 'ArrayIterationKind';\n\n\nvar K = 0x01,\n    V = 0x02,\n    S = 0x04;\n\nvar kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3,\n  'sparse:key': 5,\n  'sparse:value': 6,\n  'sparse:key+value': 7\n};\n\nfunction ArrayIterator(array, kind){\n  array = $__ToObject(array);\n  $__SetInternal(this, ARRAY, array);\n  $__SetInternal(this, INDEX, 0);\n  $__SetInternal(this, KIND, kinds[kind]);\n  this.next = () => next.call(this);\n}\n\n$__defineProps(ArrayIterator.prototype, {\n  next(){\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['ArrayIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, ARRAY) || !$__HasInternal(this, INDEX) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('incompatible_array_iterator', ['ArrayIterator.prototype.next']);\n    }\n    var array = $__GetInternal(this, ARRAY),\n        index = $__GetInternal(this, INDEX),\n        kind = $__GetInternal(this, KIND),\n        len = $__ToUint32(array.length),\n        key = $__ToString(index);\n\n    if (kind & S) {\n      var found = false;\n      while (!found && index < len) {\n        found = index in array;\n        if (!found) {\n          index++;\n        }\n      }\n    }\n    if (index >= len) {\n      $__SetInternal(this, INDEX, Infinity);\n      throw $__StopIteration;\n    }\n    $__SetInternal(this, INDEX, index + 1);\n\n    if (kind & V) {\n      var value = array[key];\n      if (kind & K) {\n        return [key, value];\n      }\n      return value;\n    }\n    return key;\n  },\n  iterator(){\n    return this;\n  }\n});\n\nvar next = ArrayIterator.prototype.next;\n";
 
 exports.builtins.Boolean = "function Boolean(value){\n  value = $__ToBoolean(value);\n  if ($__IsConstructCall()) {\n    return $__BooleanCreate(value);\n  } else {\n    return value;\n  }\n}\n\n$__setupConstructor(Boolean, $__BooleanProto);\n\n$__defineProps(Boolean.prototype, {\n  toString(){\n    if ($__GetNativeBrand(this) === 'Boolean') {\n      return $__GetPrimitiveValue(this) ? 'true' : 'false';\n    } else {\n      throw $__Exception('not_generic', ['Boolean.prototype.toString']);\n    }\n  },\n  valueOf(){\n    if ($__GetNativeBrand(this) === 'Boolean') {\n      return $__GetPrimitiveValue(this);\n    } else {\n      throw $__Exception('not_generic', ['Boolean.prototype.valueOf']);\n    }\n  }\n});\n";
 
