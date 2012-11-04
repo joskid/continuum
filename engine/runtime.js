@@ -59,6 +59,8 @@ var runtime = (function(GLOBAL, exports, undefined){
       Continue      = SYMBOLS.Continue,
       Uninitialized = SYMBOLS.Uninitialized;
 
+  var StopIteration = constants.BRANDS.StopIteration;
+
   var slice = [].slice;
 
   var BINARYOPS = constants.BINARYOPS.array,
@@ -476,8 +478,8 @@ var runtime = (function(GLOBAL, exports, undefined){
     return new AbruptCompletion('throw', intrinsics.StopIteration);
   }
 
-  function IsStopIteration(value){
-    return !!(value && value.Abrupt && value.value === value.value.NativeBrand === StopIteration);
+  function IsStopIteration(o){
+    return !!(o && o.Abrupt && o.value === o.value.NativeBrand === StopIteration);
   }
 
 
@@ -949,14 +951,6 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   function MapInitialization(object, iterable){
-    if (typeof object !== OBJECT) {
-      return ThrowException('map_init_nonobject', typeof object);
-    } else if (object.MapData) {
-      return ThrowException('map_init_duplicate');
-    } else if (!object.Extensible) {
-      return ThrowException('map_init_nonextensible');
-    }
-
     object.MapData = new MapData;
 
     if (iterable !== undefined) {
@@ -969,7 +963,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
 
-      var itr = Invoke('iterator', object, []);
+      var itr = Invoke('iterator', iterable, []);
 
       var adder = object.Get('set');
       if (adder && adder.Completion) {
@@ -981,13 +975,21 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
 
       if (!IsCallable(adder)) {
-        return ThrowException('map_set_noncallable');
+        return ThrowException('called_on_incompatible_object', ['Map.prototype.set']);
       }
 
       var next;
       while (next = Invoke('next', itr, [])) {
-        if (IsStopIteration(next)) {
-          return obj;
+        if (next && next.Completion) {
+          if (next.Abrupt) {
+            if (next.value === intrinsics.StopIteration) {
+              return object;
+            } else {
+              return next;
+            }
+          } else {
+            next = next.value;
+          }
         }
 
         next = ToObject(next);
@@ -1011,7 +1013,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
 
         var status = adder.Call(object, [k, v]);
-        if (status.Abrupt) {
+        if (status && status.Abrupt) {
           return status;
         }
       }
@@ -1021,7 +1023,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
 
-  var uid = Math.random() *  (1 << 30);
+  var uid = (Math.random() * (1 << 30)) | 0;
 
 
   function LinkedItem(key, next){
@@ -2166,13 +2168,10 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function $Map(){
     $Object.call(this, intrinsics.MapProto);
-
-
   }
 
   inherit($Map, $Object, {
-    NativeBrand: BRANDS.NativeMap,
-    MapData: null
+    NativeBrand: BRANDS.NativeMap
   });
 
   // ############
@@ -2965,7 +2964,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
     bindings.StopIteration = new $Object(bindings.ObjectProto);
-    bindings.StopIteration.NativeBrand = BRANDS.StopIteration;
+    bindings.StopIteration.NativeBrand = StopIteration;
 
     for (var i=0; i < 6; i++) {
       var prototype = bindings[$errors[i] + 'Proto'] = create($Error.prototype);
@@ -3550,7 +3549,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
     MapSet: function(map, key, value){
       var data = map && map.MapData;
-      console.log(map);
       if (data) {
         data.set(key, value);
       } else {
