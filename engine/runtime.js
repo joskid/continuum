@@ -1951,6 +1951,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       return result && result.type === Return ? result.value : result;
     },
     function Construct(args){
+      if (this.ThisMode === 'lexical') {
+        return ThrowException('construct_arrow_function');
+      }
       var prototype = this.Get('prototype');
       if (prototype.Completion) {
         if (prototype.Abrupt) {
@@ -2786,8 +2789,10 @@ var runtime = (function(GLOBAL, exports, undefined){
         var env = this.LexicalEnvironment;
       }
       var func = new $Function(code.Type, name, code.params, code, env, code.Strict);
-      MakeConstructor(func);
-      name && env.InitializeBinding(name, func);
+      if (code.Type !== ARROW) {
+        MakeConstructor(func);
+        name && env.InitializeBinding(name, func);
+      }
       return func;
     },
     function createArray(len){
