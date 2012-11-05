@@ -21,33 +21,41 @@ function Map(iterable){
 
 $__setupConstructor(Map, $__MapProto);
 
-
 $__defineProps(Map.prototype, {
   clear(){
+    ensureMap(this, 'clear');
     return $__MapClear(this, key);
   },
   set(key, value){
+    ensureMap(this, 'set');
     return $__MapSet(this, key, value);
   },
   get(key){
+    ensureMap(this, 'get');
     return $__MapGet(this, key);
   },
   has(key){
+    ensureMap(this, 'has');
     return $__MapHas(this, key);
   },
   delete: function(key){
+    ensureMap(this, 'delete');
     return $__MapDelete(this, key);
   },
   items(){
+    ensureMap(this, 'items');
     return new MapIterator(this, 'key+value');
   },
   keys(){
+    ensureMap(this, 'keys');
     return new MapIterator(this, 'key');
   },
   values(){
+    ensureMap(this, 'values');
     return new MapIterator(this, 'value');
   },
   iterator(){
+    ensureMap(this, 'iterator');
     return new MapIterator(this, 'key+value');
   }
 });
@@ -91,6 +99,7 @@ function MapIterator(map, kind){
 
 $__defineProps(MapIterator.prototype, {
   next(){
+
     if (!$__IsObject(this)) {
       throw $__Exception('called_on_non_object', ['MapIterator.prototype.next']);
     }
@@ -118,3 +127,9 @@ $__defineProps(MapIterator.prototype, {
 });
 
 var next = MapIterator.prototype.next;
+
+function ensureMap(o, name){
+  if (!o || typeof o !== 'object' || !$__HasInternal(o, 'MapData')) {
+    throw Exception('called_on_incompatible_object', ['Map.prototype.'+name]);
+  }
+}
