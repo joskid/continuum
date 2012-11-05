@@ -39,8 +39,19 @@ define(Component.prototype, {
 
 define(Component.prototype, [
   function on(event, listener, receiver){
-    receiver = receiver || this;
-    function bound(e){ return listener.call(receiver, e) };
+    if (typeof listener !== 'function') {
+      for (var k in listener) {
+        this.on(k, listener[k], receiver)
+      }
+      return this;
+    }
+
+    receiver || (receiver = this);
+
+    function bound(e){
+      return listener.call(receiver, e);
+    }
+
     define(listener, bound);
     this.element.addEventListener(event, bound, false);
     return this;
@@ -348,22 +359,26 @@ function VerticalScrollbar(container){
   this.thumb = this.track.append(new Div('.scroll-thumb'));
   this.up = this.append(new Div('.scroll-top'));
   this.down = this.append(new Div('.scroll-bottom'));
+
   if (container instanceof Element) {
     container = new Component(container);
   }
   var parent = container.parent();
+
   parent.right(-scrollbarWidth);
   parent.width(parent.width() + scrollbarWidth);
-  parent.width = function width(value){
+  parent.width = function(value){
     if (value === undefined) {
       return this.element.offsetWidth - scrollbarWidth;
     } else {
       this.styles.width = (value + scrollbarWidth) + 'px';
     }
   };
-  container.resize = function resize(){
+
+  container.resize = function(){
     this.scrollbar.refresh();
   };
+
   parent.style('overflowX', 'hidden');
   container.style({
     paddingRight: parseFloat(container.getComputed('paddingRight')) + scrollbarWidth,
@@ -377,21 +392,23 @@ function VerticalScrollbar(container){
   container.on('scroll', this.refresh, this);
   container.on('click', this.refresh, this);
 
-  this.dragger = new Dragger(this.thumb);
+
+  this.dragger = new Dragger(this.thumb, {
+    grab: function(e){
+      var el = self.container.element;
+      self.thumb.addClass('scrolling');
+      self.start = el.scrollTop * el.clientHeight - el.scrollHeight * e.clientY;
+    },
+    drag: function(e){
+      var el = self.container.element;
+      el.scrollTop = (self.start + el.scrollHeight * e.clientY) / el.clientHeight;
+    },
+    drop: function(e){
+      self.thumb.removeClass('scrolling');
+    }
+  });
   this.dragger.addClass('pointer');
 
-  this.dragger.on('grab', function(e){
-    this.addClass('scrolling');
-  }, this.thumb);
-
-  this.dragger.on('drop', function(e){
-    this.removeClass('scrolling');
-  }, this.thumb);
-
-  this.dragger.on('drag', function(e){
-    var el = this.container.element;
-    el.scrollTop = (e.clientY - this.thumb.height()) / this.trackHeight() * el.scrollHeight;
-  }, this);
 
   this.down.on('mousedown', function(e){
     e.preventDefault();
@@ -693,7 +710,7 @@ inherit(Panel, Component, [
 
 
 
-function Dragger(target){
+function Dragger(target, bindings){
   Component.call(this, 'div');
   this.target = target;
   this.addClass('drag-helper');
@@ -701,6 +718,11 @@ function Dragger(target){
   this.on('mousemove', this.drag);
   target.on('mouseup', this.drop, this);
   this.on('mouseup', this.drop);
+  if (bindings) {
+    for (var k in bindings) {
+      this.on(k, bindings[k]);
+    }
+  }
 }
 
 inherit(Dragger, Component, [
