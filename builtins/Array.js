@@ -156,7 +156,7 @@ $__defineProps(Array.prototype, {
   },
   iterator(){
     var object = $__ToObject(this);
-    return new ArrayIterator(object, 'value');
+    return new ArrayIterator(object, 'key+value');
   }
 });
 

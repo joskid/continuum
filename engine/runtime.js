@@ -60,8 +60,8 @@ var runtime = (function(GLOBAL, exports, undefined){
       Uninitialized = SYMBOLS.Uninitialized;
 
   var StopIteration = constants.BRANDS.StopIteration;
-
   var slice = [].slice;
+  var uid = (Math.random() * (1 << 30)) | 0;
 
   var BINARYOPS = constants.BINARYOPS.array,
       UNARYOPS  = constants.UNARYOPS.array,
@@ -480,7 +480,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
   function IsStopIteration(o){
-    return !!(o && o.Abrupt && o.value === o.value.NativeBrand === StopIteration);
+    return !!(o && o.Abrupt && o.value && o.value.NativeBrand === StopIteration);
   }
 
 
@@ -952,81 +952,84 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
 
-  function MapInitialization(object, iterable){
-    object.MapData = new MapData;
 
-    if (iterable !== undefined) {
-      iterable = ToObject(iterable);
-      if (iterable && iterable.Completion) {
-        if (iterable.Abrupt) {
-          return iterable;
-        } else {
-          iterable = iterable.value;
-        }
-      }
+  function CollectionInitializer(Data, name){
+    var data = name + 'Data';
+    return function(object, iterable){
+      object[data] = new Data;
 
-      var itr = Invoke('iterator', iterable, []);
-
-      var adder = object.Get('set');
-      if (adder && adder.Completion) {
-        if (adder.Abrupt) {
-          return adder;
-        } else {
-          adder = adder.value;
-        }
-      }
-
-      if (!IsCallable(adder)) {
-        return ThrowException('called_on_incompatible_object', ['Map.prototype.set']);
-      }
-
-      var next;
-      while (next = Invoke('next', itr, [])) {
-        if (IsStopIteration(next)) {
-          return object;
-        }
-
-        if (next && next.Completion) {
-          if (next.Abrupt) {
-            return next;
+      if (iterable !== undefined) {
+        iterable = ToObject(iterable);
+        if (iterable && iterable.Completion) {
+          if (iterable.Abrupt) {
+            return iterable;
           } else {
-            next = next.value;
+            iterable = iterable.value;
           }
         }
 
-        next = ToObject(next);
+        var itr = Invoke('iterator', iterable, []);
 
-        var k = next.Get(0);
-        if (k && k.Completion) {
-          if (k.Abrupt) {
-            return k;
+        var adder = object.Get('set');
+        if (adder && adder.Completion) {
+          if (adder.Abrupt) {
+            return adder;
           } else {
-            k = k.value;
+            adder = adder.value;
           }
         }
 
-        var v = next.Get(1);
-        if (v && v.Completion) {
-          if (v.Abrupt) {
-            return v;
-          } else {
-            v = v.value;
-          }
+        if (!IsCallable(adder)) {
+          return ThrowException('called_on_incompatible_object', [name + '.prototype.set']);
         }
 
-        var status = adder.Call(object, [k, v]);
-        if (status && status.Abrupt) {
-          return status;
+        var next;
+        while (next = Invoke('next', itr, [])) {
+          if (IsStopIteration(next)) {
+            return object;
+          }
+
+          if (next && next.Completion) {
+            if (next.Abrupt) {
+              return next;
+            } else {
+              next = next.value;
+            }
+          }
+
+          next = ToObject(next);
+
+          var k = next.Get(0);
+          if (k && k.Completion) {
+            if (k.Abrupt) {
+              return k;
+            } else {
+              k = k.value;
+            }
+          }
+
+          var v = next.Get(1);
+          if (v && v.Completion) {
+            if (v.Abrupt) {
+              return v;
+            } else {
+              v = v.value;
+            }
+          }
+
+          var status = adder.Call(object, [k, v]);
+          if (status && status.Abrupt) {
+            return status;
+          }
         }
       }
-    }
 
-    return object;
+      return object;
+    };
   }
 
 
-  var uid = (Math.random() * (1 << 30)) | 0;
-
+  var MapInitialization = CollectionInitializer(MapData, 'Map');
 
   function LinkedItem(key, next){
     this.key = key;
@@ -1150,6 +1153,43 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     }
   ]);
+
+
+
+
+
+  var WeakMapInitialization = CollectionInitializer(WeakMapData, 'WeakMap');
+
+  function WeakMapData(){
+    this.id = uid++ + '';
+  }
+
+  define(WeakMapData.prototype, [
+    function set(key, value){
+      if (value === undefined) {
+        value = Empty;
+      }
+      key.storage[this.id] = value;
+    },
+    function get(key){
+      var value = key.storage[this.id];
+      if (value !== Empty) {
+        return value;
+      }
+    },
+    function has(key){
+      return key.storage[this.id] !== undefined;
+    },
+    function remove(key){
+      var item = key.storage[this.id];
+      if (item !== undefined) {
+        key.storage[this.id] = undefined;
+        return true;
+      }
+      return false;
+    }
+  ]);
+
 
 
   function GetTrap(handler, trap){
@@ -2917,7 +2957,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
       var value, iterator = spread.Iterate();
 
-      while (!(value = Invoke('next', iterator, [])) || !IsStopIteration(value)) {
+      while (!(value = Invoke('next', iterator, [])) && !IsStopIteration(value)) {
         if (value && value.Completion) {
           if (value.Abrupt) {
             return value;
@@ -3122,6 +3162,12 @@ var runtime = (function(GLOBAL, exports, undefined){
   function wrapMapFunction(name){
     return function(map, key, val){
       return map.MapData[name](key, val);
+    };
+  }
+
+  function wrapWeakMapFunction(name){
+    return function(map, key, val){
+      return map.WeakMapData[name](key, val);
     };
   }
 
@@ -3597,9 +3643,14 @@ var runtime = (function(GLOBAL, exports, undefined){
     MapNext: function(map, key){
       var result = map.MapData.after(key);
       return result instanceof Array ? fromInternalArray(result) : result;
-    }
-  };
+    },
 
+    WeakMapInitialization: WeakMapInitialization,
+    WeakMapSet: wrapWeakMapFunction('set'),
+    WeakMapDelete: wrapWeakMapFunction('remove'),
+    WeakMapGet: wrapWeakMapFunction('get'),
+    WeakMapHas: wrapWeakMapFunction('has')
+  };
 
   function parse(src, options){
     try {
