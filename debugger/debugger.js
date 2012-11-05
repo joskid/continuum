@@ -327,23 +327,21 @@ inherit(Button, Component, [
 ]);
 
 
-var scrollbarWidth = (function() {
-  var el = document.createElement('div');
-  el.style.width = '50px';
-  el.style.height = '50px';
-  el.style.overflowX = 'scroll';
-  var measure = document.createElement('div');
-  measure.style.width = '100px';
-  el.appendChild(measure);
-  document.body.appendChild(el);
-  var width = el.offsetHeight - el.clientHeight;
-  document.body.removeChild(el);
-  el = null;
-  measure = null;
-  return width;
-})();
+var scrollbarWidth = (function(d, b, e, s) {
+  b = d.body;
+  e = b.appendChild(_('div'));
+  (s = e.style).height = s.width = '50px';
+  s.overflowX = 'scroll';
+  e.appendChild(_('div')).style.width = '100px';
+  s = e.offsetHeight - e.clientHeight;
+  b.removeChild(e);
+  e = null;
+  return s;
+})(document);
+
 
 function VerticalScrollbar(container){
+  var self = this;
   Component.call(this, 'div');
   this.addClass('scroll');
   this.track = this.append(new Div('.scroll-track'));
@@ -378,9 +376,83 @@ function VerticalScrollbar(container){
   container.scrollbar = this;
   container.on('scroll', this.refresh, this);
   container.on('click', this.refresh, this);
+
+  this.dragger = new Dragger(this.thumb);
+  this.dragger.addClass('pointer');
+
+  this.dragger.on('grab', function(e){
+    this.addClass('scrolling');
+  }, this.thumb);
+
+  this.dragger.on('drop', function(e){
+    this.removeClass('scrolling');
+  }, this.thumb);
+
+  this.dragger.on('drag', function(e){
+    var el = this.container.element;
+    el.scrollTop = (e.clientY - this.thumb.height()) / this.trackHeight() * el.scrollHeight;
+  }, this);
+
+  this.down.on('mousedown', function(e){
+    e.preventDefault();
+    self.repeat(.005, 15);
+    this.addClass('scrolling');
+  });
+
+  this.up.on('mousedown', function(e){
+    e.preventDefault();
+    self.repeat(-.005, 15);
+    this.addClass('scrolling');
+  });
+
+  this.track.on('mousedown', function(e){
+    e.preventDefault();
+    if (e.pageY > self.thumb.bottom()) {
+      self.repeat(.01, 15);
+      this.addClass('scrolling');
+    } else if (e.pageY < self.thumb.top()) {
+      self.repeat(-.01, 15);
+      this.addClass('scrolling');
+    }
+  });
+
+  this.on('scroll-end', function(){
+    this.track.removeClass('scrolling');
+    this.down.removeClass('scrolling');
+    this.up.removeClass('scrolling');
+  });
 }
 
 inherit(VerticalScrollbar, Component, [
+  function repeat(amount, speed){
+    var self = this;
+    speed = speed || 300;
+    self.repeating = true;
+    body.once('mouseup', function(){
+      if (self.repeating) {
+        self.repeating = false;
+        self.emit('scroll-end')
+      }
+    });
+    body.once('click', function(){
+      if (self.repeating) {
+        self.repeating = false;
+        self.emit('scroll-end')
+      }
+    });
+    setTimeout(function repeat(){
+      if (self.repeating) {
+        var percent = Math.max(Math.min(self.percent() + amount, 1), 0);
+        self.percent(percent);
+        if (percent !== 1 && percent !== 0) {
+          setTimeout(repeat, speed);
+        } else if (self.repeating) {
+          self.repeating = false;
+          self.emit('scroll-end');
+        }
+      }
+    }, 100);
+  },
   function scrollHeight(){
     return this.container.element.scrollHeight - this.container.element.clientHeight;
   },
@@ -390,15 +462,40 @@ inherit(VerticalScrollbar, Component, [
   function resize(){
     this.refresh();
   },
-  function refresh(){
+  function thumbTop(){
+    var el = this.container.element;
+    return el.scrollTop / el.scrollHeight * this.track.height() | 0;
+  },
+  function thumbBottom(){
     var el = this.container.element,
-        height = this.track.height(),
-        clientHeight = el.clientHeight,
-        scrollHeight = el.scrollHeight,
-        scrollTop = el.scrollTop,
-        scrollBottom = clientHeight + scrollTop,
-        top = scrollTop / scrollHeight * height | 0,
-        bottom = height - scrollBottom / scrollHeight * height | 0;
+        height = this.track.height();
+    return height - (el.clientHeight + el.scrollTop) / el.scrollHeight * height | 0;
+  },
+  function percent(val){
+    var el = this.container.element;
+    if (val === undefined) {
+      return (el.scrollTop + el.clientHeight) / el.scrollHeight;
+    } else {
+      el.scrollTop = val * el.scrollHeight - el.clientHeight;
+    }
+  },
+  function trackHeight(){
+    var self = this;
+    if (!this._trackHeight) {
+      this._trackHeight = this.track.height();
+      setTimeout(function(){
+        this._trackHeight = 0;
+      }, 10);
+    }
+    return this._trackHeight;
+  },
+  function scale(value){
+    var el = this.container.element;
+    return value / el.scrollHeight * this.trackHeight() | 0;
+  },
+  function refresh(){
+    var top = this.thumbTop(),
+        bottom = this.thumbBottom();
 
     this.thumb.top(top);
     this.thumb.bottom(bottom);
@@ -411,6 +508,7 @@ inherit(VerticalScrollbar, Component, [
     }
   }
 ]);
+
 
 function PanelOptions(o){
   o = Object(o);
@@ -602,6 +700,7 @@ function Dragger(target){
   target.on('mousedown', this.grab, this);
   this.on('mousemove', this.drag);
   target.on('mouseup', this.drop, this);
+  this.on('mouseup', this.drop);
 }
 
 inherit(Dragger, Component, [
@@ -611,22 +710,31 @@ inherit(Dragger, Component, [
     this.x = e.pageX;
     this.y = e.pageY;
     this.start = this.target.offset();
-    this.emit('grab');
+    this.emit('grab', {
+      x: this.x,
+      y: this.x,
+      clientX: e.clientX,
+      clientY: e.clientY
+    });
   },
   function drag(e){
-    this.emit('drag', this.calculate(e.pageX, e.pageY));
+    this.emit('drag', this.calculate(e));
   },
   function drop(e){
     if (this.element.parentNode) {
       document.body.removeChild(this.element);
-      this.emit('drop', this.calculate(e.pageX, e.pageY));
+      this.emit('drop', this.calculate(e));
     }
   },
-  function calculate(x, y){
-    var xDelta = this.x - x,
-        yDelta = this.y - y;
+  function calculate(e){
+    var xDelta = this.x - e.pageX,
+        yDelta = this.y - e.pageY;
 
     return {
+      x: e.pageX,
+      y: e.pageY,
+      clientX: e.clientX,
+      clientY: e.clientY,
       xDelta: xDelta,
       yDelta: yDelta,
       xOffset: xDelta + this.start.left,
@@ -1363,6 +1471,7 @@ var renderer = new debug.Renderer({
   NumberValue: NumberLeaf.create,
   UndefinedValue: Leaf.create,
   NullValue: Leaf.create,
+  Accessor: Leaf.create,
   Global: Branch.create,
   Thrown: ThrownBranch.create,
   Arguments: Branch.create,
@@ -1401,9 +1510,6 @@ inherit(Preview, Branch, [
   },
   function refresh(){
     var children = this.children || [];
-    for (var i=0; i < children.length; i++) {
-      children[i].refresh();
-    }
     return this;
   },
 ]);
@@ -1444,6 +1550,7 @@ var previewRenderer = new debug.Renderer({
   NumberValue: NumberLeaf.create,
   UndefinedValue: Leaf.create,
   NullValue: Leaf.create,
+  Accessor: Leaf.create,
   Global: Preview.create,
   Thrown: Preview.create,
   Arguments: Preview.create,

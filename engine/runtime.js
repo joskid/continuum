@@ -377,6 +377,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     if (install) {
       prototype = new $Object;
     }
+    prototype.IsProto = true;
     if (writable === undefined) {
       writable = true;
     }
@@ -500,8 +501,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     function makeDefiner(constructs, field, desc){
       return function(obj, key, code) {
         var sup = code.NeedsSuperBinding,
+            lex = context.LexicalEnvironment,
             home = sup ? obj : undefined,
-            func = new $Function(METHOD, key, code.params, code, context.LexicalEnvironment, code.Strict, undefined, home, sup);
+            func = new $Function(METHOD, key, code.params, code, lex, code.Strict, undefined, home, sup);
 
         constructs && MakeConstructor(func);
         desc[field] = func;
@@ -795,7 +797,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     ctor.Class = true;
     proto.Brand = new Brand(brand);
-
+    proto.IsClassProto = true;
     context.LexicalEnvironment = lex;
     return ctor;
   }
@@ -1965,6 +1967,8 @@ var runtime = (function(GLOBAL, exports, undefined){
       var instance = typeof prototype === OBJECT ? new $Object(prototype) : new $Object;
       if (this.NativeConstructor) {
         instance.NativeBrand = prototype.NativeBrand;
+      } else if (this.Class) {
+        instance.Brand = prototype.Brand;
       }
       instance.ConstructorName = this.properties.get('name');
       var result = this.Call(instance, args, true);

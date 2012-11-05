@@ -50,6 +50,9 @@ var debug = (function(exports){
     isExtensible: always(null),
     isEnumerable: always(null),
     isConfigurable: always(null),
+    getOwnDescriptor: always(null),
+    getDescriptor: always(null),
+    getProperty: always(null),
     isAccessor: always(null),
     isWritable: always(null),
     propAttributes: always(null)
@@ -91,6 +94,23 @@ var debug = (function(exports){
     type: 'number'
   });
 
+  function MirrorAccessor(holder, accessor, key){
+    this.holder = holder;
+    this.accessor = accessor;
+    this.key = key;
+    realm().enterMutationContext();
+    this.subject = accessor.Get.Call(holder, key);
+    this.introspected = introspect(this.subject);
+    this.kind = this.introspected.kind;
+    this.type = this.introspected.type;
+    realm().exitMutationContext();
+  }
+
+  inherit(MirrorAccessor, Mirror, {
+    label: function(){
+      return this.introspected.label();
+    },
+  });
 
   var proto = Math.random().toString(36).slice(2);
 
@@ -99,6 +119,7 @@ var debug = (function(exports){
     subject.__introspected = this;
     this.subject = subject;
     this.props = subject.properties;
+    this.accessors = create(null);
   }
 
   inherit(MirrorObject, Mirror, {
@@ -109,10 +130,13 @@ var debug = (function(exports){
   }, [
     function get(key){
       if (this.isPropAccessor(key)) {
-        realm().enterMutationContext();
-        var ret = introspect(this.subject.Get(key));
-        realm().exitMutationContext();
-        return ret;
+        var prop = this.getProperty(key),
+            accessor = prop[1] || prop[3];
+
+        if (!this.accessors[key]) {
+          this.accessors[key] = new MirrorAccessor(this.subject, accessor, key);
+        }
+        return this.accessors[key];
       } else {
         var prop = this.props.getProperty(key);
         if (prop) {
@@ -121,6 +145,9 @@ var debug = (function(exports){
           return this.getPrototype().get(key);
         }
       }
+    },
+    function getProperty(key){
+      return this.props.getProperty(key) || this.getPrototype().getProperty(key);
     },
     function isClass(){
       return !!this.subject.Class;
@@ -193,6 +220,9 @@ var debug = (function(exports){
     },
     function isExtensible(key){
       return this.subject.GetExtensible();
+    },
+    function getDescriptor(key){
+      return this.getOwnDescriptor(key) || this.getPrototype().getDescriptor(key);
     },
     function getOwnDescriptor(key){
       var prop = this.props.getProperty(key);
@@ -813,6 +843,7 @@ var debug = (function(exports){
     Thrown: function(mirror){
       return mirror.getError();
     },
+    Accessor: label,
     Arguments: label,
     Array: label,
     Boolean: label,
