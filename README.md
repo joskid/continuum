@@ -36,28 +36,31 @@ Will soon work in:
 * spread destructuring
 * rest parameters
 * classes and super
-* `is` and `isnt` operators
 * arrow functions
 * block scope
 * new Math functions
 * new Object functions
 * new String functions
 * concise object literal method syntax
-* __proto__ (not as special accessor on Object.prototype yet though)
+* mutable and deletable __proto__
+* Map
+* Set
+* Iterators and for...of
+* `is` and `isnt` operators (not in es6 but supported anyway)
 
 ### Partially Implemented
 
 * Proxy and Reflect
-* Map, Set, WeakMap
-* Iterators and for..of
+* WeakMap
 * Tail call optimization
 * Templates
+* Generators
 
 ### Soon
-* Comprhensions
-* Generators
+* Array Comprhensions
 * Private Names
 * Partial implementation of Modules
+* default params
 
 ### Further out
 * Proper implementation of Modules
