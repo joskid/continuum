@@ -481,12 +481,12 @@ inherit(VerticalScrollbar, Component, [
   },
   function thumbTop(){
     var el = this.container.element;
-    return el.scrollTop / el.scrollHeight * this.track.height() | 0;
+    return el.scrollTop / el.scrollHeight * this.track.height() + .5 | 0;
   },
   function thumbBottom(){
     var el = this.container.element,
         height = this.track.height();
-    return height - (el.clientHeight + el.scrollTop) / el.scrollHeight * height | 0;
+    return height - (el.clientHeight + el.scrollTop) / el.scrollHeight * height + .5 | 0;
   },
   function percent(val){
     var el = this.container.element;
@@ -508,7 +508,7 @@ inherit(VerticalScrollbar, Component, [
   },
   function scale(value){
     var el = this.container.element;
-    return value / el.scrollHeight * this.trackHeight() | 0;
+    return value / el.scrollHeight * this.trackHeight() + .5 | 0;
   },
   function refresh(){
     var top = this.thumbTop(),
@@ -689,7 +689,7 @@ inherit(Panel, Component, [
       if (this[first] && this[second]) {
         this[first][cross] = this[second][cross] = this[cross];
         if (this[first].size === 'auto' && this[second].size === 'auto') {
-          this[first][main] = this[second][main] = this[main] / 2 | 0;
+          this[first][main] = this[second][main] = this[main] / 2 + .5 | 0;
         } else {
           if (this[first].size === 'auto') {
             var primary = this[second];
