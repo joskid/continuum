@@ -10,8 +10,44 @@ var file = require('fs'),
 
 var extras = new NativeScript(fs.readFileSync(__dirname+'/extras.js'));
 
+
+var colors = exports.colors = {
+  white    : '\x0300',
+  black    : '\x0301',
+  navy     : '\x0302',
+  green    : '\x0303',
+  red      : '\x0304',
+  brown    : '\x0305',
+  violet   : '\x0306',
+  olive    : '\x0307',
+  yellow   : '\x0308',
+  lime     : '\x0309',
+  teal     : '\x0310',
+  cyan     : '\x0311',
+  blue     : '\x0312',
+  fuchsia  : '\x0313',
+  gray     : '\x0314',
+  silver   : '\x0315',
+  reset    : '\x03',
+  normal   : '\x00',
+  underline: '\x1F',
+  bold     : '\x02',
+  italic   : '\x16'
+};
+
+
+function color(name, text, reset) {
+    reset in colors || (reset = 'reset');
+    name in colors || (name = 'white');
+    return colors[name] + text + colors[reset];
+};
+
+
+
+
+
 function renderObject(mirror){
-  var out = '{ ' + renderProperties(mirror) + ' }';
+  var out = color('gray', '{ ') + renderProperties(mirror) + color('gray', ' }');
   return out === '{  }' ? '{}' : out;
 }
 
@@ -22,24 +58,24 @@ function renderProperties(mirror){
     out += mirror.label();
   }
   return mirror.list(false, false).map(function(prop){
-    return prop + ': ' + renderer.render(mirror.get(prop));
+    return color('white', prop) + ': ' + renderer.render(mirror.get(prop));
   }).join(', ');
 }
 
 function renderWithNativeBrand(mirror){
   var props = renderProperties(mirror);
   if (props) props += ' ';
-  return '{ [' + mirror.label() +'] ' + props + '}';
+  return  color('gray', '{') + color('olive', '[' + mirror.label() +'] ') + props + color('gray', '}');
 }
 
 function renderIndexed(mirror){
-  return '['+mirror.list(false, false).map(function(prop){
+  return color('gray', '[')+mirror.list(false, false).map(function(prop){
     if (prop > 0 || prop == 0) {
       return mirror.hasOwn(prop) ? renderer.render(mirror.get(prop)) : '';
     } else {
-      return prop+': '+renderer.render(mirror.get(prop));
+      return color('white', prop)+': '+renderer.render(mirror.get(prop));
     }
-  }).join(', ')+']';
+  }).join(', ')+color('gray', ']');
 }
 
 
@@ -51,7 +87,7 @@ function prepend(func, text){
 
 function primitiveWrapper(name){
   return function(mirror){
-    return name+'('+mirror.label()+')';
+    return color('cyan', name+'('+mirror.label()+')');
   };
 }
 
@@ -66,11 +102,12 @@ function renderFunction(mirror){
   if (name) {
     out += ' '+name;
   }
+  out = color('teal', out);
   var props = mirror.list(false, false);
   if (props.length) {
     out+=' '+renderProperties(mirror);
   }
-  return out + ']';
+  return out + color('teal', ']');
 }
 
 var renderer = new continuum.debug.Renderer({
@@ -80,9 +117,9 @@ var renderer = new continuum.debug.Renderer({
   //NumberValue   : standard,
   //UndefinedValue: standard,
   //NullValue     : standard,
-  //Thrown        : renderObject,
+  Thrown        : function(mirror){ color('red', renderer.render()) },
   Global        : renderWithNativeBrand,
-  Arguments     : prepend(renderIndexed, 'Arguments'),
+  Arguments     : prepend(renderIndexed, color('yellow', 'Arguments ')),
   Array         : renderIndexed,
   Boolean       : primitiveWrapper('Boolean'),
   //Date          : standard,
@@ -107,17 +144,21 @@ function createContext(callback){
     context = continuum();
     context.evaluate(extras, true);
     context.on('reset', function(){
-      callback('resetting');
+      callback(color('fuchsia', 'resetting'));
       reset();
     });
     context.on('pause', function(){
-      callback('paused');
+      callback(color('fuchsia', 'paused'));
     });
     context.on('resume', function(){
-      callback('resumed');
+      callback(color('fuchsia', 'resumed'));
     });
-    context.on('write', function(text, color){
-      callback('console: '+require('util').inspect(text));
+    context.on('write', function(args){
+      var text = args[0];
+      if (args[1] in colors) {
+        text = color(args[1], args[0]);
+      }
+      callback('console: '+text);
     });
   }
   reset();
