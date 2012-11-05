@@ -88,9 +88,9 @@ $__defineProps(Array.prototype, {
       initial = this[0];
       index++;
     }
-    for (; index < this.length; i++) {
-      if (i in this) {
-        initial = $__CallFunction(callback, this, [initial, this[i], this]);
+    for (; index < this.length; index++) {
+      if (index in this) {
+        initial = $__CallFunction(callback, this, [initial, this[index], this]);
       }
     }
     return initial;
