@@ -21,7 +21,7 @@ $__defineProps(Object, {
     if (properties !== undefined) {
       ensureDescriptor(properties);
 
-      for (var k in descs) {
+      for (var k in properties) {
         var desc = properties[k];
         ensureDescriptor(desc);
         $__DefineOwnProperty(object, key, desc);
