@@ -99,26 +99,26 @@ var renderer = new continuum.debug.Renderer({
   WeakMap       : renderObject
 });
 
-// operator
-// client
-// name
-// user
-// host
-// context = {
-//   channel: user,
-//   client: user.client,
-//   sender: user,
-//   intent: user,
-//   priv: true
-// };
 var users = {};
 
-function createContext(){
+function createContext(callback){
   var context;
   function reset(){
     context = continuum();
     context.evaluate(extras, true);
-    context.on('reset', reset);
+    context.on('reset', function(){
+      callback('resetting');
+      reset();
+    });
+    context.on('pause', function(){
+      callback('paused');
+    });
+    context.on('resume', function(){
+      callback('resumed');
+    });
+    context.on('write', function(text, color){
+      callback('console: '+require('util').inspect(text));
+    });
   }
   reset();
   return function run(code){
@@ -126,12 +126,16 @@ function createContext(){
   };
 }
 
+
 function execute(context, text, command, code){
   var user = context.sender;
   if (!(user.name in users)) {
-    users[user.name] = createContext();
+    users[user.name] = createContext(function(signal){
+      context.channel.send_reply(context.sender, signal);
+    });
   }
-  context.channel.send_reply(context.sender, users[user.name](code));
+  var result = users[user.name](code);
+  context.channel.send_reply(context.sender, result);
 }
 
 
