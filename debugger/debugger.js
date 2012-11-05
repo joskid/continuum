@@ -366,12 +366,13 @@ function VerticalScrollbar(container){
   var parent = container.parent();
 
   parent.right(-scrollbarWidth);
-  parent.width(parent.width() + scrollbarWidth);
+  var oldWidth = parent.width;
+
   parent.width = function(value){
     if (value === undefined) {
-      return this.element.offsetWidth - scrollbarWidth;
+      return oldWidth.call(parent) - scrollbarWidth;
     } else {
-      this.styles.width = (value + scrollbarWidth) + 'px';
+      oldWidth.call(parent, value + scrollbarWidth + 2);
     }
   };
 
@@ -382,7 +383,7 @@ function VerticalScrollbar(container){
   parent.style('overflowX', 'hidden');
   container.style({
     paddingRight: parseFloat(container.getComputed('paddingRight')) + scrollbarWidth,
-    overflowY: 'scroll'
+    overflowY: 'auto'
   });
   parent.addClass('scroll-container');
   container.addClass('scrolled');
@@ -608,9 +609,6 @@ function Panel(parent, options){
     if (options.splitter) {
       this.splitter = new Splitter(first, second, this.orient);
     }
-    if (options.scroll) {
-      this.scrollbar = new VerticalScrollbar(this);
-    }
   }
 
   if (!parent) {
@@ -627,6 +625,10 @@ function Panel(parent, options){
     var computed = getComputedStyle(this.element);
     this.size = 1;
     update();
+  }
+
+  if (this.content) {
+    this.scrollbar = new VerticalScrollbar(this.content);
   }
 }
 
@@ -651,7 +653,7 @@ function length(value, container){
 inherit(Panel, Component, [
   function resize(){
     if (this.content) {
-      this.content.width(this.content.calcWidth);
+      //this.content.width(this.content.calcWidth);
       this.content.height(this.content.calcHeight);
       this.content.resize && this.content.resize();
     } else if (this.orient === 'vertical') {
@@ -1033,20 +1035,21 @@ inherit(InputBox, Component, [
 
 function Console(){
   Component.call(this, 'div');
-  this.addClass('console');
+  this.console = this.append(new Div('.console'));
 }
 
 inherit(Console, Component, [
   function clear(){
-    this.element.innerHTML = '';
+    this.console.element.innerHTML = '';
   },
-  function append(msg, color){
-    var node = document.createElement('span');
+  function write(msg, color){
+    var node = _('span');
     node.textContent = msg;
     node.style.color = color === undefined ? 'white' : color;
-    this.element.appendChild(node);
+    this.console.append(node);
   },
   function backspace(count){
+    var buffer = this.console.element;
     while (buffer.lastElementChild && count > 0) {
       var el = buffer.lastElementChild,
           len = el.textContent.length;
@@ -1881,7 +1884,7 @@ var main = new Panel(null, {
   }
 });
 
-inspector.scroll = new VerticalScrollbar(inspector);
+//inspector.scroll = new VerticalScrollbar(inspector);
 
 function runInContext(code, realm){
   var result = renderer.render(realm.evaluate(code));
@@ -1908,7 +1911,7 @@ function createRealm(){
   });
 
   realm.on('write', function(args){
-    stdout.append.apply(stdout, args);
+    stdout.write.apply(stdout, args);
   });
   realm.on('clear', stdout.clear.bind(stdout));
   realm.on('backspace', stdout.backspace.bind(stdout));

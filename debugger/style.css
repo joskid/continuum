@@ -26,14 +26,16 @@ h1, h2
 { background: #09c; color: #fff; box-shadow: inset 0 0 20px #6bf; text-shadow: 1px 1px 1px #000; }
 
 
+#output
+{ background: #111; height: 100%; overflow: hidden;  }
 .ƒconsole
-{ background: #111; white-space: pre; color: #fff; padding: 6px; overflow: hidden; height: 100% }
+{ white-space: pre; color: #fff; padding: 6px; height: 100% }
 
 
 #instructions
-{ background: #111; color: #fff;}
+{ background: #111; color: #fff; }
 .ƒinstructions
-{ overflow-y: auto; margin: 0; padding: 6px; font-size: 12px }
+{ overflow-x: hidden; overflow-y: auto; margin: 0 36px 0 0; padding: 6px; font-size: 12px }
   .ƒinstruction
   { white-space: pre }
   .ƒinstruction > div
@@ -195,7 +197,7 @@ h1, h2
 .ƒsplitter
 { position: absolute; z-index: 10001; border: 0 solid #068; }
 .ƒsplitter-vertical
-{ top: 0; left: 0; width: 100%; height: 3px; cursor: row-resize; border-top-width: 1px;
+{ top: 0; left: 0; right: 19px; height: 3px; cursor: row-resize; border-top-width: 1px;
   box-shadow: 1px 3px 5px 0 rgba(0,0,0,.6); }
 .ƒsplitter-horizontal
 { top: 0; left: 0; width: 3px; height: 100%; cursor: col-resize; border-left-width: 1px;
