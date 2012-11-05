@@ -145,7 +145,7 @@ parseYieldExpression: true
         NewExpression: 'NewExpression',
         ObjectExpression: 'ObjectExpression',
         ObjectPattern: 'ObjectPattern',
-        Path:  'Path',
+        Path: 'Path',
         Program: 'Program',
         Property: 'Property',
         ReturnStatement: 'ReturnStatement',
@@ -197,16 +197,11 @@ parseYieldExpression: true
         IllegalBreak: 'Illegal break statement',
         IllegalReturn: 'Illegal return statement',
         IllegalYield: 'Illegal yield expression',
-        IllegalSpread: 'Illegal spread element',
         StrictModeWith:  'Strict mode code may not include a with statement',
         StrictCatchVariable:  'Catch variable may not be eval or arguments in strict mode',
         StrictVarName:  'Variable name may not be eval or arguments in strict mode',
         StrictParamName:  'Parameter name eval or arguments is not allowed in strict mode',
         StrictParamDupe: 'Strict mode function may not have duplicate parameter names',
-        ParameterAfterRestParameter: 'Rest parameter must be final parameter of an argument list',
-        ElementAfterSpreadElement: 'Spread must be the final element of an element list',
-        ObjectPatternAsRestParameter: 'Invalid rest parameter',
-        ObjectPatternAsSpread: 'Invalid spread argument',
         StrictFunctionName:  'Function name may not be eval or arguments in strict mode',
         StrictOctalLiteral:  'Octal literals are not allowed in strict mode.',
         StrictDelete:  'Delete of an unqualified identifier in strict mode.',
@@ -222,7 +217,10 @@ parseYieldExpression: true
         NoUnintializedConst: 'Const must be initialized',
         ComprehensionRequiresBlock: 'Comprehension must have at least one block',
         ComprehensionError:  'Comprehension Error',
-        EachNotAllowed:  'Each is not supported'
+        EachNotAllowed:  'Each is not supported',
+        RestDuplicate: 'Duplicate rest parameters',
+        RestNotLast: 'Rest parameter must come last',
+        InvalidSpread: 'Invalid spread/rest parameter location'
     };
 
     // See also tools/generate-unicode-regex.py.
@@ -662,23 +660,37 @@ parseYieldExpression: true
             };
         }
 
-        // Dot (.) can also start a floating-point number and ellipsis, hence
-        // the need to check the next character.
+        // Dot (.) can also start a floating-point number, hence the need
+        // to check the next character.
 
         ch2 = source[index + 1];
-        if (ch1 === '.' && !isDecimalDigit(ch2) && ch2 !== '.') {
-            return {
-                type: Token.Punctuator,
-                value: nextChar(),
-                lineNumber: lineNumber,
-                lineStart: lineStart,
-                range: [start, index]
-            };
+        ch3 = source[index + 2];
+
+        if (ch1 === '.') {
+            if (ch2 === '.' && ch3 === '.') {
+                index += 3;
+                return {
+                    type: Token.Punctuator,
+                    value: '...',
+                    lineNumber: lineNumber,
+                    lineStart: lineStart,
+                    range: [start, index]
+                };
+            }
+
+            if (!isDecimalDigit(ch2)) {
+                return {
+                    type: Token.Punctuator,
+                    value: nextChar(),
+                    lineNumber: lineNumber,
+                    lineStart: lineStart,
+                    range: [start, index]
+                };
+            }
         }
 
         // Peek more characters.
 
-        ch3 = source[index + 2];
         ch4 = source[index + 3];
 
         // 4-character punctuator: >>>=
@@ -696,7 +708,7 @@ parseYieldExpression: true
             }
         }
 
-        // 3-character punctuators: === !== >>> <<= >>= ...
+        // 3-character punctuators: === !== >>> <<= >>=
 
         if (ch1 === '=' && ch2 === '=' && ch3 === '=') {
             index += 3;
@@ -747,17 +759,6 @@ parseYieldExpression: true
             return {
                 type: Token.Punctuator,
                 value: '>>=',
-                lineNumber: lineNumber,
-                lineStart: lineStart,
-                range: [start, index]
-            };
-        }
-
-        if (ch1 === '.' && ch2 === '.' && ch3 === '.') {
-            index += 3;
-            return {
-                type: Token.Punctuator,
-                value: '...',
                 lineNumber: lineNumber,
                 lineStart: lineStart,
                 range: [start, index]
@@ -1648,6 +1649,30 @@ parseYieldExpression: true
         return isLeftHandSide(expr) || expr.type === Syntax.ObjectPattern || expr.type === Syntax.ArrayPattern;
     }
 
+    function isParameter(expr) {
+        var i;
+
+        if (expr.type === Syntax.Identifier) {
+            return true;
+        } else if (expr.type === Syntax.ObjectExpression) {
+            for (i = 0; i < expr.properties; i++) {
+                if (!isParameter(expr.properties[i].value)) {
+                    return false;
+                }
+            }
+            return true;
+        } else if (expr.type === Syntax.ArrayExpression) {
+            for (i = 0; i < expr.elements; i++) {
+                if (!isParameter(expr.elements[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        return false;
+    }
+
     // 11.1.4 Array Initialiser
 
     function parseArrayInitialiser() {
@@ -1685,13 +1710,8 @@ parseYieldExpression: true
                 elements.push(null);
                 break;
             default:
-                tmp = parseSpreadOrAssignmentExpression();
-                elements.push(tmp);
-                if (tmp && tmp.type === Syntax.SpreadElement) {
-                    if (!match(']')) {
-                        throwError({}, Messages.ElementAfterSpreadElement);
-                    }
-                } else if (!(match(']') || matchKeyword('for') || matchKeyword('if'))) {
+                elements.push(parseSpreadOrAssignmentExpression());
+                if (!(match(']') || matchKeyword('for') || matchKeyword('if'))) {
                     expect(','); // this lexes.
                     possiblecomprehension = false;
                 }
@@ -1754,7 +1774,6 @@ parseYieldExpression: true
         };
     }
 
-
     function parsePropertyMethodFunction(options) {
         var token, previousStrict, tmp, method, firstRestricted, message;
 
@@ -1782,7 +1801,6 @@ parseYieldExpression: true
         return method;
     }
 
-
     function parseObjectPropertyKey() {
         var token = lex();
 
@@ -1803,7 +1821,7 @@ parseYieldExpression: true
     }
 
     function parseObjectProperty() {
-        var token, key, id;
+        var token, key, id, param;
 
         token = lookahead();
 
@@ -1825,10 +1843,14 @@ parseYieldExpression: true
                 };
             } else if (token.value === 'set' && !(match(':') || match('('))) {
                 key = parseObjectPropertyKey();
+                expect('(');
+                token = lookahead();
+                param = [ parseVariableIdentifier() ];
+                expect(')');
                 return {
                     type: Syntax.Property,
                     key: key,
-                    value: parsePropertyFunction({ params: parseParams().params, generator: false, name: token }),
+                    value: parsePropertyFunction({ params: param, generator: false, name: token }),
                     kind: 'set'
                 };
             } else {
@@ -1986,19 +2008,20 @@ parseYieldExpression: true
     // 11.1.6 The Grouping Operator
 
     function parseGroupExpression() {
-        var expr;
+        var expr, parenCount;
 
         expect('(');
 
-        ++state.parenthesizedCount;
+        parenCount = ++state.parenthesizedCount;
 
-        state.allowArrowFunction = !state.allowArrowFunction;
+        state.allowArrowFunction = true;
         expr = parseExpression();
         state.allowArrowFunction = false;
 
-        if (expr.type !== Syntax.ArrowFunctionExpression) {
-            expect(')');
+        if (parenCount !== state.parenthesizedCount && expr.type === 'ArrowFunctionExpression') {
+            --state.parenthesizedCount;
         } else {
+            expect(')');
         }
 
         return expr;
@@ -2086,33 +2109,6 @@ parseYieldExpression: true
         return throwUnexpected(lex());
     }
 
-    // 11.2 Left-Hand-Side Expressions
-
-    function parseArguments() {
-        var args = [], arg;
-
-        expect('(');
-
-        if (!match(')')) {
-            while (index < length) {
-                arg = parseSpreadOrAssignmentExpression();
-                args.push(arg);
-
-                if (match(')')) {
-                    break;
-                } else if (arg.type === Syntax.SpreadElement) {
-                    throwError({}, Messages.ElementAfterSpreadElement);
-                }
-
-                expect(',');
-            }
-        }
-
-        expect(')');
-
-        return args;
-    }
-
     function parseSpreadOrAssignmentExpression() {
         if (match('...')) {
             lex();
@@ -2123,6 +2119,28 @@ parseYieldExpression: true
         } else {
             return parseAssignmentExpression();
         }
+    }
+
+    // 11.2 Left-Hand-Side Expressions
+
+    function parseArguments() {
+        var args = [];
+
+        expect('(');
+
+        if (!match(')')) {
+            while (index < length) {
+                args.push(parseSpreadOrAssignmentExpression());
+                if (match(')')) {
+                    break;
+                }
+                expect(',');
+            }
+        }
+
+        expect(')');
+
+        return args;
     }
 
     function parseNonComputedProperty() {
@@ -2248,8 +2266,9 @@ parseYieldExpression: true
     // 11.3 Postfix Expressions
 
     function parsePostfixExpression() {
-        var expr = parseLeftHandSideExpressionAllowCall(),
-            token = lookahead();
+        var expr = parseLeftHandSideExpressionAllowCall();
+
+        var token = lookahead();
 
         if (token.type !== Token.Punctuator) {
             return expr;
@@ -2559,15 +2578,86 @@ parseYieldExpression: true
             }
         } else if (expr.type === Syntax.SpreadElement) {
             reinterpretAsAssignmentBindingPattern(expr.argument);
-            if (expr.argument.type === Syntax.ObjectPattern) {
-                throwError({}, Messages.ObjectPatternAsSpread);
+            if (expr.argument.type !== Syntax.Identifier && expr.argument.type !== Syntax.ArrayPattern) {
+                throwError({}, Messages.InvalidLHSInAssignment);
             }
         } else {
-            if (expr.type !== Syntax.MemberExpression && expr.type !== Syntax.CallExpression && expr.type !== Syntax.NewExpression) {
+            if (expr.type !== Syntax.MemberExpression &&
+                expr.type !== Syntax.CallExpression &&
+                expr.type !== Syntax.NewExpression) {
                 throwError({}, Messages.InvalidLHSInAssignment);
             }
         }
     }
+
+    function reinterpretAsCoverFormalsList(expressions) {
+        var i, j, len, param, params, paramSet, options, rest, previousStrict;
+
+        params = [];
+        rest = null;
+
+        options = {
+            paramSet: {}
+        }
+
+        for (i = 0, len = expressions.length; i < len; i += 1) {
+            param = expressions[i];
+            if (param.type === Syntax.Identifier) {
+                params.push(param);
+                checkParam(options, param, param.name);
+            } else if (param.type === Syntax.SpreadElement) {
+                if (rest) {
+                    throwError({}, Messages.RestDuplicate);
+                }
+                if (i !== len - 1) {
+                    throwError({}, Messages.RestNotLast);
+                }
+                reinterpretAsDestructuredParameter(options, param.argument);
+                rest = param.argument;
+            } else if (param.type === Syntax.ObjectExpression || param.type === Syntax.ArrayExpression) {
+                reinterpretAsDestructuredParameter(options, param);
+                params.push(param);
+            } else {
+                return null;
+            }
+        }
+
+
+        if (options.firstRestricted) {
+            throwError(options.firstRestricted, options.message);
+        }
+        if (options.stricted) {
+            throwErrorTolerant(options.stricted, options.message);
+        }
+
+        return { params: params, rest: rest };
+    }
+
+    function checkParam(options, param, name) {
+        if (strict) {
+            if (isRestrictedWord(name)) {
+                options.stricted = param;
+                options.message = Messages.StrictParamName;
+            }
+            if (Object.prototype.hasOwnProperty.call(options.paramSet, name)) {
+                options.stricted = param;
+                options.message = Messages.StrictParamDupe;
+            }
+        } else if (!options.firstRestricted) {
+            if (isRestrictedWord(name)) {
+                options.firstRestricted = param;
+                options.message = Messages.StrictParamName;
+            } else if (isStrictModeReservedWord(name)) {
+                options.firstRestricted = param;
+                options.message = Messages.StrictReservedWord;
+            } else if (Object.prototype.hasOwnProperty.call(options.paramSet, name)) {
+                options.firstRestricted = param;
+                options.message = Messages.StrictParamDupe;
+            }
+        }
+        options.paramSet[name] = true;
+    }
+
 
 
     function reinterpretAsDestructuredParameter(options, expr) {
@@ -2591,50 +2681,12 @@ parseYieldExpression: true
                 }
             }
         } else if (expr.type === Syntax.Identifier) {
-            validateParam(options, expr, expr.name);
+            checkParam(options, expr, expr.name);
         } else {
             if (expr.type !== Syntax.MemberExpression) {
                 throwError({}, Messages.InvalidLHSInFormalsList);
             }
         }
-    }
-
-    function reinterpretAsCoverFormalsList(expressions) {
-        var i, len, param, params, options, rest;
-
-        params = [];
-        rest = null;
-        options = {
-            paramSet: {}
-        };
-
-        for (i = 0, len = expressions.length; i < len; i += 1) {
-            param = expressions[i];
-            if (param.type === Syntax.Identifier) {
-                params.push(param);
-                validateParam(options, param, param.name);
-            } else if (param.type === Syntax.ObjectExpression || param.type === Syntax.ArrayExpression) {
-                reinterpretAsDestructuredParameter(options, param);
-                params.push(param);
-            } else if (param.type === Syntax.SpreadElement) {
-                if (i !== len - 1) {
-                    throwError({}, Messages.ParameterAfterRestParameter);
-                }
-                reinterpretAsDestructuredParameter(options, param.argument);
-                rest = param.argument;
-            } else {
-                return null;
-            }
-        }
-
-        if (options.firstRestricted) {
-            throwError(options.firstRestricted, options.message);
-        }
-        if (options.stricted) {
-            throwErrorTolerant(options.stricted, options.message);
-        }
-
-        return { params: params, rest: rest };
     }
 
     function parseArrowFunctionExpression(options) {
@@ -2662,8 +2714,9 @@ parseYieldExpression: true
         };
     }
 
+
     function parseAssignmentExpression() {
-        var expr, token, params, oldParenthesizedCount, coverFormalsList;
+        var expr, token, oldParenthesizedCount, coverFormalsList, params;
 
         if (matchKeyword('yield')) {
             return parseYieldExpression();
@@ -2690,7 +2743,7 @@ parseYieldExpression: true
                 if (isRestrictedWord(expr.name)) {
                     throwError({}, Messages.StrictParamName);
                 }
-                return parseArrowFunctionExpression({ params: [ expr ], rest: null });
+                return parseArrowFunctionExpression({ rest: null, params: [ expr ] });
             }
         }
 
@@ -2721,9 +2774,11 @@ parseYieldExpression: true
     // 11.14 Comma Operator
 
     function parseExpression() {
-        var expr, sequence, coverFormalsList, spreadFound, token;
+        var expr, sequence, coverFormalsList, rest, token;
+
 
         expr = parseAssignmentExpression();
+        state.allowArrowFunction && (state.allowArrowFunction = isParameter(expr));
 
         if (match(',')) {
             sequence = {
@@ -2735,39 +2790,34 @@ parseYieldExpression: true
                 if (!match(',')) {
                     break;
                 }
-
                 lex();
                 expr = parseSpreadOrAssignmentExpression();
                 sequence.expressions.push(expr);
-
-                if (expr.type === Syntax.SpreadElement) {
-                    spreadFound = true;
+                if (state.allowArrowFunction && expr.type === Syntax.SpreadElement) {
+                    rest = true;
                     if (!match(')')) {
-                        throwError({}, Messages.ElementAfterSpreadElement);
+                        throwError({}, Messages.InvalidSpread);
                     }
                     break;
+                } else {
+                    state.allowArrowFunction && (state.allowArrowFunction = isParameter(expr));
                 }
             }
+
         }
-
-        if (state.allowArrowFunction && match(')')) {
-            token = lookahead2();
-            if (token.value === '=>') {
+        if (state.allowArrowFunction) {
+            if (match(')') && lookahead2().value == '=>') {
                 lex();
-
-                state.allowArrowFunction = false;
-                expr = sequence ? sequence.expressions : [ expr ];
-                coverFormalsList = reinterpretAsCoverFormalsList(expr);
+                --state.parenthesizedCount;
+                coverFormalsList = reinterpretAsCoverFormalsList(sequence ? sequence.expressions : [ expr ]);
                 if (coverFormalsList) {
                     return parseArrowFunctionExpression(coverFormalsList);
                 }
-
-                throwUnexpected(token);
             }
-        }
 
-        if (spreadFound) {
-            throwError({}, Messages.IllegalSpread);
+            if (rest) {
+                throwError({}, Messages.InvalidSpread);
+            }
         }
 
         return sequence || expr;
@@ -3061,11 +3111,6 @@ parseYieldExpression: true
                     type: Syntax.ExportDeclaration,
                     declaration: parseStatement()
                 };
-            case 'class':
-                return {
-                    type: Syntax.ExportDeclaration,
-                    declaration: parseClassDeclaration()
-                };
             }
             throwUnexpected(lex());
         }
@@ -3343,7 +3388,9 @@ parseYieldExpression: true
         oldInIteration = state.inIteration;
         state.inIteration = true;
 
-        if (!(opts !== undefined && opts.ignore_body)) {
+        if (opts !== undefined && opts.ignore_body) {
+            // no body
+        } else {
             body = parseStatement();
         }
 
@@ -3894,33 +3941,6 @@ parseYieldExpression: true
         };
     }
 
-
-    function validateParam(options, param, name) {
-        if (strict) {
-            if (isRestrictedWord(name)) {
-                options.stricted = param;
-                options.message = Messages.StrictParamName;
-            }
-            if (Object.prototype.hasOwnProperty.call(options.paramSet, name)) {
-                options.stricted = param;
-                options.message = Messages.StrictParamDupe;
-            }
-        } else if (!options.firstRestricted) {
-            if (isRestrictedWord(name)) {
-                options.firstRestricted = param;
-                options.message = Messages.StrictParamName;
-            } else if (isStrictModeReservedWord(name)) {
-                options.firstRestricted = param;
-                options.message = Messages.StrictReservedWord;
-            } else if (Object.prototype.hasOwnProperty.call(options.paramSet, name)) {
-                options.firstRestricted = param;
-                options.message = Messages.StrictParamDupe;
-            }
-        }
-        options.paramSet[name] = true;
-    }
-
-
     function parseParam(options) {
         var token, rest, param;
 
@@ -3935,19 +3955,16 @@ parseYieldExpression: true
             reinterpretAsDestructuredParameter(options, param);
         } else if (match('{')) {
             if (rest) {
-                throwError({}, Messages.ObjectPatternAsRestParameter);
+                throwError({}, Messages.InvalidLHSInFormalsList);
             }
             param = parseObjectInitialiser();
             reinterpretAsDestructuredParameter(options, param);
         } else {
             param = parseVariableIdentifier();
-            validateParam(options, token, token.value);
+            checkParam(options, token, token.value);
         }
 
         if (rest) {
-            if (!match(')')) {
-                throwError({}, Messages.ParameterAfterRestParameter);
-            }
             options.rest = param;
             return false;
         }
@@ -3955,7 +3972,6 @@ parseYieldExpression: true
         options.params.push(param);
         return !match(')');
     }
-
 
     function parseParams(firstRestricted) {
         var options;
@@ -3983,9 +3999,8 @@ parseYieldExpression: true
         return options;
     }
 
-
     function parseFunctionDeclaration() {
-        var id, body, token, tmp, firstRestricted, message, previousStrict, previousYieldAllowed, generator, expression;
+        var id, body, token, stricted, tmp, firstRestricted, message, previousStrict, previousYieldAllowed, generator, expression;
 
         expectKeyword('function');
 
@@ -4013,6 +4028,7 @@ parseYieldExpression: true
         }
 
         tmp = parseParams(firstRestricted);
+        stricted = tmp.stricted;
         firstRestricted = tmp.firstRestricted;
         if (tmp.message) {
             message = tmp.message;
@@ -4029,8 +4045,8 @@ parseYieldExpression: true
         if (strict && firstRestricted) {
             throwError(firstRestricted, message);
         }
-        if (strict && tmp.stricted) {
-            throwErrorTolerant(tmp.stricted, message);
+        if (strict && stricted) {
+            throwErrorTolerant(stricted, message);
         }
         if (yieldAllowed && !yieldFound) {
             throwError({}, Messages.NoYieldInGenerator);
@@ -4051,7 +4067,7 @@ parseYieldExpression: true
     }
 
     function parseFunctionExpression() {
-        var token, id = null, firstRestricted, message, tmp, body, previousStrict, previousYieldAllowed, generator, expression;
+        var token, id = null, stricted, firstRestricted, message, tmp, body, previousStrict, previousYieldAllowed, paramSet, generator, expression;
 
         expectKeyword('function');
 
@@ -4081,6 +4097,7 @@ parseYieldExpression: true
         }
 
         tmp = parseParams(firstRestricted);
+        stricted = tmp.stricted;
         firstRestricted = tmp.firstRestricted;
         if (tmp.message) {
             message = tmp.message;
@@ -4097,8 +4114,8 @@ parseYieldExpression: true
         if (strict && firstRestricted) {
             throwError(firstRestricted, message);
         }
-        if (strict && tmp.stricted) {
-            throwErrorTolerant(tmp.stricted, message);
+        if (strict && stricted) {
+            throwErrorTolerant(stricted, message);
         }
         if (yieldAllowed && !yieldFound) {
             throwError({}, Messages.NoYieldInGenerator);
@@ -4178,10 +4195,14 @@ parseYieldExpression: true
             };
         } else if (token.value === 'set' && !match('(')) {
             key = parseObjectPropertyKey();
+            expect('(');
+            token = lookahead();
+            param = [ parseVariableIdentifier() ];
+            expect(')');
             return {
                 type: Syntax.MethodDefinition,
                 key: key,
-                value: parsePropertyFunction({ params: parseParams().params, generator: false }),
+                value: parsePropertyFunction({ params: param, generator: false, name: token }),
                 kind: 'set'
             };
         } else {
@@ -4744,25 +4765,24 @@ parseYieldExpression: true
     }
 
     function trackGroupExpression() {
-        var marker, expr;
+        var marker, expr, parenCount;
 
         skipComment();
         marker = createLocationMarker();
         expect('(');
 
-        ++state.parenthesizedCount;
-
-        state.allowArrowFunction = !state.allowArrowFunction;
+        parenCount = ++state.parenthesizedCount;
+        state.allowArrowFunction = true;
         expr = parseExpression();
         state.allowArrowFunction = false;
 
-        if (expr.type === 'ArrowFunctionExpression') {
-            marker.end();
-            marker.apply(expr);
-        } else {
+        if (parenCount === state.parenthesizedCount) {
             expect(')');
             marker.end();
             marker.applyGroup(expr);
+        } else if (expr.type === 'ArrowFunctionExpression') {
+            marker.end();
+            marker.apply(expr);
         }
 
         return expr;
@@ -4992,7 +5012,6 @@ parseYieldExpression: true
             extra.parseForVariableDeclaration = parseForVariableDeclaration;
             extra.parseFunctionDeclaration = parseFunctionDeclaration;
             extra.parseFunctionExpression = parseFunctionExpression;
-            extra.parseParam = parseParam;
             extra.parseGlob = parseGlob;
             extra.parseImportDeclaration = parseImportDeclaration;
             extra.parseImportSpecifier = parseImportSpecifier;
@@ -5005,7 +5024,7 @@ parseYieldExpression: true
             extra.parseNonComputedProperty = parseNonComputedProperty;
             extra.parseObjectProperty = parseObjectProperty;
             extra.parseObjectPropertyKey = parseObjectPropertyKey;
-            extra.parseParam = parseParam;
+            extra.parseParams = parseParams;
             extra.parsePath = parsePath;
             extra.parsePostfixExpression = parsePostfixExpression;
             extra.parsePrimaryExpression = parsePrimaryExpression;
@@ -5045,7 +5064,6 @@ parseYieldExpression: true
             parseForVariableDeclaration = wrapTracking(extra.parseForVariableDeclaration);
             parseFunctionDeclaration = wrapTracking(extra.parseFunctionDeclaration);
             parseFunctionExpression = wrapTracking(extra.parseFunctionExpression);
-            parseParam = wrapTracking(extra.parseParam);
             parseGlob = wrapTracking(extra.parseGlob);
             parseImportDeclaration = wrapTracking(extra.parseImportDeclaration);
             parseImportSpecifier = wrapTracking(extra.parseImportSpecifier);
@@ -5058,16 +5076,16 @@ parseYieldExpression: true
             parseNonComputedProperty = wrapTracking(extra.parseNonComputedProperty);
             parseObjectProperty = wrapTracking(extra.parseObjectProperty);
             parseObjectPropertyKey = wrapTracking(extra.parseObjectPropertyKey);
-            parseParam = wrapTracking(extra.parseParam);
+            parseParams = wrapTracking(extra.parseParams);
             parsePath = wrapTracking(extra.parsePath);
             parsePostfixExpression = wrapTracking(extra.parsePostfixExpression);
             parsePrimaryExpression = wrapTracking(extra.parsePrimaryExpression);
             parseProgram = wrapTracking(extra.parseProgram);
             parsePropertyFunction = wrapTracking(extra.parsePropertyFunction);
+            parseSpreadOrAssignmentExpression = wrapTracking(extra.parseSpreadOrAssignmentExpression);
             parseTemplateElement = wrapTracking(extra.parseTemplateElement);
             parseTemplateLiteral = wrapTracking(extra.parseTemplateLiteral);
             parseRelationalExpression = wrapTracking(extra.parseRelationalExpression);
-            parseSpreadOrAssignmentExpression = wrapTracking(extra.parseSpreadOrAssignmentExpression);
             parseStatement = wrapTracking(extra.parseStatement);
             parseShiftExpression = wrapTracking(extra.parseShiftExpression);
             parseSwitchCase = wrapTracking(extra.parseSwitchCase);
@@ -5118,7 +5136,6 @@ parseYieldExpression: true
             parseForVariableDeclaration = extra.parseForVariableDeclaration;
             parseFunctionDeclaration = extra.parseFunctionDeclaration;
             parseFunctionExpression = extra.parseFunctionExpression;
-            parseParam = extra.parseParam;
             parseGlob = extra.parseGlob;
             parseImportDeclaration = extra.parseImportDeclaration;
             parseImportSpecifier = extra.parseImportSpecifier;
@@ -5134,6 +5151,7 @@ parseYieldExpression: true
             parseNonComputedProperty = extra.parseNonComputedProperty;
             parseObjectProperty = extra.parseObjectProperty;
             parseObjectPropertyKey = extra.parseObjectPropertyKey;
+            parseParams = extra.parseParams;
             parsePath = extra.parsePath;
             parsePostfixExpression = extra.parsePostfixExpression;
             parsePrimaryExpression = extra.parsePrimaryExpression;
@@ -6755,11 +6773,9 @@ exports.assembler = (function(exports){
       AST       = constants.AST,
       FUNCTYPE  = constants.FUNCTYPE.hash;
 
+
   var hasOwn = {}.hasOwnProperty,
       push = [].push;
-
-
-
 
 
 
@@ -6828,6 +6844,12 @@ exports.assembler = (function(exports){
       return node;
     };
   });
+
+
+
+  // var ExportDeclarations = collector({
+  //   ExportDeclaration  : ['declaration'],
+  // });
 
 
   function isSuperReference(node) {
@@ -14708,7 +14730,7 @@ exports.builtins.Map = "function Map(iterable){\n  var map;\n  if ($__IsConstruc
 
 exports.builtins.Number = "function Number(value){\n  value = $__ToNumber(value);\n  if ($__IsConstructCall()) {\n    return $__NumberCreate(value);\n  } else {\n    return value;\n  }\n}\n\n$__setupConstructor(Number, $__NumberProto);\n\n$__defineConstants(Number, {\n  EPSILON: 2.220446049250313e-16,\n  MAX_INTEGER: 9007199254740992,\n  MAX_VALUE: 1.7976931348623157e+308,\n  MIN_VALUE: 5e-324,\n  NaN: NaN,\n  NEGATIVE_INFINITY: -Infinity,\n  POSITIVE_INFINITY: Infinity\n});\n\n$__defineProps(Number, {\n  isNaN(number){\n    return number !== number;\n  },\n  isFinite(number){\n    return typeof value === 'number'\n        && value === value\n        && value < Infinity\n        && value > -Infinity;\n  },\n  isInteger(value) {\n    return typeof value === 'number'\n        && value === value\n        && value > -9007199254740992\n        && value < 9007199254740992\n        && value | 0 === value;\n  },\n  toInteger(value){\n    return (value / 1 || 0) | 0;\n  }\n});\n\nvar isFinite = Number.isFinite;\n\n$__defineProps(Number.prototype, {\n  toString(radix){\n    if ($__GetNativeBrand(this) === 'Number') {\n      return $__ToString($__GetPrimitiveValue(this));\n    } else {\n      throw $__Exception('not_generic', ['Number.prototype.toString']);\n    }\n  },\n  valueOf(){\n    if ($__GetNativeBrand(this) === 'Number') {\n      return $__GetPrimitiveValue(this);\n    } else {\n      throw $__Exception('not_generic', ['Number.prototype.valueOf']);\n    }\n  },\n  clz() {\n    var x = $__ToNumber(this);\n    if (!x || !isFinite(x)) {\n      return 32;\n    } else {\n      x = x < 0 ? x + 1 | 0 : x | 0;\n      x -= (x / 0x100000000 | 0) * 0x100000000;\n      return 32 - $__NumberToString(x, 2).length;\n    }\n  }\n});\n";
 
-exports.builtins.Object = "function Object(value){\n  if ($__IsConstructCall()) {\n    return {};\n  } else if (value == null) {\n    return {};\n  } else {\n    return $__ToObject(value);\n  }\n}\n\n$__setupConstructor(Object, $__ObjectProto);\n\n$__defineProps(Object, {\n  create(prototype, properties){\n    if (typeof prototype !== 'object') {\n      throw $__Exception('proto_object_or_null', [])\n    }\n\n    var object = $__ObjectCreate(prototype);\n\n    if (properties !== undefined) {\n      ensureDescriptor(properties);\n\n      for (var k in descs) {\n        var desc = properties[k];\n        ensureDescriptor(desc);\n        $__DefineOwnProperty(object, key, desc);\n      }\n    }\n\n    return object;\n  },\n  defineProperty(object, key, property){\n    ensureObject(object, 'Object.defineProperty');\n    ensureDescriptor(property);\n    key = $__ToPropertyName(key);\n    $__DefineOwnProperty(object, key, property);\n    return object;\n  },\n  defineProperties(object, properties){\n    ensureObject(object, 'Object.defineProperties');\n    ensureDescriptor(properties);\n\n    for (var key in properties) {\n      var desc = properties[key];\n      ensureDescriptor(desc);\n      $__DefineOwnProperty(object, key, desc);\n    }\n\n    return object;\n  },\n  freeze(object){\n    ensureObject(object, 'Object.freeze');\n    var props = $__Enumerate(object, false, false);\n\n    for (var i=0; i < props.length; i++) {\n      var desc = $__GetOwnProperty(object, props[i]);\n      if (desc.configurable) {\n        desc.configurable = false;\n        if ('writable' in desc) {\n          desc.writable = false;\n        }\n        $__DefineOwnProperty(object, props[i], desc);\n      }\n    }\n\n    $__SetExtensible(object, false);\n    return object;\n  },\n  getOwnPropertyDescriptor(object, key){\n    ensureObject(object, 'Object.getOwnPropertyDescriptor');\n    key = $__ToPropertyName(key);\n    return $__GetOwnProperty(object, key);\n  },\n  getOwnPropertyNames(object){\n    ensureObject(object, 'Object.getOwnPropertyNames');\n    return $__Enumerate(object, false, false);\n  },\n  getPropertyDescriptor(object, key){\n    ensureObject(object, 'Object.getPropertyDescriptor');\n    key = $__ToPropertyName(key);\n    return $__GetProperty(object, key);\n  },\n  getPropertyNames(object){\n    ensureObject(object, 'Object.getPropertyNames');\n    return $__Enumerate(object, true, false);\n  },\n  getPrototypeOf(object){\n    ensureObject(object, 'Object.getPrototypeOf');\n    return $__GetPrototype(object);\n  },\n  isExtensible(object){\n    ensureObject(object, 'Object.isExtensible');\n    return $__GetExtensible(object);\n  },\n  isFrozen(object){\n    ensureObject(object, 'Object.isFrozen');\n    if ($__GetExtensible(object)) {\n      return false;\n    }\n\n    var props = $__Enumerate(object, false, false);\n\n    for (var i=0; i < props.length; i++) {\n      var desc = $__GetOwnProperty(object, props[i]);\n      if (desc) {\n        if (desc.configurable || 'writable' in desc && desc.writable) {\n          return false;\n        }\n      }\n    }\n\n    return true;\n  },\n  isSealed(object){\n    ensureObject(object, 'Object.isSealed');\n    if ($__GetExtensible(object)) {\n      return false;\n    }\n\n    var props = $__Enumerate(object, false, false);\n\n    for (var i=0; i < props.length; i++) {\n      var desc = $__GetOwnProperty(object, props[i]);\n      if (desc && desc.configurable) {\n        return false;\n      }\n    }\n\n    return true;\n  },\n  keys(object){\n    ensureObject(object, 'Object.keys');\n    return $__Enumerate(object, false, true);\n  },\n  preventExtensions(object){\n    ensureObject(object, 'Object.preventExtensions');\n    $__SetExtensible(object, false);\n    return object;\n  }\n});\n\n$__defineProps(Object.prototype, {\n  toString(){\n    if (this === undefined) {\n      return '[object Undefined]';\n    } else if (this === null) {\n      return '[object Null]';\n    } else {\n      return '[object '+$__GetBrand($__ToObject(this))+']';\n    }\n  },\n  isPrototypeOf(object){\n    while (object) {\n      object = $__GetPrototype(object);\n      if (object === this) {\n        return true;\n      }\n    }\n    return false;\n  },\n  toLocaleString(){\n    return this.toString();\n  },\n  valueOf(){\n    return $__ToObject(this);\n  },\n  hasOwnProperty(key){\n    var object = $__ToObject(this);\n    return $__HasOwnProperty(object, key);\n  },\n  propertyIsEnumerable(key){\n    var object = $__ToObject(this);\n    return ($__GetPropertyAttributes(this, key) & E) !== 0;\n  }\n});\n\nvar E = 0x1,\n    C = 0x2,\n    W = 0x4,\n    A = 0x8;\n\nfunction ensureObject(o, name){\n  var type = typeof o;\n  if (type === 'object' ? o === null : type !== 'function') {\n    throw $__Exception('called_on_non_object', [name]);\n  }\n}\n\nfunction ensureDescriptor(o){\n  if (o === null || typeof o !== 'object') {\n    throw $__Exception('property_desc_object', [typeof o])\n  }\n}\n";
+exports.builtins.Object = "function Object(value){\n  if ($__IsConstructCall()) {\n    return {};\n  } else if (value == null) {\n    return {};\n  } else {\n    return $__ToObject(value);\n  }\n}\n\n$__setupConstructor(Object, $__ObjectProto);\n\n$__defineProps(Object, {\n  create(prototype, properties){\n    if (typeof prototype !== 'object') {\n      throw $__Exception('proto_object_or_null', [])\n    }\n\n    var object = $__ObjectCreate(prototype);\n\n    if (properties !== undefined) {\n      ensureDescriptor(properties);\n\n      for (var k in properties) {\n        var desc = properties[k];\n        ensureDescriptor(desc);\n        $__DefineOwnProperty(object, key, desc);\n      }\n    }\n\n    return object;\n  },\n  defineProperty(object, key, property){\n    ensureObject(object, 'Object.defineProperty');\n    ensureDescriptor(property);\n    key = $__ToPropertyName(key);\n    $__DefineOwnProperty(object, key, property);\n    return object;\n  },\n  defineProperties(object, properties){\n    ensureObject(object, 'Object.defineProperties');\n    ensureDescriptor(properties);\n\n    for (var key in properties) {\n      var desc = properties[key];\n      ensureDescriptor(desc);\n      $__DefineOwnProperty(object, key, desc);\n    }\n\n    return object;\n  },\n  freeze(object){\n    ensureObject(object, 'Object.freeze');\n    var props = $__Enumerate(object, false, false);\n\n    for (var i=0; i < props.length; i++) {\n      var desc = $__GetOwnProperty(object, props[i]);\n      if (desc.configurable) {\n        desc.configurable = false;\n        if ('writable' in desc) {\n          desc.writable = false;\n        }\n        $__DefineOwnProperty(object, props[i], desc);\n      }\n    }\n\n    $__SetExtensible(object, false);\n    return object;\n  },\n  getOwnPropertyDescriptor(object, key){\n    ensureObject(object, 'Object.getOwnPropertyDescriptor');\n    key = $__ToPropertyName(key);\n    return $__GetOwnProperty(object, key);\n  },\n  getOwnPropertyNames(object){\n    ensureObject(object, 'Object.getOwnPropertyNames');\n    return $__Enumerate(object, false, false);\n  },\n  getPropertyDescriptor(object, key){\n    ensureObject(object, 'Object.getPropertyDescriptor');\n    key = $__ToPropertyName(key);\n    return $__GetProperty(object, key);\n  },\n  getPropertyNames(object){\n    ensureObject(object, 'Object.getPropertyNames');\n    return $__Enumerate(object, true, false);\n  },\n  getPrototypeOf(object){\n    ensureObject(object, 'Object.getPrototypeOf');\n    return $__GetPrototype(object);\n  },\n  isExtensible(object){\n    ensureObject(object, 'Object.isExtensible');\n    return $__GetExtensible(object);\n  },\n  isFrozen(object){\n    ensureObject(object, 'Object.isFrozen');\n    if ($__GetExtensible(object)) {\n      return false;\n    }\n\n    var props = $__Enumerate(object, false, false);\n\n    for (var i=0; i < props.length; i++) {\n      var desc = $__GetOwnProperty(object, props[i]);\n      if (desc) {\n        if (desc.configurable || 'writable' in desc && desc.writable) {\n          return false;\n        }\n      }\n    }\n\n    return true;\n  },\n  isSealed(object){\n    ensureObject(object, 'Object.isSealed');\n    if ($__GetExtensible(object)) {\n      return false;\n    }\n\n    var props = $__Enumerate(object, false, false);\n\n    for (var i=0; i < props.length; i++) {\n      var desc = $__GetOwnProperty(object, props[i]);\n      if (desc && desc.configurable) {\n        return false;\n      }\n    }\n\n    return true;\n  },\n  keys(object){\n    ensureObject(object, 'Object.keys');\n    return $__Enumerate(object, false, true);\n  },\n  preventExtensions(object){\n    ensureObject(object, 'Object.preventExtensions');\n    $__SetExtensible(object, false);\n    return object;\n  }\n});\n\n$__defineProps(Object.prototype, {\n  toString(){\n    if (this === undefined) {\n      return '[object Undefined]';\n    } else if (this === null) {\n      return '[object Null]';\n    } else {\n      return '[object '+$__GetBrand($__ToObject(this))+']';\n    }\n  },\n  isPrototypeOf(object){\n    while (object) {\n      object = $__GetPrototype(object);\n      if (object === this) {\n        return true;\n      }\n    }\n    return false;\n  },\n  toLocaleString(){\n    return this.toString();\n  },\n  valueOf(){\n    return $__ToObject(this);\n  },\n  hasOwnProperty(key){\n    var object = $__ToObject(this);\n    return $__HasOwnProperty(object, key);\n  },\n  propertyIsEnumerable(key){\n    var object = $__ToObject(this);\n    return ($__GetPropertyAttributes(this, key) & E) !== 0;\n  }\n});\n\nvar E = 0x1,\n    C = 0x2,\n    W = 0x4,\n    A = 0x8;\n\nfunction ensureObject(o, name){\n  var type = typeof o;\n  if (type === 'object' ? o === null : type !== 'function') {\n    throw $__Exception('called_on_non_object', [name]);\n  }\n}\n\nfunction ensureDescriptor(o){\n  if (o === null || typeof o !== 'object') {\n    throw $__Exception('property_desc_object', [typeof o])\n  }\n}\n";
 
 exports.builtins.RegExp = "function RegExp(pattern, flags){\n  if ($__IsConstructCall()) {\n    if (pattern === undefined) {\n      pattern = '';\n    } else if (typeof pattern === 'string') {\n    } else if (typeof pattern === 'object' && $__GetNativeBrand(pattern) === 'RegExp') {\n      if (flags !== undefined) {\n        throw $__Exception('regexp_flags', []);\n      }\n    } else {\n      pattern = $__ToString(pattern);\n    }\n    return $__RegExpCreate(pattern, flags);\n  } else {\n    if (flags === undefined && pattern) {\n      if (typeof pattern === 'object' && $__GetNativeBrand(pattern) === 'RegExp') {\n        return pattern;\n      }\n    }\n    return $__RegExpCreate(pattern, flags);\n  }\n}\n\n$__setupConstructor(RegExp, $__RegExpProto);\n$__wrapRegExpMethods(RegExp.prototype);\n\n$__defineProps(RegExp.prototype, {\n  toString(){\n    if ($__GetNativeBrand(this) === 'RegExp') {\n      return $__RegExpToString(this);\n    } else {\n      throw $__Exception('not_generic', ['RegExp.prototype.toString']);\n    }\n  }\n});\n";
 
@@ -14721,6 +14743,10 @@ exports.builtins.WeakMap = "function WeakMap(iterable){\n  var weakmap;\n  if ($
 exports.builtins.global = "$__defineProps(this, {\n  JSON: $__JSONCreate(),\n  Math: $__MathCreate(),\n  StopIteration: $__StopIteration,\n  clearInterval(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  clearTimeout(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  console: {\n    log(...values){\n      var text = '';\n      for (var i=0; i < values.length; i++) {\n        text += $__ToString(values[i]);\n      }\n      $__Signal('write', [text + '\\n', '#fff']);\n    }\n  },\n  decodeURI: $__decodeURI,\n  decodeURIComponent: $__decodeURIComponent,\n  encodeURI: $__encodeURI,\n  encodeURIComponent: $__encodeURIComponent,\n  escape: $__escape,\n  eval: $__eval,\n  isFinite(number){\n    number = $__ToNumber(number);\n    return number === number && number !== Infinity && number !== -Infinity;\n  },\n  isNaN(number){\n    number = $__ToNumber(number);\n    return number !== number;\n  },\n  parseInt: $__parseInt,\n  parseFloat: $__parseFloat,\n  setInterval(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, true);\n  },\n  setTimeout(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, false);\n  },\n  stdout: {\n    write(text, color){\n      $__Signal('write', [text, color]);\n    },\n    clear(){\n      $__Signal('clear');\n    },\n    backspace(count){\n      $__Signal('backspace', $_ToInteger(count));\n    }\n  }\n});\n";
 
 
+
+exports.builtins.modules = "";
+
+exports.builtins.reflect = "export function Proxy(target, handler){}\n\nexport function getOwnPropertyDescriptor(target, name){\n  ensureObject(target, 'Reflect.getOwnPropertyDescriptor');\n  name = $__ToPropertyName(name);\n  return $__GetOwnProperty(target, name);\n}\n\nexport function defineProperty(target, name, desc){\n  ensureObject(target, 'Reflect.defineProperty');\n  ensureDescriptor(desc);\n  name = $__ToPropertyName(name);\n  $__DefineOwnProperty(target, name, desc);\n  return object;\n}\n\nexport function getOwnPropertyNames(target){\n  ensureObject(target, 'Reflect.getOwnPropertyNames');\n  return $__Enumerate(target, false, false);\n}\n\nexport function getPrototypeOf(target){\n  ensureObject(target, 'Reflect.getPrototypeOf');\n  return $__GetPrototype(target);\n}\n\nexport function deleteProperty(target, name){\n  return $__Delete(target, name, false);\n}\n\nexport function enumerate(target){\n  ensureObject(target, 'Reflect.enumerate');\n  return $__Enumerate(target, false, false);\n}\n\nexport function freeze(target){\n  ensureObject(target, 'Reflect.freeze');\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc.configurable) {\n      desc.configurable = false;\n      if ('writable' in desc) {\n        desc.writable = false;\n      }\n      $__DefineOwnProperty(target, props[i], desc);\n    }\n  }\n\n  $__SetExtensible(target, false);\n  return target;\n}\n\nexport function seal(target){\n\n}\n\nexport function preventExtensions(target){\n  ensureObject(target, 'Reflect.preventExtensions');\n  $__SetExtensible(target, false);\n  return target;\n}\n\nexport function isFrozen(target){\n  ensureObject(target, 'Reflect.isFrozen');\n  if ($__GetExtensible(target)) {\n    return false;\n  }\n\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc) {\n      if (desc.configurable || 'writable' in desc && desc.writable) {\n        return false;\n      }\n    }\n  }\n\n  return true;\n}\n\nexport function isSealed(target){\n  ensureObject(target, 'Reflect.isSealed');\n  if ($__GetExtensible(target)) {\n    return false;\n  }\n\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc && desc.configurable) {\n      return false;\n    }\n  }\n\n  return true;\n}\n\nexport function isExtensible(target){\n  ensureObject(target, 'Reflect.isExtensible');\n  return $__GetExtensible(target);\n}\n\nexport function has(target, name){\n  ensureObject(target, 'Reflect.has');\n  name = $__ToPropertyName(name);\n  return $__HasProperty(target, name);\n}\n\nexport function hasOwn(target, name){\n  ensureObject(target, 'Reflect.hasOwn');\n  name = $__ToPropertyName(name);\n  return $__HasOwnProperty(target, name);\n}\n\nexport function keys(target){\n  ensureObject(target, 'Reflect.keys');\n  return $__Enumerate(target, false, true);\n}\n\nexport function get(target, name, receiver){\n  ensureObject(target, 'Reflect.get');\n  name = $__ToPropertyName(name);\n  return $__GetP(target, name, receiver);\n}\n\nexport function set(target, name, value, receiver){\n  ensureObject(target, 'Reflect.set');\n  name = $__ToPropertyName(name);\n  return $__SetP(target, name, value, receiver);\n}\n\nexport function apply(target, thisArg, args){\n  return $__CallFunction(target, thisArg, args);\n}\n\nexport function construct(target, args){\n  return $__Construct(target, args);\n}\n\n\nexport function Handler(){}\n\n$__defineProps(Handler.prototype, {\n  // fundamental traps\n  getOwnPropertyDescriptor: Reflect.getOwnPropertyDescriptor,\n  getOwnPropertyNames:      Reflect.getOwnPropertyNames,\n  getPrototypeOf:           Reflect.getPrototypeOf,\n  defineProperty:           Reflect.defineProperty,\n  deleteProperty:           Reflect.deleteProperty,\n  preventExtensions:        Reflect.preventExtensions,\n  isExtensible:             Reflect.isExtensible,\n  apply:                    Reflect.apply,\n\n  // derived traps\n  seal(target) {\n    var success = this.preventExtensions(target);\n    success = !!success;\n    if (success) {\n      var props = this.getOwnPropertyNames(target);\n      var l = +props.length;\n      for (var i = 0; i < l; i++) {\n        var name = props[i];\n        success = success &&\n          this.defineProperty(target, name, { configurable: false });\n      }\n    }\n    return success;\n  },\n  freeze(target){\n    var success = this.preventExtensions(target);\n    if (success = !!success) {\n      var props = this.getOwnPropertyNames(target),\n          l = +props.length;\n\n      for (var i = 0; i < l; i++) {\n        var name = props[i],\n            desc = this.getOwnPropertyDescriptor(target, name);\n\n        desc = normalizeAndCompletePropertyDescriptor(desc);\n        if (isDataDescriptor(desc)) {\n          success = success && this.defineProperty(target, name, { writable: false, configurable: false });\n        } else if (desc !== undefined) {\n          success = success && this.defineProperty(target, name, { configurable: false });\n        }\n      }\n    }\n    return success;\n  },\n  isSealed(target){\n    var props = this.getOwnPropertyNames(target),\n        l = +props.length;\n\n    for (var i = 0; i < l; i++) {\n      var name = props[i],\n          desc = this.getOwnPropertyDescriptor(target, name);\n\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc.configurable) {\n        return false;\n      }\n    }\n    return !this.isExtensible(target);\n  },\n  isFrozen(target){\n    var props = this.getOwnPropertyNames(target),\n        l = +props.length;\n\n    for (var i = 0; i < l; i++) {\n      var name = props[i],\n          desc = this.getOwnPropertyDescriptor(target, name);\n\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (isDataDescriptor(desc)) {\n        if (desc.writable) {\n          return false;\n        }\n      }\n      if (desc.configurable) {\n        return false;\n      }\n    }\n    return !this.isExtensible(target);\n  },\n  has(target, name){\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    desc = normalizeAndCompletePropertyDescriptor(desc);\n    if (desc !== undefined) {\n      return true;\n    }\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      return false;\n    }\n    return Reflect.has(proto, name);\n  },\n  hasOwn(target,name){\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    return undefined !== normalizeAndCompletePropertyDescriptor(desc);\n  },\n  get(target, name, receiver){\n    receiver = receiver || target;\n\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    desc = normalizeAndCompletePropertyDescriptor(desc);\n    if (desc === undefined) {\n      var proto = $__GetPrototype(target);\n      if (proto === null) {\n        return undefined;\n      }\n      return Reflect.get(proto, name, receiver);\n    }\n    if (isDataDescriptor(desc)) {\n      return desc.value;\n    }\n    var getter = desc.get;\n    if (getter === undefined) {\n      return undefined;\n    }\n    return $__CallFunction(desc.get, receiver, []);\n  },\n  set(target, name, value, receiver){\n    var ownDesc = this.getOwnPropertyDescriptor(target, name);\n    ownDesc = normalizeAndCompletePropertyDescriptor(ownDesc);\n\n    if (ownDesc !== undefined) {\n      if (isAccessorDescriptor(ownDesc)) {\n        var setter = ownDesc.set;\n        if (setter === undefined) return false;\n        $__CallFunction(setter, receiver, [value]); // assumes Function.prototype.call\n        return true;\n      }\n      // otherwise, isDataDescriptor(ownDesc) must be true\n      if (ownDesc.writable === false) return false;\n      if (receiver === target) {\n        var updateDesc = { value: value };\n        $__DefineOwnProperty(receiver, name, updateDesc);\n        return true;\n      } else {\n        if (!$__GetExtensible(receiver)) return false;\n        var newDesc =\n          { value: value,\n            writable: true,\n            enumerable: true,\n            configurable: true };\n        $__DefineOwnProperty(receiver, name, newDesc);\n        return true;\n      }\n    }\n\n    // name is not defined in target, search target's prototype\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      if (!$__GetExtensible(receiver)) return false;\n      var newDesc =\n        { value: value,\n          writable: true,\n          enumerable: true,\n          configurable: true };\n      $__DefineOwnProperty(receiver, name, newDesc);\n      return true;\n    }\n    // continue the search in target's prototype\n    return Reflect.set(proto, name, value, receiver);\n  },\n  enumerate(target){\n    var trapResult = this.getOwnPropertyNames(target);\n    var l = +trapResult.length;\n    var result = [];\n    for (var i = 0; i < l; i++) {\n      var name = $__ToString(trapResult[i]);\n      var desc = this.getOwnPropertyDescriptor(name);\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc !== undefined && desc.enumerable) {\n        result.push(name);\n      }\n    }\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      return result;\n    }\n    var inherited = Reflect.enumerate(proto);\n    // FIXME: filter duplicates\n    return result.concat(inherited);\n  },\n  iterate(target){\n    var trapResult = this.enumerate(target);\n    var l = +trapResult.length;\n    var idx = 0;\n    return {\n      next: function() {\n        if (idx === l) {\n          throw StopIteration;\n        } else {\n          return trapResult[idx++];\n        }\n      }\n    };\n  },\n  keys(target){\n    var trapResult = this.getOwnPropertyNames(target);\n    var l = +trapResult.length;\n    var result = [];\n    for (var i = 0; i < l; i++) {\n      var name = $__ToString(trapResult[i]);\n      var desc = this.getOwnPropertyDescriptor(name);\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc !== undefined && desc.enumerable) {\n        result.push(name);\n      }\n    }\n    return result;\n  },\n  construct(target, args) {\n    var proto = this.get(target, 'prototype', target);\n    var instance;\n    if (Object(proto) === proto) {\n      instance = $__ObjectCreate(proto);\n    } else {\n      instance = {};\n    }\n    var res = this.apply(target, instance, args);\n    if (Object(res) === res) {\n      return res;\n    }\n    return instance;\n  }\n});\n\n";
 
 return (function(Realm){
   function continuum(listener){
