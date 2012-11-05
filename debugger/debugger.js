@@ -424,12 +424,10 @@ function VerticalScrollbar(container){
 
   this.track.on('mousedown', function(e){
     e.preventDefault();
-    if (e.pageY > self.thumb.bottom()) {
-      self.repeat(.01, 15);
+    var compare = e.pageY > self.thumb.bottom() ? 1 : e.pageY < self.thumb.top() ? -1 : 0;
+    if (compare) {
       this.addClass('scrolling');
-    } else if (e.pageY < self.thumb.top()) {
-      self.repeat(-.01, 15);
-      this.addClass('scrolling');
+      self.repeat(compare * .1, 300);
     }
   });
 
@@ -473,8 +471,16 @@ inherit(VerticalScrollbar, Component, [
   function scrollHeight(){
     return this.container.element.scrollHeight - this.container.element.clientHeight;
   },
-  function scrollTo(percent){
-    this.container.element.scrollTop = percent * this.scrollHeight();
+  function percent(val){
+    var el = this.container.element;
+    if (val === undefined) {
+      return (el.scrollTop + el.clientHeight) / el.scrollHeight;
+    } else {
+      el.scrollTop = val * el.scrollHeight - el.clientHeight;
+    }
+  },
+  function scrollRelative(percent){
+    this.percent(this.percent() + percent);
   },
   function resize(){
     this.refresh();
@@ -487,14 +493,6 @@ inherit(VerticalScrollbar, Component, [
     var el = this.container.element,
         height = this.track.height();
     return height - (el.clientHeight + el.scrollTop) / el.scrollHeight * height + .5 | 0;
-  },
-  function percent(val){
-    var el = this.container.element;
-    if (val === undefined) {
-      return (el.scrollTop + el.clientHeight) / el.scrollHeight;
-    } else {
-      el.scrollTop = val * el.scrollHeight - el.clientHeight;
-    }
   },
   function trackHeight(){
     var self = this;
