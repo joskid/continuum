@@ -233,6 +233,14 @@ define(Component.prototype, [
         this.element.style[k] = val;
       }
     }
+  },
+  function child(){
+    var el = this.element.firstElementChild;
+    if (el && el.component) {
+      return el.component;
+    } else if (el) {
+      return new Component(el);
+    }
   }
 ]);
 
@@ -627,7 +635,7 @@ function Panel(parent, options){
     update();
   }
 
-  if (this.content) {
+  if (options.scroll && this.content) {
     this.scrollbar = new VerticalScrollbar(this.content);
   }
 }
@@ -641,6 +649,11 @@ define(Panel, [
     }
   }
 ]);
+
+
+
+
+
 
 function length(value, container){
   if (value >= -1 && value <= 1) {
@@ -1850,6 +1863,8 @@ var body = new Component(document.body),
     instructions = new Instructions;
 
 
+
+
 inspector.removeClass('tree');
 inspector.addClass('inspector');
 inspector.show();
@@ -1863,18 +1878,21 @@ var main = new Panel(null, {
         size: .7,
         label: 'Instructions',
         name: 'instructions',
-        content: instructions
+        content: instructions,
+        scroll: true
       },
       bottom: {
         label: 'stdout',
         name: 'output',
-        content: stdout
+        content: stdout,
+        scroll: true
       },
     },
     right: {
       label: 'Inspector',
       name: 'view',
-      content: inspector
+      content: inspector,
+      scroll: true
     },
   },
   bottom: {
@@ -1884,7 +1902,19 @@ var main = new Panel(null, {
   }
 });
 
-//inspector.scroll = new VerticalScrollbar(inspector);
+
+void function(){
+  var scroll = new Component(document.querySelector('.CodeMirror-scroll')),
+      scrollbar = input.append(new VerticalScrollbar(scroll));
+  var child = input.child();
+  scroll.removeClass('scrolled');
+  child.removeClass('scroll-container');
+  child.style('right', null);
+  scrollbar.right(0);
+  scrollbar.width(scrollbar.width() + 2);
+}();
+
+
 
 function runInContext(code, realm){
   var result = renderer.render(realm.evaluate(code));
@@ -1898,7 +1928,7 @@ var ops = new utility.Feeder(function(op){
   instructions.append(new Instruction(op[0], op[1]));
 });
 
-
+console.log(main.splitter.right(0));
 function createRealm(){
   realm = new Realm;
 

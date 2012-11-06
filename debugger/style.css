@@ -35,7 +35,7 @@ h1, h2
 #instructions
 { background: #111; color: #fff; }
 .ƒinstructions
-{ overflow-x: hidden; overflow-y: auto; margin: 0 36px 0 0; padding: 6px; font-size: 12px }
+{ overflow-x: hidden; overflow-y: auto; margin: 0 18px 0 0; padding: 6px; font-size: 12px }
   .ƒinstruction
   { white-space: pre }
   .ƒinstruction > div
@@ -415,9 +415,9 @@ h1, h2
   .CodeMirror-sizer
     { position: relative; }
     .CodeMirror-vscrollbar
-    { position: absolute; z-index: 6; display: none; right: 0; top: 0; overflow-x: hidden; overflow-y: scroll; }
+    { position: absolute; z-index: 0; display: none; visibility: hidden; right: 0; top: 0; overflow-x: hidden; overflow-y: scroll; }
     .CodeMirror-hscrollbar
-    { position: absolute; z-index: 6; display: none }
+    { position: absolute; z-index: 0; display: none; visibility: hidden; }
       .CodeMirror-scrollbar-filler
       { position: absolute; z-index: 6; right: 0; bottom: 0;}
     .CodeMirror-gutters
