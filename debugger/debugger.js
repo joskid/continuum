@@ -220,14 +220,6 @@ void function(){
         top: this.element.offsetTop + this.getMetric('marginTop')
       }
     },
-    function text(value){
-      if (value === undefined) {
-        return this.element.innerText;
-      } else {
-        this.element.innerText = value;
-        return this;
-      }
-    },
     function clear(){
       this.innerHTML = '';
     },
@@ -467,6 +459,35 @@ if ('dispatchEvent' in document.body) {
           this.element.customEvent = event;
           event.expired = true;
           return event.returnValue === undefined ? true : event.returnValue;
+        }
+      }
+    ]);
+  }();
+}
+
+
+if ('textContent' in document.body) {
+  void function(){
+    define(Component.prototype, [
+      function text(value){
+        if (value === undefined) {
+          return this.element.textContent;
+        } else {
+          this.element.textContent = value;
+          return this;
+        }
+      }
+    ]);
+  }();
+} else {
+  void function(){
+    define(Component.prototype, [
+      function text(value){
+        if (value === undefined) {
+          return this.element.innerText;
+        } else {
+          this.element.innerText = value;
+          return this;
         }
       }
     ]);
@@ -735,9 +756,9 @@ var Panel = function(){
     options = new PanelOptions(options);
 
     if (options.label) {
-      var label = _('h2');
-      label.innerText = options.label;
-      label.className = this.ns + 'panel-label';
+      var label = new Component('h2');
+      label.text(options.label);
+      label.addClass('panel-label');
       this.append(label);
     }
 
@@ -1391,24 +1412,24 @@ var Console = (function(){
       this.console.element.innerHTML = '';
     },
     function write(msg, color){
-      var node = _('span');
-      node.innerText = msg;
-      node.style.color = color === undefined ? 'white' : color;
+      var node = new Span(msg);
+      node.style('color', color === undefined ? 'white' : color);
       this.console.append(node);
     },
     function backspace(count){
       var buffer = this.console.element;
-      while (buffer.lastElementChild && count > 0) {
-        var el = buffer.lastElementChild,
-            len = el.innerText.length;
+      while (buffer.lastChild && count > 0) {
+        var el = buffer.lastChild.component,
+            len = el.text().length;
         if (len < count) {
-          buffer.removeChild(el);
+          this.console.remove(el);
           count -= len;
         } else if (len === count) {
-          buffer.removeChild(el);
+          this.console.remove(el);
           return true;
         } else {
-          el.firstChild.data = el.firstChild.data.slice(0, el.firstChild.data.length - count);
+          var text = el.element.firstChild;
+          text.data = text.data.slice(0, text.data.length - count);
           return true;
         }
       }
@@ -1494,10 +1515,10 @@ var Instructions = (function(){
 
   inherit(Instructions, Component, [
     function addInstruction(op){
-      if (this.children.length > 100) {
-        this.element.removeChild(this.children[0].element);
-        this.children = this.children.slice(1);
-      }
+      // if (this.children.length > 100) {
+      //   this.element.removeChild(this.children[0].element);
+      //   this.children = this.children.slice(1);
+      // }
       this.append(new Instruction(op[0], op[1]))
       this.element.scrollTop = this.element.scrollHeight;
     }
@@ -1512,19 +1533,10 @@ var Key = function(){
   function Key(key){
     Component.call(this, 'div');
     this.addClass('key');
-    this.element.innerText = key;
+    this.text(key);
   }
 
-  inherit(Key, Component, [
-    function text(value){
-      if (value === undefined) {
-        return this.element.innerText;
-      } else {
-        this.element.innerText = value;
-        return this;
-      }
-    }
-  ]);
+  inherit(Key, Component);
 
   return Key;
 }();
@@ -1658,16 +1670,7 @@ var Label = (function(){
     this.addClass(kind);
   }
 
-  inherit(Label, Component, [
-    function text(value){
-      if (value === undefined) {
-        return this.element.innerText;
-      } else {
-        this.element.innerText = value;
-        return this;
-      }
-    }
-  ]);
+  inherit(Label, Component);
 
   return Label;
 })();
