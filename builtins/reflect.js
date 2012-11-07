@@ -147,14 +147,14 @@ export function Handler(){}
 
 $__defineProps(Handler.prototype, {
   // fundamental traps
-  getOwnPropertyDescriptor: Reflect.getOwnPropertyDescriptor,
-  getOwnPropertyNames:      Reflect.getOwnPropertyNames,
-  getPrototypeOf:           Reflect.getPrototypeOf,
-  defineProperty:           Reflect.defineProperty,
-  deleteProperty:           Reflect.deleteProperty,
-  preventExtensions:        Reflect.preventExtensions,
-  isExtensible:             Reflect.isExtensible,
-  apply:                    Reflect.apply,
+  getOwnPropertyDescriptor: getOwnPropertyDescriptor,
+  getOwnPropertyNames:      getOwnPropertyNames,
+  getPrototypeOf:           getPrototypeOf,
+  defineProperty:           defineProperty,
+  deleteProperty:           deleteProperty,
+  preventExtensions:        preventExtensions,
+  isExtensible:             isExtensible,
+  apply:                    apply,
 
   // derived traps
   seal(target) {
