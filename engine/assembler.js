@@ -52,63 +52,66 @@ var assembler = (function(exports){
 
 
 
-  var ARRAY         = new OpCode(0, 'ARRAY'),
-      ARG           = new OpCode(0, 'ARG'),
-      ARGS          = new OpCode(0, 'ARGS'),
-      ARRAY_DONE    = new OpCode(0, 'ARRAY_DONE'),
-      BINARY        = new OpCode(1, 'BINARY'),
-      BLOCK         = new OpCode(1, 'BLOCK'),
-      CALL          = new OpCode(0, 'CALL'),
-      CASE          = new OpCode(1, 'CASE'),
-      CLASS_DECL    = new OpCode(1, 'CLASS_DECL'),
-      CLASS_EXPR    = new OpCode(1, 'CLASS_EXPR'),
-      COMPLETE      = new OpCode(0, 'COMPLETE'),
-      CONST         = new OpCode(1, 'CONST'),
-      CONSTRUCT     = new OpCode(0, 'CONSTRUCT'),
-      DEBUGGER      = new OpCode(0, 'DEBUGGER'),
-      DEFAULT       = new OpCode(1, 'DEFAULT'),
-      DUP           = new OpCode(0, 'DUP'),
-      ELEMENT       = new OpCode(0, 'ELEMENT'),
-      ENUM          = new OpCode(0, 'ENUM'),
-      FUNCTION      = new OpCode(2, 'FUNCTION'),
-      GET           = new OpCode(0, 'GET'),
-      IFEQ          = new OpCode(2, 'IFEQ'),
-      IFNE          = new OpCode(2, 'IFNE'),
-      INDEX         = new OpCode(2, 'INDEX'),
-      ITERATE       = new OpCode(0, 'ITERATE'),
-      JUMP          = new OpCode(1, 'JUMP'),
-      LET           = new OpCode(1, 'LET'),
-      LITERAL       = new OpCode(1, 'LITERAL'),
-      LOG           = new OpCode(0, 'LOG'),
-      MEMBER        = new OpCode(1, 'MEMBER'),
-      METHOD        = new OpCode(3, 'METHOD'),
-      NATIVE_CALL   = new OpCode(0, 'NATIVE_CALL'),
-      NATIVE_REF    = new OpCode(1, 'NATIVE_REF'),
-      OBJECT        = new OpCode(0, 'OBJECT'),
-      POP           = new OpCode(0, 'POP'),
-      POPN          = new OpCode(1, 'POPN'),
-      PROPERTY      = new OpCode(1, 'PROPERTY'),
-      PUT           = new OpCode(0, 'PUT'),
-      REF           = new OpCode(1, 'REF'),
-      REGEXP        = new OpCode(1, 'REGEXP'),
-      RETURN        = new OpCode(0, 'RETURN'),
-      ROTATE        = new OpCode(1, 'ROTATE'),
-      RUN           = new OpCode(0, 'RUN'),
-      SAVE          = new OpCode(0, 'SAVE'),
-      SPREAD        = new OpCode(1, 'SPREAD'),
-      SPREAD_ARG    = new OpCode(0, 'SPREAD_ARG'),
-      STRING        = new OpCode(1, 'STRING'),
-      SUPER_CALL    = new OpCode(0, 'SUPER_CALL'),
-      SUPER_ELEMENT = new OpCode(0, 'SUPER_ELEMENT'),
-      SUPER_MEMBER  = new OpCode(1, 'SUPER_MEMBER'),
-      THIS          = new OpCode(0, 'THIS'),
-      THROW         = new OpCode(0, 'THROW'),
-      UNARY         = new OpCode(1, 'UNARY'),
-      UNDEFINED     = new OpCode(0, 'UNDEFINED'),
-      UPDATE        = new OpCode(1, 'UPDATE'),
-      UPSCOPE       = new OpCode(0, 'UPSCOPE'),
-      VAR           = new OpCode(1, 'VAR'),
-      WITH          = new OpCode(0, 'WITH');
+  var ARRAY            = new OpCode(0, 'ARRAY'),
+      ARG              = new OpCode(0, 'ARG'),
+      ARGS             = new OpCode(0, 'ARGS'),
+      ARRAY_DONE       = new OpCode(0, 'ARRAY_DONE'),
+      BINARY           = new OpCode(1, 'BINARY'),
+      BLOCK            = new OpCode(1, 'BLOCK'),
+      CALL             = new OpCode(0, 'CALL'),
+      CASE             = new OpCode(1, 'CASE'),
+      CLASS_DECL       = new OpCode(1, 'CLASS_DECL'),
+      CLASS_EXPR       = new OpCode(1, 'CLASS_EXPR'),
+      COMPLETE         = new OpCode(0, 'COMPLETE'),
+      CONST            = new OpCode(1, 'CONST'),
+      CONSTRUCT        = new OpCode(0, 'CONSTRUCT'),
+      DEBUGGER         = new OpCode(0, 'DEBUGGER'),
+      DEFAULT          = new OpCode(1, 'DEFAULT'),
+      DEFINE           = new OpCode(1, 'DEFINE'),
+      DUP              = new OpCode(0, 'DUP'),
+      ELEMENT          = new OpCode(0, 'ELEMENT'),
+      ENUM             = new OpCode(0, 'ENUM'),
+      FUNCTION         = new OpCode(2, 'FUNCTION'),
+      GET              = new OpCode(0, 'GET'),
+      IFEQ             = new OpCode(2, 'IFEQ'),
+      IFNE             = new OpCode(2, 'IFNE'),
+      INC              = new OpCode(0, 'INC'),
+      INDEX            = new OpCode(2, 'INDEX'),
+      ITERATE          = new OpCode(0, 'ITERATE'),
+      JUMP             = new OpCode(1, 'JUMP'),
+      LET              = new OpCode(1, 'LET'),
+      LITERAL          = new OpCode(1, 'LITERAL'),
+      LOG              = new OpCode(0, 'LOG'),
+      MEMBER           = new OpCode(1, 'MEMBER'),
+      METHOD           = new OpCode(3, 'METHOD'),
+      NATIVE_CALL      = new OpCode(0, 'NATIVE_CALL'),
+      NATIVE_REF       = new OpCode(1, 'NATIVE_REF'),
+      OBJECT           = new OpCode(0, 'OBJECT'),
+      POP              = new OpCode(0, 'POP'),
+      POPN             = new OpCode(1, 'POPN'),
+      PROPERTY         = new OpCode(1, 'PROPERTY'),
+      PUT              = new OpCode(0, 'PUT'),
+      REF              = new OpCode(1, 'REF'),
+      REGEXP           = new OpCode(1, 'REGEXP'),
+      RETURN           = new OpCode(0, 'RETURN'),
+      ROTATE           = new OpCode(1, 'ROTATE'),
+      RUN              = new OpCode(0, 'RUN'),
+      SAVE             = new OpCode(0, 'SAVE'),
+      SPREAD           = new OpCode(1, 'SPREAD'),
+      SPREAD_ARG       = new OpCode(0, 'SPREAD_ARG'),
+      STRING           = new OpCode(1, 'STRING'),
+      SUPER_CALL       = new OpCode(0, 'SUPER_CALL'),
+      SUPER_ELEMENT    = new OpCode(0, 'SUPER_ELEMENT'),
+      SUPER_MEMBER     = new OpCode(1, 'SUPER_MEMBER'),
+      TEMPLATE_ELEMENT = new OpCode(0, 'TEMPLATE_ELEMENT'),
+      THIS             = new OpCode(0, 'THIS'),
+      THROW            = new OpCode(0, 'THROW'),
+      UNARY            = new OpCode(1, 'UNARY'),
+      UNDEFINED        = new OpCode(0, 'UNDEFINED'),
+      UPDATE           = new OpCode(1, 'UPDATE'),
+      UPSCOPE          = new OpCode(0, 'UPSCOPE'),
+      VAR              = new OpCode(1, 'VAR'),
+      WITH             = new OpCode(0, 'WITH');
 
 
 
@@ -1218,11 +1221,77 @@ var assembler = (function(exports){
     });
   }
 
-  function TemplateElement(node){}
 
-  function TemplateLiteral(node){}
+// function GetTemplateCallSite(){
 
-  function TaggedTemplateExpression(node){}
+// }
+
+// function(r){
+//   for (var i=0, o=''; r[i]; o += r[i].raw + (++i === r.length ? '' : arguments[i]));
+//   return o;
+// }
+
+// function ArgumentListEvaluation(){
+//   var siteObj = GetTemplateCallSite(this.TemplateLiteral);
+
+// }
+
+
+
+  function TemplateElement(node){
+    record(STRING, intern(node.value.cooked));
+    record(DEFINE, 1);
+    record(POP);
+    record(ROTATE, 1);
+    record(ROTATE, 2);
+    record(STRING, intern(node.value.raw));
+    record(DEFINE, 1);
+    record(POP);
+    record(INC);
+    record(LOG);
+  }
+
+  function TemplateLiteral(node){
+    record(ARRAY);
+    record(POP);
+    record(DUP);
+    record(ARRAY);
+    record(POP);
+    record(DUP);
+    record(ROTATE, 2);
+    record(OBJECT);
+    record(STRING, intern('raw'));
+    record(ROTATE, 2);
+    record(ROTATE, 2);
+    record(DEFINE, 1);
+    record(POPN, 2);
+    record(STRING, intern('cooked'));
+    record(ROTATE, 2);
+    record(ROTATE, 2);
+    record(DEFINE, 1);
+    record(POPN, 2);
+    record(ROTATE, 2);
+    record(LITERAL, 0);
+    for (var i=0, element; element = node.quasis[i]; i++) {
+      recurse(element);
+    }
+    record(LOG);
+    record(DEBUGGER);
+    record(ARRAY_DONE);
+    record(ARRAY_DONE);
+  }
+
+  function TaggedTemplateExpression(node){
+    recurse(node.tag);
+    record(DUP);
+    record(GET);
+    record(ARGS);
+    recurse(node.quasi);
+    record(GET);
+    record(LOG);
+    //record(ARG);
+    //record(CALL);
+  }
 
   function ThisExpression(node){
     record(THIS);

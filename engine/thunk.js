@@ -33,6 +33,24 @@ var thunk = (function(exports){
   Desc.prototype.Enumerable = true;
   Desc.prototype.Writable = true;
 
+  var D = (function(d, i){
+    while (i--) {
+      d[i] = new Function('return function '+
+        ((i & 1) ? 'E' : '_') +
+        ((i & 2) ? 'C' : '_') +
+        ((i & 4) ? 'W' : '_') +
+        '(v){ this.Value = v }')();
+
+      d[i].prototype = {
+        Enumerable  : (i & 1) > 0,
+        Configurable: (i & 2) > 0,
+        Writable    : (i & 4) > 0
+      };
+    }
+    return d;
+  })([], 8);
+
+
   function DefineProperty(obj, key, val) {
     if (val && val.Completion) {
       if (val.Abrupt) {
@@ -61,12 +79,12 @@ var thunk = (function(exports){
 
   function Thunk(code){
     var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
-      CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT,
-      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, ITERATE, JUMP, LET,
+      CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT, DEFINE,
+      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INC, INDEX, ITERATE, JUMP, LET,
       LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
-      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, THIS,
-      THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
+      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, TEMPLATE_ELEMENT,
+      THIS, THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
 
     var thunk = this,
         ops = code.ops,
@@ -273,6 +291,23 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
+    function DEFINE(){
+      a = stack[--sp];
+      b = stack[sp - 1];
+      c = stack[sp - 2];
+      d = c.DefineOwnProperty(b, new D[ops[ip][0]](a));
+      if (d && d.Completion) {
+        if (d.Abrupt) {
+          error = d;
+          return ƒ;
+        } else {
+          d = d.value;
+        }
+      }
+      stack[sp++] = d;
+      return cmds[++ip];
+    }
+
     function DUP(){
       a = stack[sp - 1];
       stack[sp++] = a;
@@ -332,6 +367,11 @@ var thunk = (function(exports){
       } else {
         sp--;
       }
+      return cmds[++ip];
+    }
+
+    function INC(){
+      stack[sp - 1]++;
       return cmds[++ip];
     }
 
@@ -576,6 +616,16 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
+
+    function TEMPLATE_ELEMENT(){
+      a = stack[--sp];
+      b = stack[--sp];
+      c = stack[sp - 1];
+      c.DefineOwnProperty(b, new TemplateElement(a));
+      stack[sp++] = b + 1;
+      return cmds[++ip];
+    }
+
     function THIS(){
       a = context.ThisResolution();
       if (a && a.Completion) {
@@ -712,7 +762,6 @@ var thunk = (function(exports){
       prepare = normalPrepare;
       context = ctx;
       ctx = undefined;
-      context.realm.activate();
     }
 
     function pauseCleanup(){
