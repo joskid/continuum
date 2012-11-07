@@ -145,7 +145,7 @@ parseYieldExpression: true
         NewExpression: 'NewExpression',
         ObjectExpression: 'ObjectExpression',
         ObjectPattern: 'ObjectPattern',
-        Path: 'Path',
+        Path:  'Path',
         Program: 'Program',
         Property: 'Property',
         ReturnStatement: 'ReturnStatement',
@@ -197,11 +197,16 @@ parseYieldExpression: true
         IllegalBreak: 'Illegal break statement',
         IllegalReturn: 'Illegal return statement',
         IllegalYield: 'Illegal yield expression',
+        IllegalSpread: 'Illegal spread element',
         StrictModeWith:  'Strict mode code may not include a with statement',
         StrictCatchVariable:  'Catch variable may not be eval or arguments in strict mode',
         StrictVarName:  'Variable name may not be eval or arguments in strict mode',
         StrictParamName:  'Parameter name eval or arguments is not allowed in strict mode',
         StrictParamDupe: 'Strict mode function may not have duplicate parameter names',
+        ParameterAfterRestParameter: 'Rest parameter must be final parameter of an argument list',
+        ElementAfterSpreadElement: 'Spread must be the final element of an element list',
+        ObjectPatternAsRestParameter: 'Invalid rest parameter',
+        ObjectPatternAsSpread: 'Invalid spread argument',
         StrictFunctionName:  'Function name may not be eval or arguments in strict mode',
         StrictOctalLiteral:  'Octal literals are not allowed in strict mode.',
         StrictDelete:  'Delete of an unqualified identifier in strict mode.',
@@ -217,10 +222,7 @@ parseYieldExpression: true
         NoUnintializedConst: 'Const must be initialized',
         ComprehensionRequiresBlock: 'Comprehension must have at least one block',
         ComprehensionError:  'Comprehension Error',
-        EachNotAllowed:  'Each is not supported',
-        RestDuplicate: 'Duplicate rest parameters',
-        RestNotLast: 'Rest parameter must come last',
-        InvalidSpread: 'Invalid spread/rest parameter location'
+        EachNotAllowed:  'Each is not supported'
     };
 
     // See also tools/generate-unicode-regex.py.
@@ -660,37 +662,23 @@ parseYieldExpression: true
             };
         }
 
-        // Dot (.) can also start a floating-point number, hence the need
-        // to check the next character.
+        // Dot (.) can also start a floating-point number and ellipsis, hence
+        // the need to check the next character.
 
         ch2 = source[index + 1];
-        ch3 = source[index + 2];
-
-        if (ch1 === '.') {
-            if (ch2 === '.' && ch3 === '.') {
-                index += 3;
-                return {
-                    type: Token.Punctuator,
-                    value: '...',
-                    lineNumber: lineNumber,
-                    lineStart: lineStart,
-                    range: [start, index]
-                };
-            }
-
-            if (!isDecimalDigit(ch2)) {
-                return {
-                    type: Token.Punctuator,
-                    value: nextChar(),
-                    lineNumber: lineNumber,
-                    lineStart: lineStart,
-                    range: [start, index]
-                };
-            }
+        if (ch1 === '.' && !isDecimalDigit(ch2) && ch2 !== '.') {
+            return {
+                type: Token.Punctuator,
+                value: nextChar(),
+                lineNumber: lineNumber,
+                lineStart: lineStart,
+                range: [start, index]
+            };
         }
 
         // Peek more characters.
 
+        ch3 = source[index + 2];
         ch4 = source[index + 3];
 
         // 4-character punctuator: >>>=
@@ -708,7 +696,7 @@ parseYieldExpression: true
             }
         }
 
-        // 3-character punctuators: === !== >>> <<= >>=
+        // 3-character punctuators: === !== >>> <<= >>= ...
 
         if (ch1 === '=' && ch2 === '=' && ch3 === '=') {
             index += 3;
@@ -759,6 +747,17 @@ parseYieldExpression: true
             return {
                 type: Token.Punctuator,
                 value: '>>=',
+                lineNumber: lineNumber,
+                lineStart: lineStart,
+                range: [start, index]
+            };
+        }
+
+        if (ch1 === '.' && ch2 === '.' && ch3 === '.') {
+            index += 3;
+            return {
+                type: Token.Punctuator,
+                value: '...',
                 lineNumber: lineNumber,
                 lineStart: lineStart,
                 range: [start, index]
@@ -1483,12 +1482,12 @@ parseYieldExpression: true
             );
 
         if (typeof token.lineNumber === 'number') {
-            error = new Error(msg);
+            error = new Error('Line ' + token.lineNumber + ': ' + msg);
             error.index = token.range[0];
             error.lineNumber = token.lineNumber;
             error.column = token.range[0] - lineStart + 1;
         } else {
-            error = new Error(msg);
+            error = new Error('Line ' + lineNumber + ': ' + msg);
             error.index = index;
             error.lineNumber = lineNumber;
             error.column = index - lineStart + 1;
@@ -1649,30 +1648,6 @@ parseYieldExpression: true
         return isLeftHandSide(expr) || expr.type === Syntax.ObjectPattern || expr.type === Syntax.ArrayPattern;
     }
 
-    function isParameter(expr) {
-        var i;
-
-        if (expr.type === Syntax.Identifier) {
-            return true;
-        } else if (expr.type === Syntax.ObjectExpression) {
-            for (i = 0; i < expr.properties; i++) {
-                if (!isParameter(expr.properties[i].value)) {
-                    return false;
-                }
-            }
-            return true;
-        } else if (expr.type === Syntax.ArrayExpression) {
-            for (i = 0; i < expr.elements; i++) {
-                if (!isParameter(expr.elements[i])) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        return false;
-    }
-
     // 11.1.4 Array Initialiser
 
     function parseArrayInitialiser() {
@@ -1710,8 +1685,13 @@ parseYieldExpression: true
                 elements.push(null);
                 break;
             default:
-                elements.push(parseSpreadOrAssignmentExpression());
-                if (!(match(']') || matchKeyword('for') || matchKeyword('if'))) {
+                tmp = parseSpreadOrAssignmentExpression();
+                elements.push(tmp);
+                if (tmp && tmp.type === Syntax.SpreadElement) {
+                    if (!match(']')) {
+                        throwError({}, Messages.ElementAfterSpreadElement);
+                    }
+                } else if (!(match(']') || matchKeyword('for') || matchKeyword('if'))) {
                     expect(','); // this lexes.
                     possiblecomprehension = false;
                 }
@@ -1774,6 +1754,7 @@ parseYieldExpression: true
         };
     }
 
+
     function parsePropertyMethodFunction(options) {
         var token, previousStrict, tmp, method, firstRestricted, message;
 
@@ -1800,6 +1781,7 @@ parseYieldExpression: true
 
         return method;
     }
+
 
     function parseObjectPropertyKey() {
         var token = lex();
@@ -2008,19 +1990,17 @@ parseYieldExpression: true
     // 11.1.6 The Grouping Operator
 
     function parseGroupExpression() {
-        var expr, parenCount;
+        var expr;
 
         expect('(');
 
-        parenCount = ++state.parenthesizedCount;
+        ++state.parenthesizedCount;
 
-        state.allowArrowFunction = true;
+        state.allowArrowFunction = !state.allowArrowFunction;
         expr = parseExpression();
         state.allowArrowFunction = false;
 
-        if (parenCount !== state.parenthesizedCount && expr.type === 'ArrowFunctionExpression') {
-            --state.parenthesizedCount;
-        } else {
+        if (expr.type !== Syntax.ArrowFunctionExpression) {
             expect(')');
         }
 
@@ -2109,6 +2089,33 @@ parseYieldExpression: true
         return throwUnexpected(lex());
     }
 
+    // 11.2 Left-Hand-Side Expressions
+
+    function parseArguments() {
+        var args = [], arg;
+
+        expect('(');
+
+        if (!match(')')) {
+            while (index < length) {
+                arg = parseSpreadOrAssignmentExpression();
+                args.push(arg);
+
+                if (match(')')) {
+                    break;
+                } else if (arg.type === Syntax.SpreadElement) {
+                    throwError({}, Messages.ElementAfterSpreadElement);
+                }
+
+                expect(',');
+            }
+        }
+
+        expect(')');
+
+        return args;
+    }
+
     function parseSpreadOrAssignmentExpression() {
         if (match('...')) {
             lex();
@@ -2119,28 +2126,6 @@ parseYieldExpression: true
         } else {
             return parseAssignmentExpression();
         }
-    }
-
-    // 11.2 Left-Hand-Side Expressions
-
-    function parseArguments() {
-        var args = [];
-
-        expect('(');
-
-        if (!match(')')) {
-            while (index < length) {
-                args.push(parseSpreadOrAssignmentExpression());
-                if (match(')')) {
-                    break;
-                }
-                expect(',');
-            }
-        }
-
-        expect(')');
-
-        return args;
     }
 
     function parseNonComputedProperty() {
@@ -2266,9 +2251,8 @@ parseYieldExpression: true
     // 11.3 Postfix Expressions
 
     function parsePostfixExpression() {
-        var expr = parseLeftHandSideExpressionAllowCall();
-
-        var token = lookahead();
+        var expr = parseLeftHandSideExpressionAllowCall(),
+            token = lookahead();
 
         if (token.type !== Token.Punctuator) {
             return expr;
@@ -2578,86 +2562,15 @@ parseYieldExpression: true
             }
         } else if (expr.type === Syntax.SpreadElement) {
             reinterpretAsAssignmentBindingPattern(expr.argument);
-            if (expr.argument.type !== Syntax.Identifier && expr.argument.type !== Syntax.ArrayPattern) {
-                throwError({}, Messages.InvalidLHSInAssignment);
+            if (expr.argument.type === Syntax.ObjectPattern) {
+                throwError({}, Messages.ObjectPatternAsSpread);
             }
         } else {
-            if (expr.type !== Syntax.MemberExpression &&
-                expr.type !== Syntax.CallExpression &&
-                expr.type !== Syntax.NewExpression) {
+            if (expr.type !== Syntax.MemberExpression && expr.type !== Syntax.CallExpression && expr.type !== Syntax.NewExpression) {
                 throwError({}, Messages.InvalidLHSInAssignment);
             }
         }
     }
-
-    function reinterpretAsCoverFormalsList(expressions) {
-        var i, j, len, param, params, paramSet, options, rest, previousStrict;
-
-        params = [];
-        rest = null;
-
-        options = {
-            paramSet: {}
-        }
-
-        for (i = 0, len = expressions.length; i < len; i += 1) {
-            param = expressions[i];
-            if (param.type === Syntax.Identifier) {
-                params.push(param);
-                checkParam(options, param, param.name);
-            } else if (param.type === Syntax.SpreadElement) {
-                if (rest) {
-                    throwError({}, Messages.RestDuplicate);
-                }
-                if (i !== len - 1) {
-                    throwError({}, Messages.RestNotLast);
-                }
-                reinterpretAsDestructuredParameter(options, param.argument);
-                rest = param.argument;
-            } else if (param.type === Syntax.ObjectExpression || param.type === Syntax.ArrayExpression) {
-                reinterpretAsDestructuredParameter(options, param);
-                params.push(param);
-            } else {
-                return null;
-            }
-        }
-
-
-        if (options.firstRestricted) {
-            throwError(options.firstRestricted, options.message);
-        }
-        if (options.stricted) {
-            throwErrorTolerant(options.stricted, options.message);
-        }
-
-        return { params: params, rest: rest };
-    }
-
-    function checkParam(options, param, name) {
-        if (strict) {
-            if (isRestrictedWord(name)) {
-                options.stricted = param;
-                options.message = Messages.StrictParamName;
-            }
-            if (Object.prototype.hasOwnProperty.call(options.paramSet, name)) {
-                options.stricted = param;
-                options.message = Messages.StrictParamDupe;
-            }
-        } else if (!options.firstRestricted) {
-            if (isRestrictedWord(name)) {
-                options.firstRestricted = param;
-                options.message = Messages.StrictParamName;
-            } else if (isStrictModeReservedWord(name)) {
-                options.firstRestricted = param;
-                options.message = Messages.StrictReservedWord;
-            } else if (Object.prototype.hasOwnProperty.call(options.paramSet, name)) {
-                options.firstRestricted = param;
-                options.message = Messages.StrictParamDupe;
-            }
-        }
-        options.paramSet[name] = true;
-    }
-
 
 
     function reinterpretAsDestructuredParameter(options, expr) {
@@ -2681,12 +2594,50 @@ parseYieldExpression: true
                 }
             }
         } else if (expr.type === Syntax.Identifier) {
-            checkParam(options, expr, expr.name);
+            validateParam(options, expr, expr.name);
         } else {
             if (expr.type !== Syntax.MemberExpression) {
                 throwError({}, Messages.InvalidLHSInFormalsList);
             }
         }
+    }
+
+    function reinterpretAsCoverFormalsList(expressions) {
+        var i, len, param, params, options, rest;
+
+        params = [];
+        rest = null;
+        options = {
+            paramSet: {}
+        };
+
+        for (i = 0, len = expressions.length; i < len; i += 1) {
+            param = expressions[i];
+            if (param.type === Syntax.Identifier) {
+                params.push(param);
+                validateParam(options, param, param.name);
+            } else if (param.type === Syntax.ObjectExpression || param.type === Syntax.ArrayExpression) {
+                reinterpretAsDestructuredParameter(options, param);
+                params.push(param);
+            } else if (param.type === Syntax.SpreadElement) {
+                if (i !== len - 1) {
+                    throwError({}, Messages.ParameterAfterRestParameter);
+                }
+                reinterpretAsDestructuredParameter(options, param.argument);
+                rest = param.argument;
+            } else {
+                return null;
+            }
+        }
+
+        if (options.firstRestricted) {
+            throwError(options.firstRestricted, options.message);
+        }
+        if (options.stricted) {
+            throwErrorTolerant(options.stricted, options.message);
+        }
+
+        return { params: params, rest: rest };
     }
 
     function parseArrowFunctionExpression(options) {
@@ -2714,9 +2665,8 @@ parseYieldExpression: true
         };
     }
 
-
     function parseAssignmentExpression() {
-        var expr, token, oldParenthesizedCount, coverFormalsList, params;
+        var expr, token, params, oldParenthesizedCount, coverFormalsList;
 
         if (matchKeyword('yield')) {
             return parseYieldExpression();
@@ -2743,7 +2693,7 @@ parseYieldExpression: true
                 if (isRestrictedWord(expr.name)) {
                     throwError({}, Messages.StrictParamName);
                 }
-                return parseArrowFunctionExpression({ rest: null, params: [ expr ] });
+                return parseArrowFunctionExpression({ params: [ expr ], rest: null });
             }
         }
 
@@ -2774,11 +2724,9 @@ parseYieldExpression: true
     // 11.14 Comma Operator
 
     function parseExpression() {
-        var expr, sequence, coverFormalsList, rest, token;
-
+        var expr, sequence, coverFormalsList, spreadFound, token;
 
         expr = parseAssignmentExpression();
-        state.allowArrowFunction && (state.allowArrowFunction = isParameter(expr));
 
         if (match(',')) {
             sequence = {
@@ -2790,34 +2738,39 @@ parseYieldExpression: true
                 if (!match(',')) {
                     break;
                 }
+
                 lex();
                 expr = parseSpreadOrAssignmentExpression();
                 sequence.expressions.push(expr);
-                if (state.allowArrowFunction && expr.type === Syntax.SpreadElement) {
-                    rest = true;
+
+                if (expr.type === Syntax.SpreadElement) {
+                    spreadFound = true;
                     if (!match(')')) {
-                        throwError({}, Messages.InvalidSpread);
+                        throwError({}, Messages.ElementAfterSpreadElement);
                     }
                     break;
-                } else {
-                    state.allowArrowFunction && (state.allowArrowFunction = isParameter(expr));
                 }
             }
-
         }
-        if (state.allowArrowFunction) {
-            if (match(')') && lookahead2().value == '=>') {
+
+        if (state.allowArrowFunction && match(')')) {
+            token = lookahead2();
+            if (token.value === '=>') {
                 lex();
-                --state.parenthesizedCount;
-                coverFormalsList = reinterpretAsCoverFormalsList(sequence ? sequence.expressions : [ expr ]);
+
+                state.allowArrowFunction = false;
+                expr = sequence ? sequence.expressions : [ expr ];
+                coverFormalsList = reinterpretAsCoverFormalsList(expr);
                 if (coverFormalsList) {
                     return parseArrowFunctionExpression(coverFormalsList);
                 }
-            }
 
-            if (rest) {
-                throwError({}, Messages.InvalidSpread);
+                throwUnexpected(token);
             }
+        }
+
+        if (spreadFound) {
+            throwError({}, Messages.IllegalSpread);
         }
 
         return sequence || expr;
@@ -3111,6 +3064,11 @@ parseYieldExpression: true
                     type: Syntax.ExportDeclaration,
                     declaration: parseStatement()
                 };
+            case 'class':
+                return {
+                    type: Syntax.ExportDeclaration,
+                    declaration: parseClassDeclaration()
+                };
             }
             throwUnexpected(lex());
         }
@@ -3388,9 +3346,7 @@ parseYieldExpression: true
         oldInIteration = state.inIteration;
         state.inIteration = true;
 
-        if (opts !== undefined && opts.ignore_body) {
-            // no body
-        } else {
+        if (!(opts !== undefined && opts.ignore_body)) {
             body = parseStatement();
         }
 
@@ -3941,6 +3897,33 @@ parseYieldExpression: true
         };
     }
 
+
+    function validateParam(options, param, name) {
+        if (strict) {
+            if (isRestrictedWord(name)) {
+                options.stricted = param;
+                options.message = Messages.StrictParamName;
+            }
+            if (Object.prototype.hasOwnProperty.call(options.paramSet, name)) {
+                options.stricted = param;
+                options.message = Messages.StrictParamDupe;
+            }
+        } else if (!options.firstRestricted) {
+            if (isRestrictedWord(name)) {
+                options.firstRestricted = param;
+                options.message = Messages.StrictParamName;
+            } else if (isStrictModeReservedWord(name)) {
+                options.firstRestricted = param;
+                options.message = Messages.StrictReservedWord;
+            } else if (Object.prototype.hasOwnProperty.call(options.paramSet, name)) {
+                options.firstRestricted = param;
+                options.message = Messages.StrictParamDupe;
+            }
+        }
+        options.paramSet[name] = true;
+    }
+
+
     function parseParam(options) {
         var token, rest, param;
 
@@ -3955,16 +3938,19 @@ parseYieldExpression: true
             reinterpretAsDestructuredParameter(options, param);
         } else if (match('{')) {
             if (rest) {
-                throwError({}, Messages.InvalidLHSInFormalsList);
+                throwError({}, Messages.ObjectPatternAsRestParameter);
             }
             param = parseObjectInitialiser();
             reinterpretAsDestructuredParameter(options, param);
         } else {
             param = parseVariableIdentifier();
-            checkParam(options, token, token.value);
+            validateParam(options, token, token.value);
         }
 
         if (rest) {
+            if (!match(')')) {
+                throwError({}, Messages.ParameterAfterRestParameter);
+            }
             options.rest = param;
             return false;
         }
@@ -3972,6 +3958,7 @@ parseYieldExpression: true
         options.params.push(param);
         return !match(')');
     }
+
 
     function parseParams(firstRestricted) {
         var options;
@@ -3999,8 +3986,9 @@ parseYieldExpression: true
         return options;
     }
 
+
     function parseFunctionDeclaration() {
-        var id, body, token, stricted, tmp, firstRestricted, message, previousStrict, previousYieldAllowed, generator, expression;
+        var id, body, token, tmp, firstRestricted, message, previousStrict, previousYieldAllowed, generator, expression;
 
         expectKeyword('function');
 
@@ -4028,7 +4016,6 @@ parseYieldExpression: true
         }
 
         tmp = parseParams(firstRestricted);
-        stricted = tmp.stricted;
         firstRestricted = tmp.firstRestricted;
         if (tmp.message) {
             message = tmp.message;
@@ -4045,8 +4032,8 @@ parseYieldExpression: true
         if (strict && firstRestricted) {
             throwError(firstRestricted, message);
         }
-        if (strict && stricted) {
-            throwErrorTolerant(stricted, message);
+        if (strict && tmp.stricted) {
+            throwErrorTolerant(tmp.stricted, message);
         }
         if (yieldAllowed && !yieldFound) {
             throwError({}, Messages.NoYieldInGenerator);
@@ -4067,7 +4054,7 @@ parseYieldExpression: true
     }
 
     function parseFunctionExpression() {
-        var token, id = null, stricted, firstRestricted, message, tmp, body, previousStrict, previousYieldAllowed, paramSet, generator, expression;
+        var token, id = null, firstRestricted, message, tmp, body, previousStrict, previousYieldAllowed, generator, expression;
 
         expectKeyword('function');
 
@@ -4097,7 +4084,6 @@ parseYieldExpression: true
         }
 
         tmp = parseParams(firstRestricted);
-        stricted = tmp.stricted;
         firstRestricted = tmp.firstRestricted;
         if (tmp.message) {
             message = tmp.message;
@@ -4114,8 +4100,8 @@ parseYieldExpression: true
         if (strict && firstRestricted) {
             throwError(firstRestricted, message);
         }
-        if (strict && stricted) {
-            throwErrorTolerant(stricted, message);
+        if (strict && tmp.stricted) {
+            throwErrorTolerant(tmp.stricted, message);
         }
         if (yieldAllowed && !yieldFound) {
             throwError({}, Messages.NoYieldInGenerator);
@@ -4765,24 +4751,25 @@ parseYieldExpression: true
     }
 
     function trackGroupExpression() {
-        var marker, expr, parenCount;
+        var marker, expr;
 
         skipComment();
         marker = createLocationMarker();
         expect('(');
 
-        parenCount = ++state.parenthesizedCount;
-        state.allowArrowFunction = true;
+        ++state.parenthesizedCount;
+
+        state.allowArrowFunction = !state.allowArrowFunction;
         expr = parseExpression();
         state.allowArrowFunction = false;
 
-        if (parenCount === state.parenthesizedCount) {
+        if (expr.type === 'ArrowFunctionExpression') {
+            marker.end();
+            marker.apply(expr);
+        } else {
             expect(')');
             marker.end();
             marker.applyGroup(expr);
-        } else if (expr.type === 'ArrowFunctionExpression') {
-            marker.end();
-            marker.apply(expr);
         }
 
         return expr;
@@ -5012,6 +4999,7 @@ parseYieldExpression: true
             extra.parseForVariableDeclaration = parseForVariableDeclaration;
             extra.parseFunctionDeclaration = parseFunctionDeclaration;
             extra.parseFunctionExpression = parseFunctionExpression;
+            extra.parseParam = parseParam;
             extra.parseGlob = parseGlob;
             extra.parseImportDeclaration = parseImportDeclaration;
             extra.parseImportSpecifier = parseImportSpecifier;
@@ -5024,7 +5012,7 @@ parseYieldExpression: true
             extra.parseNonComputedProperty = parseNonComputedProperty;
             extra.parseObjectProperty = parseObjectProperty;
             extra.parseObjectPropertyKey = parseObjectPropertyKey;
-            extra.parseParams = parseParams;
+            extra.parseParam = parseParam;
             extra.parsePath = parsePath;
             extra.parsePostfixExpression = parsePostfixExpression;
             extra.parsePrimaryExpression = parsePrimaryExpression;
@@ -5064,6 +5052,7 @@ parseYieldExpression: true
             parseForVariableDeclaration = wrapTracking(extra.parseForVariableDeclaration);
             parseFunctionDeclaration = wrapTracking(extra.parseFunctionDeclaration);
             parseFunctionExpression = wrapTracking(extra.parseFunctionExpression);
+            parseParam = wrapTracking(extra.parseParam);
             parseGlob = wrapTracking(extra.parseGlob);
             parseImportDeclaration = wrapTracking(extra.parseImportDeclaration);
             parseImportSpecifier = wrapTracking(extra.parseImportSpecifier);
@@ -5076,16 +5065,16 @@ parseYieldExpression: true
             parseNonComputedProperty = wrapTracking(extra.parseNonComputedProperty);
             parseObjectProperty = wrapTracking(extra.parseObjectProperty);
             parseObjectPropertyKey = wrapTracking(extra.parseObjectPropertyKey);
-            parseParams = wrapTracking(extra.parseParams);
+            parseParam = wrapTracking(extra.parseParam);
             parsePath = wrapTracking(extra.parsePath);
             parsePostfixExpression = wrapTracking(extra.parsePostfixExpression);
             parsePrimaryExpression = wrapTracking(extra.parsePrimaryExpression);
             parseProgram = wrapTracking(extra.parseProgram);
             parsePropertyFunction = wrapTracking(extra.parsePropertyFunction);
-            parseSpreadOrAssignmentExpression = wrapTracking(extra.parseSpreadOrAssignmentExpression);
             parseTemplateElement = wrapTracking(extra.parseTemplateElement);
             parseTemplateLiteral = wrapTracking(extra.parseTemplateLiteral);
             parseRelationalExpression = wrapTracking(extra.parseRelationalExpression);
+            parseSpreadOrAssignmentExpression = wrapTracking(extra.parseSpreadOrAssignmentExpression);
             parseStatement = wrapTracking(extra.parseStatement);
             parseShiftExpression = wrapTracking(extra.parseShiftExpression);
             parseSwitchCase = wrapTracking(extra.parseSwitchCase);
@@ -5136,6 +5125,7 @@ parseYieldExpression: true
             parseForVariableDeclaration = extra.parseForVariableDeclaration;
             parseFunctionDeclaration = extra.parseFunctionDeclaration;
             parseFunctionExpression = extra.parseFunctionExpression;
+            parseParam = extra.parseParam;
             parseGlob = extra.parseGlob;
             parseImportDeclaration = extra.parseImportDeclaration;
             parseImportSpecifier = extra.parseImportSpecifier;
@@ -5151,7 +5141,6 @@ parseYieldExpression: true
             parseNonComputedProperty = extra.parseNonComputedProperty;
             parseObjectProperty = extra.parseObjectProperty;
             parseObjectPropertyKey = extra.parseObjectPropertyKey;
-            parseParams = extra.parseParams;
             parsePath = extra.parsePath;
             parsePostfixExpression = extra.parsePostfixExpression;
             parsePrimaryExpression = extra.parsePrimaryExpression;
@@ -7915,8 +7904,6 @@ exports.assembler = (function(exports){
     } else {
       record(UNDEFINED);
     }
-
-    record(LOG);
 
     record(RETURN);
   }
@@ -14624,6 +14611,7 @@ exports.debug = (function(exports){
   }
 
   void function(){
+    return;
     if (typeof Proxy !== 'object' || typeof require !== 'function') return;
 
     var util = require('util'),
@@ -14806,8 +14794,6 @@ exports.builtins.WeakMap = "function WeakMap(iterable){\n  var weakmap;\n  if ($
 exports.builtins.global = "$__defineProps(this, {\n  Math: $__MathCreate(),\n  StopIteration: $__StopIteration,\n  clearInterval(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  clearTimeout(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  console: {\n    log(...values){\n      var text = '';\n      for (var i=0; i < values.length; i++) {\n        text += $__ToString(values[i]);\n      }\n      $__Signal('write', [text + '\\n', '#fff']);\n    }\n  },\n  decodeURI: $__decodeURI,\n  decodeURIComponent: $__decodeURIComponent,\n  encodeURI: $__encodeURI,\n  encodeURIComponent: $__encodeURIComponent,\n  escape: $__escape,\n  eval: $__eval,\n  isFinite(number){\n    number = $__ToNumber(number);\n    return number === number && number !== Infinity && number !== -Infinity;\n  },\n  isNaN(number){\n    number = $__ToNumber(number);\n    return number !== number;\n  },\n  parseInt: $__parseInt,\n  parseFloat: $__parseFloat,\n  setInterval(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, true);\n  },\n  setTimeout(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, false);\n  },\n  stdout: {\n    write(text, color){\n      $__Signal('write', [text, color]);\n    },\n    clear(){\n      $__Signal('clear');\n    },\n    backspace(count){\n      $__Signal('backspace', $_ToInteger(count));\n    }\n  }\n});\n\n\n";
 
 
-
-exports.builtins.modules = "";
 
 return (function(Realm){
   function continuum(listener){
