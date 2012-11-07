@@ -2601,12 +2601,12 @@ var runtime = (function(GLOBAL, exports, undefined){
     inherit($Error, $Object, {
       NativeBrand: BRANDS.NativeError
     }, [
-      function setOrigin(filename, type){
+      function setOrigin(filename, kind){
         if (filename) {
           setDirect(this, 'filename', filename);
         }
-        if (type) {
-          setDirect(this, 'type', type);
+        if (kind) {
+          setDirect(this, 'kind', kind);
         }
       },
       function setCode(loc, code){
@@ -3226,6 +3226,14 @@ var runtime = (function(GLOBAL, exports, undefined){
     hasOwnDirect: hasOwnDirect,
     hasDirect: hasDirect,
     setDirect: setDirect,
+    updateAttrDirect: function(obj, key, attr){
+      var prop = obj.properties.getProperty(key);
+      if (prop) {
+        prop[2] &= attr;
+        return true;
+      }
+      return false;
+    },
     ToObject: ToObject,
     ToString: ToString,
     ToNumber: ToNumber,
@@ -4001,3 +4009,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   return exports;
 })((0,eval)('this'), typeof module !== 'undefined' ? module.exports : {});
+
+
+
+

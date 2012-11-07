@@ -66,6 +66,19 @@ $__setLength = function setLength(f, length){
   }
 };
 
+
+var hidden = { enumerable: false };
+
+$__hideEverything = function hideEverything(o){
+  $__Enumerate(o, false, true).forEach(function(k){
+    $__updateAttrDirect(o, k, ~E__);
+  });
+  if (typeof o === 'function') {
+    hideEverything(o.prototype);
+  }
+  return o;
+};
+
 $__EmptyClass = function constructor(...args){
   super(...args);
 };

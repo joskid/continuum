@@ -443,7 +443,7 @@ var debug = (function(exports){
       },
       function origin(){
         var file = this.getValue('filename') || '',
-            type = this.getValue('type') || '';
+            type = this.getValue('kind') || '';
 
         return file && type ? type + ' ' + file : type + file;
       },

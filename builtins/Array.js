@@ -327,15 +327,15 @@ var kinds = {
   'sparse:key+value': 7
 };
 
-function ArrayIterator(array, kind){
-  array = $__ToObject(array);
-  $__SetInternal(this, ARRAY, array);
-  $__SetInternal(this, INDEX, 0);
-  $__SetInternal(this, KIND, kinds[kind]);
-  this.next = () => next.call(this);
-}
+class ArrayIterator {
+  constructor(array, kind){
+    array = $__ToObject(array);
+    $__SetInternal(this, ARRAY, array);
+    $__SetInternal(this, INDEX, 0);
+    $__SetInternal(this, KIND, kinds[kind]);
+    this.next = () => next.call(this);
+  }
 
-$__defineProps(ArrayIterator.prototype, {
   next(){
     if (!$__IsObject(this)) {
       throw $__Exception('called_on_non_object', ['ArrayIterator.prototype.next']);
@@ -372,10 +372,13 @@ $__defineProps(ArrayIterator.prototype, {
       return value;
     }
     return key;
-  },
+  }
+
   iterator(){
     return this;
   }
-});
+}
+
+$__hideEverything(ArrayIterator);
 
 var next = ArrayIterator.prototype.next;
