@@ -12,7 +12,7 @@ return (function(Realm){
 })(exports.runtime.Realm);
 
 }).apply(this, function(){
-  var exports = { builtins: {} };
+  var exports = { builtins: {}, modules: {} };
 
   function require(request){
     request = request.slice(request.lastIndexOf('/') + 1);

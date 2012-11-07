@@ -76,7 +76,6 @@ var assembler = (function(exports){
       IFNE          = new OpCode(2, 'IFNE'),
       INDEX         = new OpCode(2, 'INDEX'),
       ITERATE       = new OpCode(0, 'ITERATE'),
-      JSR           = new OpCode(2, 'JSR'),
       JUMP          = new OpCode(1, 'JUMP'),
       LET           = new OpCode(1, 'LET'),
       LITERAL       = new OpCode(1, 'LITERAL'),
@@ -746,7 +745,7 @@ var assembler = (function(exports){
         recurse(item);
       }
 
-      record(INDEX, +empty, +spread);
+      record(INDEX, empty, spread);
     }
     record(ARRAY_DONE);
   }

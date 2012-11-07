@@ -12,7 +12,7 @@ function Set(iterable){
     }
   }
   if ($__HasInternal(set, 'SetData')) {
-    throw $__Exception('double_initialization', ['Set'])
+    throw $__Exception('double_initialization', ['Set']);
   }
 
   if (iterable !== undefined) {

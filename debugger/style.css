@@ -120,7 +120,7 @@ h1, h2
       .ƒbranch.ƒexpanded
       { }
       .ƒtree:before
-      { content: '{'; color: #fff; position: absolute; left: 0 }
+      { content: '{'; color: #fff; position: absolute; left: 0; }
       .ƒtree > :last-child:after
       { content: '}'; color: #fff; position: absolute; right: 0; bottom: 0; }
     .ƒleaf
@@ -164,7 +164,7 @@ h1, h2
 
 .ƒbutton
 { border: 0; background: none; -webkit-appearence: none; -moz-appearence: none; font-family: 'Hammersmith One';
-  font-weight: bold; appearence: none; display: inline-block; cursor: pointer;}
+  font-weight: bold; appearence: none; display: inline-block; cursor: pointer ;}
 
 .ƒunpause
 { position: absolute; top: 50px; right: 50px; padding: .3em 1em;
@@ -323,8 +323,12 @@ h1, h2
 .ƒConstructor    { color: #0af } /* hsl(200, 100%, 50%) */
 .ƒOperator       { color: #0ff } /* hsl(180, 100%, 50%) */
 .ƒException      { color: #f06 } /* hsl(336, 100%, 50%) */
-.ƒCode           { color: #af0 }
-.ƒScope          { color: #ff0 }
+.ƒCode           { color: #6f0 }
+.ƒOrigin         { color: #0f0 }
+.ƒLocation       { color: #aaa }
+.ƒLine           { color: #bfb }
+.ƒColumn         { color: #f09 }
+.ƒUncaught       { color: #bfb }
 
 .ƒParams         { color: #08f } /* hsl(208, 100%, 50%) */
 .ƒParams:before  { color: #8cf; content: '('; } /* hsl(206, 100%, 77%) */
@@ -348,7 +352,9 @@ h1, h2
 .ƒParams    { font-style: italic }
 .ƒException { font-weight: bold }
 
-.ƒCode  { white-space: pre-wrap; }
+.ƒLocation { font-size: 70%  }
+.ƒOrigin   { font-style: italic }
+.ƒCode     { white-space: pre-wrap; }
 
 
 

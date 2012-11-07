@@ -2601,12 +2601,12 @@ var runtime = (function(GLOBAL, exports, undefined){
     inherit($Error, $Object, {
       NativeBrand: BRANDS.NativeError
     }, [
-      function setOrigin(filename, scopename){
+      function setOrigin(filename, type){
         if (filename) {
           setDirect(this, 'filename', filename);
         }
-        if (scopename) {
-          setDirect(this, 'scope', scopename);
+        if (type) {
+          setDirect(this, 'type', type);
         }
       },
       function setCode(loc, code){
@@ -3279,6 +3279,19 @@ var runtime = (function(GLOBAL, exports, undefined){
     EnumerateHidden: function(object){
       return ownKeys(object.hiddens);
     },
+    Type: function(o){
+      if (o === null) {
+        return 'Null';
+      } else {
+        switch (typeof o) {
+          case UNDEFINED: return 'Undefined';
+          case NUMBER:    return 'Number';
+          case STRING:    return 'String';
+          case BOOLEAN:   return 'Boolean';
+          case OBJECT:    return 'Object';
+        }
+      }
+    },
     Exception: function(type, args){
       return MakeException(type, toInternalArray(args));
     },
@@ -3481,19 +3494,23 @@ var runtime = (function(GLOBAL, exports, undefined){
         timers[id] = null;
       }
     },
+    Quote: (function(){
+      var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+          escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+          meta = { '\b': '\\b', '\t': '\\t', '\n': '\\n', '\f': '\\f', '\r': '\\r', '"' : '\\"', '\\': '\\\\' };
+
+      function escaper(a) {
+        var c = meta[a];
+        return typeof c === 'string' ? c : '\\u'+('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+      }
+
+      return function(string){
+        escapable.lastIndex = 0;
+        return '"'+string.replace(escapable, escaper)+'"';
+      };
+    })(),
     JSONCreate: function(){
-      var json = new $JSON;
-      defineDirect(json, 'stringify', new $NativeFunction({
-        call: function(){},
-        name: 'stringify',
-        length: 3
-      }), _CW);
-      defineDirect(json, 'parse', new $NativeFunction({
-        call: function(){},
-        name: 'parse',
-        length: 2
-      }), _CW);
-      return json;
+      return new $JSON;
     },
     MathCreate: (function(Math){
       var consts = ['E', 'LN2', 'LN10', 'LOG2E', 'LOG10E', 'PI', 'SQRT1_2', 'SQRT2'],
@@ -3695,12 +3712,13 @@ var runtime = (function(GLOBAL, exports, undefined){
     WeakMapHas: wrapWeakMapFunction('has')
   };
 
-  function parse(src, options){
+  function parse(src, origin, type, options){
     try {
       return esprima.parse(src, options || parse.options);
     } catch (e) {
       var err = new $Error('SyntaxError', undefined, e.message);
       err.setCode({ start: { line: e.lineNumber, column: e.column } }, src);
+      err.setOrigin(origin, type);
       return new AbruptCompletion('throw', err);
     }
   }
@@ -3717,8 +3735,10 @@ var runtime = (function(GLOBAL, exports, undefined){
     if (options instanceof Script)
       return options;
 
+    this.type = 'script';
+
     if (typeof options === FUNCTION) {
-      this.type = 'reassembled function';
+      this.type = 'recompiled function';
       if (!utility.fname(options)) {
         options = {
           filename: 'unnamed',
@@ -3738,14 +3758,16 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     if (options.natives) {
       this.natives = true;
+      this.type = 'native';
     }
     if (options.eval) {
       this.eval = true;
+      this.type = 'eval';
     }
 
     if (!isObject(options.ast) && typeof options.source === STRING) {
       this.source = options.source;
-      this.ast = parse(options.source);
+      this.ast = parse(options.source, options.filename, this.type);
       if (this.ast.Abrupt) {
         this.error = this.ast;
         this.ast = null;
@@ -3763,7 +3785,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   function NativeScript(source, location){
     Script.call(this, {
       source: '(function(global, undefined){\n'+source+'\n})(this)',
-      filename: location,
+      filename: location +'.js',
       natives: true
     });
   }
@@ -3772,11 +3794,39 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
+
+
+  function initializeRealm(realm){
+    if (realm.initialized) {
+      return realm;
+    }
+
+    builtins || (builtins = require('../builtins'));
+    activate(realm);
+    realm.state = 'initializing';
+    realm.initialized = true;
+    realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, new NativeScript('void 0', 'mutation scope'));
+
+    for (var k in builtins) {
+      var script = new NativeScript(builtins[k], k);
+      if (script.error) {
+        realm.emit(script.error.type, script.error);
+      } else {
+        realm.evaluate(script, false);
+      }
+    }
+
+    deactivate(realm);
+    realm.state = 'idle';
+    return realm;
+  }
+
   function prepareToRun(realm, bytecode){
+    initializeRealm(realm);
     ExecutionContext.push(new ExecutionContext(null, realm.globalEnv, realm, bytecode));
     var status = TopLevelDeclarationInstantiation(bytecode);
     if (status && status.Abrupt) {
-      realm.emit(status.type, status.value);
+      realm.emit(status.type, status);
       return status;
     }
   }
@@ -3804,7 +3854,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       realm.executing = null;
       realm.state = 'idle';
       if (result && result.Abrupt) {
-        realm.emit(result.type, result.value);
+        realm.emit(result.type, result);
       } else {
         realm.emit('complete', result);
       }
@@ -3865,12 +3915,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       context = null,
       intrinsics = null;
 
-
-
   function Realm(listener){
     Emitter.call(this);
     realms.push(this);
-    this.state = 'initializing';
     this.active = false;
     this.scripts = [];
     this.natives = new Intrinsics(this);
@@ -3895,25 +3942,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
 
-    if (!builtins) {
-      builtins = require('../builtins');
-    }
-
+    this.state = 'idle';
     listener && this.on('*', listener);
 
-    activate(this);
-    this.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, new NativeScript('void 0', 'mutation scope'));
-    for (var k in builtins) {
-      var script = new NativeScript(builtins[k], k);
-      if (script.error) {
-        this.emit(script.error.type, script.error.value);
-      } else {
-        this.evaluate(script, !listener);
-      }
-    }
-    deactivate(this);
-
-    this.state = 'idle';
     if (!realm) {
       activate(this);
     }
@@ -3932,7 +3963,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         var script = new Script(subject);
 
         if (script.error) {
-          this.emit(script.error.type, script.error.value);
+          this.emit(script.error.type, script.error);
           return script.error;
         }
 

@@ -44,12 +44,16 @@ var thunk = (function(exports){
     return obj.DefineOwnProperty(key, new Desc(val), false);
   }
 
+  var log = false;
 
 
   function instructions(ops, opcodes){
     var out = [];
     for (var i=0; i < ops.length; i++) {
       out[i] = opcodes[+ops[i].op];
+      if (out[i].name === 'LOG') {
+        out.log = true;
+      }
     }
     return out;
   }
@@ -58,7 +62,7 @@ var thunk = (function(exports){
   function Thunk(code){
     var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
       CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT,
-      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, ITERATE, JSR, JUMP, LET,
+      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, ITERATE, JUMP, LET,
       LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
       SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, THIS,
@@ -70,7 +74,7 @@ var thunk = (function(exports){
 
 
     function ƒ(){
-      for (var i = 0, entry; entry = code.entrances[i]; i++) {
+      for (var i = 0, entry; entry = code.transfers[i]; i++) {
         if (entry.begin < ip && ip <= entry.end) {
           if (entry.type === ENTRY.ENV) {
             trace(context.popBlock());
@@ -376,17 +380,17 @@ var thunk = (function(exports){
       return cmds[ip];
     }
 
-    function JSR(){
-      return cmds[++ip];
-    }
-
     function LET(){
       context.initializeBindings(ops[ip][0], stack[--sp], true);
       return cmds[++ip];
     }
 
     function LOG(){
-      console.log(sp, stack);
+      console.log({
+        stackPosition: sp,
+        stack: stack,
+        history: history
+      });
       return cmds[++ip];
     }
 
@@ -405,7 +409,7 @@ var thunk = (function(exports){
     }
 
     function METHOD(){
-      context.defineMethod(ops[ip][0], stack[sp - 1], code.lookup(ops[ip][2]), ops[ip][1]);
+      a = context.defineMethod(ops[ip][0], stack[sp - 1], code.lookup(ops[ip][2]), ops[ip][1]);
       if (a && a.Abrupt) {
         error = a;
         return ƒ;
@@ -414,20 +418,7 @@ var thunk = (function(exports){
     }
 
     function NATIVE_CALL(){
-      a = stack[--sp];
-      b = stack[--sp];
-      c = stack[--sp];
-      d = context.EvaluateCall(c, b, a);
-      if (d && d.Completion) {
-        if (d.Abrupt) {
-          error = d;
-          return ƒ;
-        } else {
-          d = d.value;
-        }
-      }
-      stack[sp++] = d;
-      return cmds[++ip];
+      return CALL();
     }
 
     function NATIVE_REF(){
@@ -571,15 +562,6 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
-    function SUPER_GUARD(){
-      a = context.SuperReference(null);
-      if (a && a.Abrupt) {
-        error = a;
-        return ƒ;
-      }
-      return cmds[++ip];
-    }
-
     function SUPER_MEMBER(){
       a = context.SuperReference(code.lookup(ops[ip][0]));
       if (a && a.Completion) {
@@ -690,7 +672,16 @@ var thunk = (function(exports){
 
     function normalExecute(){
       var f = cmds[ip];
-      while (f) f = f();
+      if (log) {
+        var ips = 0;
+        history = [];
+        while (f) {
+          history[ips++] = [ip, ops[ip]];
+          f = f();
+        }
+      } else {
+        while (f) f = f();
+      }
     }
 
     function normalCleanup(){
@@ -702,9 +693,13 @@ var thunk = (function(exports){
     function instrumentedExecute(){
       var f = cmds[ip],
           realm = context.realm;
+          ips = 0;
+
+      history = [];
 
       while (f) {
         if (f) {
+          history[ips++] = [ip, ops[ip]];
           realm.emit('op', [ops[ip], stack[sp - 1]]);
           f = f();
         }
@@ -737,13 +732,16 @@ var thunk = (function(exports){
       } else {
         execute = instrumentedExecute;
       }
+      var prevLog = log;
+      log = log || cmds.log;
       prepare();
       execute();
+      if (log && !prevLog) log = false;
       return cleanup();
     }
 
 
-    var completion, stack, ip, sp, error, a, b, c, d, ctx, context, stacktrace;
+    var completion, stack, ip, sp, error, a, b, c, d, ctx, context, stacktrace, history;
 
     var prepare = normalPrepare,
         execute = normalExecute,

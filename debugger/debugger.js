@@ -371,7 +371,7 @@ if ('dispatchEvent' in document.body) {
           this.removeEventListener(event, bound, false);
           return listener.call(receiver, e);
         }
-        this.addEventListener(event, bound, false);
+        this.element.addEventListener(event, bound, false);
         return this;
       },
       function emit(event, data){
@@ -1494,6 +1494,10 @@ var Instructions = (function(){
 
   inherit(Instructions, Component, [
     function addInstruction(op){
+      if (this.children.length > 100) {
+        this.element.removeChild(this.children[0].element);
+        this.children = this.children.slice(1);
+      }
       this.append(new Instruction(op[0], op[1]))
       this.element.scrollTop = this.element.scrollHeight;
     }
@@ -1938,15 +1942,25 @@ var ThrownBranch = (function(){
   creator(ThrownBranch);
   inherit(ThrownBranch, Branch, [
     function createLabel(){
-      var label = new Label('Exception');
-      label.append(new Div('Uncaught Exception'));
-      label.append(new Div(this.mirror.getError()));
+      var location = new Div('.Location');
+      location.append(new Span('Uncaught Exception ', 'Uncaught'));
+      location.append(new Span(' in '));
+      location.append(new Span(this.mirror.origin(), 'Origin'));
+      location.append(new Span(' at '));
+      location.append(new Span(this.mirror.getValue('line'), 'Line'));
+      var label = new Div();
+      label.append(location);
+      label.append(new Div(this.mirror.getError(), 'Exception'));
       return label;
     },
     function createPreview(){
+
+      var code = new Component('pre');
+      code.addClass('Code');
+      code.text(this.mirror.getValue('code'));
+
       var label = new Div('.error');
-      label.append(new Div('Line ' + this.mirror.getValue('line') + ' Column '+this.mirror.getValue('column')));
-      label.append(new Component('pre')).text(this.mirror.getValue('code'));
+      label.append(code);
       label.refresh = function(){};
       return label;
     },
@@ -2159,9 +2173,14 @@ void function(){
 
     realm = new Realm;
 
-    realm.on('op', function(op){
-      ops.push(op);
+    realm.on('throw', function(err){
+      console.log(err);
+      inspector.append(new Result(renderer.render(err)));
+      inspector.element.scrollTop = inspector.element.scrollHeight;
+      inspector.refresh();
     });
+
+    run('this');
 
     realm.on('write', function(args){
       stdout.write.apply(stdout, args);
@@ -2194,9 +2213,12 @@ void function(){
       run(evt.value);
     });
 
-    run('this');
+    setTimeout(function(){
+      realm.on('op', function(op){
+        ops.push(op);
+      });
+    }, 100);
   }
-
   setTimeout(createRealm, 1);
 }();
 

@@ -438,6 +438,12 @@ var debug = (function(exports){
         }
         return this.getValue('name') + ': ' + this.getValue('message');
       },
+      function origin(){
+        var file = this.getValue('filename') || '',
+            type = this.getValue('type') || '';
+
+        return file && type ? type + ' ' + file : type + file;
+      },
       function trace(){
         return this.subject.trace;
       },
