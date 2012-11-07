@@ -30,27 +30,37 @@ $__defineProps(Array, {
 });
 
 $__defineProps(Array.prototype, {
-  filter(callback){
-    if (this == null) {
-      throw $__Exception('called_on_null_or_undefined', ['Array.prototype.filter']);
-    }
-
+  every(callback, context){
     var array = $__ToObject(this),
-        length = $__ToUint32(this.length);
+        len = $__ToUint32(array.length),
+        result = [];
 
-    var receiver = this;
-
-    if (typeof receiver !== 'object') {
-      receiver = $__ToObject(receiver);
+    if (typeof callback !== 'function') {
+      throw $__Exception('callback_must_be_callable', ['Array.prototype.every']);
     }
 
-    var result = [],
+    for (var i = 0; i < len; i++) {
+      if (i in array && !$__CallFunction(callback, context, [array[i], i, array])) {
+        return false;
+      }
+    }
+
+    return true;
+  },
+  filter(callback, context){
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length),
+        result = [],
         count = 0;
 
-    for (var i = 0; i < length; i++) {
+    if (typeof callback !== 'function') {
+      throw $__Exception('callback_must_be_callable', ['Array.prototype.filter']);
+    }
+
+    for (var i = 0; i < len; i++) {
       if (i in array) {
         var element = array[i];
-        if ($__CallFunction(callback, receiver, [element, i, array])) {
+        if ($__CallFunction(callback, context, [element, i, array])) {
           result[count++] = element;
         }
       }
@@ -59,116 +69,226 @@ $__defineProps(Array.prototype, {
     return result;
   },
   forEach(callback, context){
-    var len = this.length;
-    if (arguments.length === 1) {
-      context = this;
-    } else {
-      context = $__ToObject(this);
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length);
+
+    if (typeof callback !== 'function') {
+      throw $__Exception('callback_must_be_callable', ['Array.prototype.forEach']);
     }
+
     for (var i=0; i < len; i++) {
-      $__CallFunction(callback, context, [this[i], i, this]);
-    }
-  },
-  map(callback, context){
-    var out = [];
-    var len = this.length;
-    if (arguments.length === 1) {
-      context = this;
-    } else {
-      context = Object(this);
-    }
-    for (var i=0; i < len; i++) {
-      out[i] = $__CallFunction(callback, context, [this[i], i, this]);
-    }
-    return out;
-  },
-  reduce(callback, initial){
-    var index = 0;
-    if (arguments.length === 1) {
-      initial = this[0];
-      index++;
-    }
-    for (; index < this.length; index++) {
-      if (index in this) {
-        initial = $__CallFunction(callback, this, [initial, this[index], this]);
+      if (i in array) {
+        $__CallFunction(callback, context, [array[i], i, this]);
       }
     }
-    return initial;
+  },
+  indexOf(search, fromIndex){
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length);
+
+    if (len === 0) {
+      return -1;
+    }
+
+    fromIndex = $__ToInteger(fromIndex);
+    if (fromIndex > len) {
+      return -1;
+    }
+
+    for (var i=fromIndex; i < len; i++) {
+      if (i in array && array[i] === search) {
+        return i;
+      }
+    }
+
+    return -1;
+  },
+  items(){
+    return new ArrayIterator(this, 'key+value');
+  },
+  iterator(){
+    return new ArrayIterator(this, 'key+value');
   },
   join(separator){
     return joinArray(this, separator);
   },
+  keys(){
+    return new ArrayIterator(this, 'key');
+  },
+  lastIndexOf(search, fromIndex){
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length);
+
+    if (len === 0) {
+      return -1;
+    }
+
+    fromIndex = arguments.length > 1 ? $__ToInteger(fromIndex) : len - 1;
+
+    if (fromIndex >= len) {
+      fromIndex = len - 1;
+    } else if (fromIndex < 0) {
+      fromIndex += fromIndex;
+    }
+
+    for (var i=fromIndex; i >= 0; i--) {
+      if (i in array && array[i] === search) {
+        return i;
+      }
+    }
+
+    return -1;
+  },
+  map(callback, context){
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length),
+        result = [];
+
+    if (typeof callback !== 'function') {
+      throw $__Exception('callback_must_be_callable', ['Array.prototype.map']);
+    }
+
+    for (var i=0; i < len; i++) {
+      if (i in array) {
+        result[i] = $__CallFunction(callback, context, [array[i], i, this]);
+      }
+    }
+    return result;
+  },
+  pop(){
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length),
+        result = array[len - 1];
+
+    array.length = len - 1;
+    return result;
+  },
   push(...values){
-    var len = this.length,
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length),
         valuesLen = values.length;
 
     for (var i=0; i < valuesLen; i++) {
-      this[len++] = values[i];
+      array[len++] = values[i];
     }
     return len;
   },
-  pop(){
-    var out = this[this.length - 1];
-    this.length--;
-    return out;
+  reduce(callback, initial){
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length),
+        result = [];
+
+    if (typeof callback !== 'function') {
+      throw $__Exception('callback_must_be_callable', ['Array.prototype.reduce']);
+    }
+
+    var i = 0;
+    if (arguments.length === 1) {
+      initial = array[0];
+      i = 1;
+    }
+
+    for (; i < len; i++) {
+      if (i in array) {
+        initial = $__CallFunction(callback, this, [initial, array[i], array]);
+      }
+    }
+    return initial;
+  },
+  reduceRight(callback, initial){
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length),
+        result = [];
+
+    if (typeof callback !== 'function') {
+      throw $__Exception('callback_must_be_callable', ['Array.prototype.reduceRight']);
+    }
+
+    var i = len - 1;
+    if (arguments.length === 1) {
+      initial = array[i];
+      i--;
+    }
+
+    for (; i >= 0; i--) {
+      if (i in array) {
+        initial = $__CallFunction(callback, this, [initial, array[i], array]);
+      }
+    }
+    return initial;
   },
   slice(start, end){
-    var out = [], len;
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length),
+        result = [];
 
     start = start === undefined ? 0 : +start || 0;
-    end = end === undefined ? this.length - 1 : +end || 0;
+    end = end === undefined ? len - 1 : +end || 0;
 
     if (start < 0) {
-      start += this.length;
+      start += len;
     }
 
     if (end < 0) {
-      end += this.length;
-    } else if (end >= this.length) {
-      end = this.length - 1;
+      end += len;
+    } else if (end >= len) {
+      end = len - 1;
     }
 
     if (start > end || end < start || start === end) {
       return [];
     }
 
-    len = start - end;
-    for (var i=0; i < len; i++) {
-      out[i] = this[i + start];
+    for (var i=0, count = start - end; i < count; i++) {
+      result[i] = array[i + start];
     }
 
-    return out;
+    return result;
+  },
+  some(callback, context){
+    var array = $__ToObject(this),
+        len = $__ToUint32(array.length),
+        result = [];
+
+    if (typeof callback !== 'function') {
+      throw $__Exception('callback_must_be_callable', ['Array.prototype.some']);
+    }
+
+    for (var i = 0; i < len; i++) {
+      if (i in array && $__CallFunction(callback, context, [array[i], i, array])) {
+        return true;
+      }
+    }
+
+    return false;
   },
   toString(){
     return joinArray(this, ',');
   },
-  items(){
-    var object = $__ToObject(this);
-    return new ArrayIterator(object, 'key+value');
-  },
-  keys(){
-    var object = $__ToObject(this);
-    return new ArrayIterator(object, 'key');
-  },
   values(){
-    var object = $__ToObject(this);
-    return new ArrayIterator(object, 'value');
-  },
-  iterator(){
-    var object = $__ToObject(this);
-    return new ArrayIterator(object, 'key+value');
+    return new ArrayIterator(this, 'value');
   }
 });
 
+$__setLength(Array.prototype, {
+  indexOf: 1,
+  lastIndexOf: 1,
+  forEach: 1,
+  map: 1,
+  reduce: 1
+});
+
 function joinArray(array, separator){
-  var out = '',
-      len = array.length;
+  array = $__ToObject(array);
+
+  var result = '',
+      len = $__ToUint32(array.length);
 
   if (len === 0) {
-    return out;
+    return result;
   }
 
-  if (arguments.length === 0) {
+  if (arguments.length === 1) {
     separator = ',';
   } else if (typeof separator !== 'string') {
     separator = $__ToString(separator);
@@ -176,11 +296,13 @@ function joinArray(array, separator){
 
   len--;
   for (var i=0; i < len; i++) {
-    out += array[i] + separator;
+    result += $__ToString(array[i]) + separator;
   }
 
-  return out + array[i];
+  return result + $__ToString(array[i]);
 }
+
+
 
 var ARRAY = 'IteratedObject',
     INDEX  = 'ArrayIteratorNextIndex',
