@@ -171,14 +171,10 @@ $__defineProps(Object.prototype, {
   },
   propertyIsEnumerable(key){
     var object = $__ToObject(this);
-    return ($__GetPropertyAttributes(this, key) & E) !== 0;
+    return ($__GetPropertyAttributes(this, key) & 0x01) !== 0;
   }
 });
 
-var E = 0x1,
-    C = 0x2,
-    W = 0x4,
-    A = 0x8;
 
 function ensureObject(o, name){
   var type = typeof o;
