@@ -25,15 +25,412 @@ var assembler = (function(exports){
   var hasOwn = {}.hasOwnProperty,
       push = [].push;
 
+  var context;
+
+  var opcodes = 0;
+
+  function OpCode(params, name){
+    this.id = opcodes++;
+    this.params = params;
+    this.name = name;
+  }
+
+  define(OpCode.prototype, [
+    function inspect(){
+      return this.name;
+    },
+    function toString(){
+      return this.name
+    },
+    function valueOf(){
+      return this.id;
+    },
+    function toJSON(){
+      return this.id;
+    }
+  ]);
+
+
+
+  var ARRAY         = new OpCode(0, 'ARRAY'),
+      ARG           = new OpCode(0, 'ARG'),
+      ARGS          = new OpCode(0, 'ARGS'),
+      ARRAY_DONE    = new OpCode(0, 'ARRAY_DONE'),
+      BINARY        = new OpCode(1, 'BINARY'),
+      BLOCK         = new OpCode(1, 'BLOCK'),
+      CALL          = new OpCode(0, 'CALL'),
+      CASE          = new OpCode(1, 'CASE'),
+      CLASS_DECL    = new OpCode(1, 'CLASS_DECL'),
+      CLASS_EXPR    = new OpCode(1, 'CLASS_EXPR'),
+      COMPLETE      = new OpCode(0, 'COMPLETE'),
+      CONST         = new OpCode(1, 'CONST'),
+      CONSTRUCT     = new OpCode(0, 'CONSTRUCT'),
+      DEBUGGER      = new OpCode(0, 'DEBUGGER'),
+      DEFAULT       = new OpCode(1, 'DEFAULT'),
+      DUP           = new OpCode(0, 'DUP'),
+      ELEMENT       = new OpCode(0, 'ELEMENT'),
+      ENUM          = new OpCode(0, 'ENUM'),
+      FUNCTION      = new OpCode(2, 'FUNCTION'),
+      GET           = new OpCode(0, 'GET'),
+      IFEQ          = new OpCode(2, 'IFEQ'),
+      IFNE          = new OpCode(2, 'IFNE'),
+      INDEX         = new OpCode(2, 'INDEX'),
+      ITERATE       = new OpCode(0, 'ITERATE'),
+      JSR           = new OpCode(2, 'JSR'),
+      JUMP          = new OpCode(1, 'JUMP'),
+      LET           = new OpCode(1, 'LET'),
+      LITERAL       = new OpCode(1, 'LITERAL'),
+      LOG           = new OpCode(0, 'LOG'),
+      MEMBER        = new OpCode(1, 'MEMBER'),
+      METHOD        = new OpCode(3, 'METHOD'),
+      NATIVE_CALL   = new OpCode(0, 'NATIVE_CALL'),
+      NATIVE_REF    = new OpCode(1, 'NATIVE_REF'),
+      OBJECT        = new OpCode(0, 'OBJECT'),
+      POP           = new OpCode(0, 'POP'),
+      POPN          = new OpCode(1, 'POPN'),
+      PROPERTY      = new OpCode(1, 'PROPERTY'),
+      PUT           = new OpCode(0, 'PUT'),
+      REF           = new OpCode(1, 'REF'),
+      REGEXP        = new OpCode(1, 'REGEXP'),
+      RETURN        = new OpCode(0, 'RETURN'),
+      ROTATE        = new OpCode(1, 'ROTATE'),
+      RUN           = new OpCode(0, 'RUN'),
+      SAVE          = new OpCode(0, 'SAVE'),
+      SPREAD        = new OpCode(1, 'SPREAD'),
+      SPREAD_ARG    = new OpCode(0, 'SPREAD_ARG'),
+      STRING        = new OpCode(1, 'STRING'),
+      SUPER_CALL    = new OpCode(0, 'SUPER_CALL'),
+      SUPER_ELEMENT = new OpCode(0, 'SUPER_ELEMENT'),
+      SUPER_MEMBER  = new OpCode(1, 'SUPER_MEMBER'),
+      THIS          = new OpCode(0, 'THIS'),
+      THROW         = new OpCode(0, 'THROW'),
+      UNARY         = new OpCode(1, 'UNARY'),
+      UNDEFINED     = new OpCode(0, 'UNDEFINED'),
+      UPDATE        = new OpCode(1, 'UPDATE'),
+      UPSCOPE       = new OpCode(0, 'UPSCOPE'),
+      VAR           = new OpCode(1, 'VAR'),
+      WITH          = new OpCode(0, 'WITH');
+
+
+
+  function Operation(op, a, b, c, d){
+    this.op = op;
+    this.loc = currentNode.loc;
+    this.range = currentNode.range;
+    for (var i=0; i < op.params; i++) {
+      this[i] = arguments[i + 1];
+    }
+  }
+
+  define(Operation.prototype, [
+    function inspect(){
+      var out = [];
+      for (var i=0; i < this.op.params; i++) {
+        out.push(util.inspect(this[i]));
+      }
+      return util.inspect(this.op)+'('+out.join(', ')+')';
+    }
+  ]);
+
+
+
+  function Params(params, node, rest){
+    this.length = 0;
+    if (params) {
+      // for (var i=0; i < params.length; i++) {
+      //   if (params[i].type === 'Identifier') {
+      //     push.call(this, intern(params[i].name))
+      //   } else {
+      //     push.call(this, params[i]);
+      //   }
+      // }
+      push.apply(this, params)
+    }
+    this.Rest = rest;
+    this.BoundNames = BoundNames(node);//.map(intern);
+    var args = collectExpectedArguments(this);
+    this.ExpectedArgumentCount = args.length;
+    this.ArgNames = [];
+    for (var i=0; i < args.length; i++) {
+      if (args[i].type === 'Identifier') {
+        this.ArgNames.push(intern(args[i].name));
+      } else {
+
+      }
+    }
+  }
+
+
+  function Code(node, source, type, global, strict){
+    function Instruction(args){
+      Operation.apply(this, args);
+    }
+
+    inherit(Instruction, Operation, {
+      code: this
+    });
+
+    this.topLevel = node.type === 'Program';
+    var body = this.topLevel ? node : node.body;
+
+    define(this, {
+      body: body,
+      source: source,
+      range: node.range,
+      loc: node.loc,
+      children: [],
+      LexicalDeclarations: LexicalDeclarations(body),
+      createOperation: function(args){
+        var op =  new Instruction(args);
+        this.ops.push(op);
+        return op;
+      }
+    });
+
+    if (!this.topLevel && node.id) {
+      this.name = node.id.name;
+    }
+
+    this.global = global;
+    this.transfers = [];
+    this.Type = type || FUNCTYPE.NORMAL;
+    this.VarDeclaredNames = [];
+    this.NeedsSuperBinding = ReferencesSuper(this.body);
+    this.Strict = strict || isStrict(this.body);
+    this.params = new Params(node.params, node, node.rest);
+    this.ops = [];
+  }
+
+  void function(){
+    var proto = Math.random().toString(36).slice(2);
+
+    define(Code.prototype, [
+      function inherit(code){
+        if (code) {
+          this.strings = code.strings;
+          this.hash = code.hash;
+          this.natives = code.natives;
+        }
+      },
+      function lookup(id){
+        return id;
+        if (typeof id === 'number') {
+          return this.strings[id];
+        } else {
+          return id;
+        }
+      }
+    ]);
+  }();
+
+
+  function ClassDefinition(node){
+    this.name = node.id ? node.id.name : null;
+    this.pattern = node.id;
+    this.methods = [];
+
+    for (var i=0, method; method = node.body.body[i]; i++) {
+      var code = new Code(method.value, context.source, FUNCTYPE.METHOD, false, context.code.strict);
+      if (this.name) {
+        code.name = this.name + '#' + method.key.name;
+      } else {
+        code.name = method.key.name;
+      }
+      context.pending.push(code);
+
+      if (method.kind === '') {
+        method.kind = 'method';
+      }
+
+      if (method.key.name === 'constructor') {
+        this.ctor = code;
+      } else {
+        this.methods.push({
+          kind: method.kind,
+          code: code,
+          name: method.key.name
+        });
+      }
+    }
+
+    if (node.superClass) {
+      recurse(node.superClass);
+      record(GET);
+      this.superClass = node.superClass.name;
+    }
+  }
+
+
+  function Unwinder(type, begin, end){
+    this.type = type;
+    this.begin = begin;
+    this.end = end;
+  }
+
+  void function(){
+    define(Unwinder.prototype, [
+      function toJSON(){
+        return [this.type, this.begin, this.end];
+      }
+    ]);
+  }();
+
+
+
+  function ControlTransfer(labels){
+    this.labels = labels;
+    this.breaks = [];
+    this.continues = [];
+  }
+
+  void function(){
+    define(ControlTransfer.prototype, {
+      labels: null,
+      breaks: null,
+      continues: null
+    })
+
+    define(ControlTransfer.prototype, [
+      function updateContinues(ip){
+        if (ip !== undefined) {
+          for (var i=0, item; item = this.breaks[i]; i++) {
+            item[0] = ip;
+          }
+        }
+      },
+      function updateBreaks(ip){
+        if (ip !== undefined) {
+          for (var i=0, item; item = this.continues[i]; i++) {
+            item[0] = ip;
+          }
+        }
+      }
+    ]);
+  }();
 
 
 
 
+  function AssemblerOptions(o){
+    o = Object(o);
+    for (var k in this)
+      this[k] = k in o ? o[k] : this[k];
+  }
 
-  function parenter(node, parent){
+  AssemblerOptions.prototype = {
+    eval: false,
+    normal: true,
+    natives: false,
+    filename: null
+  };
+
+
+
+  function Assembler(options){
+    this.options = new AssemblerOptions(options);
+    define(this, {
+      strings: [],
+      hash: create(null)
+    });
+  }
+
+  define(Assembler.prototype, {
+    source: null,
+    node: null,
+    code: null,
+    pending: null,
+    levels: null,
+    jumps: null,
+    labels: null,
+  });
+
+
+  void function(){
+    define(Assembler.prototype, [
+      function assemble(node, source){
+        context = this;
+        this.pending = new Stack;
+        this.levels = new Stack;
+        this.jumps = new Stack;
+        this.labels = null;
+        this.source = source;
+
+        if (this.options.normal)
+          node = node.body[0].expression;
+
+        var type = this.options.eval ? 'eval' : this.options.normal ? 'function' : 'global';
+        var code = new Code(node, source, type, !this.options.scoped);
+        define(code, {
+          strings: this.strings,
+          hash: this.hash
+        });
+
+        code.topLevel = true;
+
+        if (this.options.natives) {
+          code.natives = true;
+          reinterpretNatives(node);
+        }
+
+        annotateParent(node);
+        this.queue(code);
+
+        while (this.pending.length) {
+          var lastCode = this.code;
+          this.code = this.pending.pop();
+          this.code.filename = this.filename;
+          if (lastCode) {
+            this.code.inherit(lastCode);
+          }
+          recurse(this.code.body);
+          if (this.code.eval || this.code.global){
+            record(COMPLETE);
+          } else {
+            if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
+              record(GET);
+            } else {
+              record(UNDEFINED);
+            }
+            record(RETURN);
+          }
+        }
+
+        return code;
+      },
+      function queue(code){
+        if (this.code) {
+          this.code.children.push(code);
+        }
+        this.pending.push(code);
+      },
+      function intern(name){
+        return name;
+        if (name === '__proto__') {
+          if (!this.hash[proto]) {
+            var index = this.hash[proto] = this.strings.length;
+            this.strings[index] = '__proto__';
+          }
+          name = proto;
+        }
+
+        if (name in this.hash) {
+          return this.hash[name];
+        } else {
+          var index = this.hash[name] = this.strings.length;
+          this.strings[index] = name;
+          return index;
+        }
+      },
+    ]);
+  }();
+
+
+
+  function annotateParent(node, parent){
     visit(node, function(node){
-      if (isObject(node) && parent)
+      if (isObject(node) && parent) {
         define(node, 'parent', parent);
+      }
       return visit.RECURSE;
     });
   }
@@ -62,6 +459,7 @@ var assembler = (function(exports){
     ClassDeclaration   : ['id', 'name']
   });
 
+
   function BoundNames(node){
     var names = boundNamesCollector(node);
     if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') {
@@ -72,7 +470,6 @@ var assembler = (function(exports){
       return names;
     }
   }
-
 
   var LexicalDeclarations = (function(lexical){
     return collector({
@@ -169,415 +566,7 @@ var assembler = (function(exports){
     ArrayPattern: true,
   });
 
-  function Params(params, node, rest){
-    this.length = 0;
-    if (params) {
-      // for (var i=0; i < params.length; i++) {
-      //   if (params[i].type === 'Identifier') {
-      //     push.call(this, intern(params[i].name))
-      //   } else {
-      //     push.call(this, params[i]);
-      //   }
-      // }
-      push.apply(this, params)
-    }
-    this.Rest = rest;
-    this.BoundNames = BoundNames(node);//.map(intern);
-    var args = collectExpectedArguments(this);
-    this.ExpectedArgumentCount = args.length;
-    this.ArgNames = [];
-    for (var i=0; i < args.length; i++) {
-      if (args[i].type === 'Identifier') {
-        this.ArgNames.push(intern(args[i].name));
-      } else {
 
-      }
-    }
-  }
-
-  function Code(node, source, type, global, strict){
-
-    function Instruction(args){
-      Operation.apply(this, args);
-    }
-
-    inherit(Instruction, Operation, {
-      code: this
-    });
-
-    this.topLevel = node.type === 'Program';
-    var body = this.topLevel ? node : node.body;
-
-    define(this, {
-      body: body,
-      source: source,
-      range: node.range,
-      loc: node.loc,
-      children: [],
-      LexicalDeclarations: LexicalDeclarations(body),
-      createOperation: function(args){
-        var op =  new Instruction(args);
-        this.ops.push(op);
-        return op;
-      }
-    });
-
-    if (!this.topLevel && node.id) {
-      this.name = node.id.name;
-    }
-
-    this.global = global;
-    this.entrances = [];
-    this.Type = type || FUNCTYPE.NORMAL;
-    this.VarDeclaredNames = [];
-    this.NeedsSuperBinding = ReferencesSuper(this.body);
-    this.Strict = strict || isStrict(this.body);
-    this.params = new Params(node.params, node, node.rest);
-    this.ops = [];
-  }
-
-  function Ops(){
-    var self = [];
-    self.__proto__ = Ops.prototype;
-    return self;
-  }
-
-  Ops.prototype = [];
-  Ops.prototype.inspect = function inspect(){
-    var out = [];
-
-    return this.map(function(op, i){
-      return ('   '+i).slice(-4) + ' '+util.inspect(op);
-    }).join('\n');
-  }
-
-  var proto = Math.random().toString(36).slice(2);
-
-  define(Code.prototype, [
-    function inherit(code){
-      if (code) {
-        this.strings = code.strings;
-        this.hash = code.hash;
-        this.natives = code.natives;
-      }
-    },
-    function lookup(id){
-      return id;
-      if (typeof id === 'number') {
-        return this.strings[id];
-      } else {
-        return id;
-      }
-    }
-  ]);
-
-  var opcodes = 0;
-
-  function OpCode(params, name){
-    this.id = opcodes++;
-    this.params = params;
-    this.name = name;
-  }
-
-  define(OpCode.prototype, [
-    function inspect(){
-      return this.name;
-    },
-    function toString(){
-      return this.name
-    },
-    function valueOf(){
-      return this.id;
-    },
-    function toJSON(){
-      return this.id;
-    }
-  ]);
-
-
-
-  var ARRAY         = new OpCode(0, 'ARRAY'),
-      ARG           = new OpCode(0, 'ARG'),
-      ARGS          = new OpCode(0, 'ARGS'),
-      ARRAY_DONE    = new OpCode(0, 'ARRAY_DONE'),
-      BINARY        = new OpCode(1, 'BINARY'),
-      BLOCK         = new OpCode(1, 'BLOCK'),
-      CALL          = new OpCode(0, 'CALL'),
-      CASE          = new OpCode(1, 'CASE'),
-      CLASS_DECL    = new OpCode(1, 'CLASS_DECL'),
-      CLASS_EXPR    = new OpCode(1, 'CLASS_EXPR'),
-      COMPLETE      = new OpCode(0, 'COMPLETE'),
-      CONST         = new OpCode(1, 'CONST'),
-      CONSTRUCT     = new OpCode(0, 'CONSTRUCT'),
-      DEBUGGER      = new OpCode(0, 'DEBUGGER'),
-      DEFAULT       = new OpCode(1, 'DEFAULT'),
-      DUP           = new OpCode(0, 'DUP'),
-      ELEMENT       = new OpCode(0, 'ELEMENT'),
-      ENUM          = new OpCode(0, 'ENUM'),
-      FUNCTION      = new OpCode(2, 'FUNCTION'),
-      GET           = new OpCode(0, 'GET'),
-      IFEQ          = new OpCode(2, 'IFEQ'),
-      IFNE          = new OpCode(2, 'IFNE'),
-      INDEX         = new OpCode(2, 'INDEX'),
-      ITERATE       = new OpCode(0, 'ITERATE'),
-      JSR           = new OpCode(2, 'JSR'),
-      JUMP          = new OpCode(1, 'JUMP'),
-      LET           = new OpCode(1, 'LET'),
-      LITERAL       = new OpCode(1, 'LITERAL'),
-      LOG           = new OpCode(0, 'LOG'),
-      MEMBER        = new OpCode(1, 'MEMBER'),
-      METHOD        = new OpCode(3, 'METHOD'),
-      NATIVE_CALL   = new OpCode(0, 'NATIVE_CALL'),
-      NATIVE_REF    = new OpCode(1, 'NATIVE_REF'),
-      OBJECT        = new OpCode(0, 'OBJECT'),
-      POP           = new OpCode(0, 'POP'),
-      POPN          = new OpCode(1, 'POPN'),
-      PROPERTY      = new OpCode(1, 'PROPERTY'),
-      PUT           = new OpCode(0, 'PUT'),
-      REF           = new OpCode(1, 'REF'),
-      REGEXP        = new OpCode(1, 'REGEXP'),
-      RETURN        = new OpCode(0, 'RETURN'),
-      ROTATE        = new OpCode(1, 'ROTATE'),
-      RUN           = new OpCode(0, 'RUN'),
-      SAVE          = new OpCode(0, 'SAVE'),
-      SPREAD        = new OpCode(1, 'SPREAD'),
-      SPREAD_ARG    = new OpCode(0, 'SPREAD_ARG'),
-      STRING        = new OpCode(1, 'STRING'),
-      SUPER_CALL    = new OpCode(0, 'SUPER_CALL'),
-      SUPER_ELEMENT = new OpCode(0, 'SUPER_ELEMENT'),
-      SUPER_MEMBER  = new OpCode(1, 'SUPER_MEMBER'),
-      THIS          = new OpCode(0, 'THIS'),
-      THROW         = new OpCode(0, 'THROW'),
-      UNARY         = new OpCode(1, 'UNARY'),
-      UNDEFINED     = new OpCode(0, 'UNDEFINED'),
-      UPDATE        = new OpCode(1, 'UPDATE'),
-      UPSCOPE       = new OpCode(0, 'UPSCOPE'),
-      VAR           = new OpCode(1, 'VAR'),
-      WITH          = new OpCode(0, 'WITH');
-
-
-
-
-
-  function Operation(op, a, b, c, d){
-    this.op = op;
-    this.loc = currentNode.loc;
-    this.range = currentNode.range;
-    for (var i=0; i < op.params; i++) {
-      this[i] = arguments[i + 1];
-    }
-  }
-
-
-  define(Operation.prototype, [
-    function inspect(){
-      var out = [];
-      for (var i=0; i < this.op.params; i++) {
-        out.push(util.inspect(this[i]));
-      }
-      return util.inspect(this.op)+'('+out.join(', ')+')';
-    }
-  ]);
-
-
-  function ClassDefinition(node){
-    this.name = node.id ? node.id.name : null;
-    this.pattern = node.id;
-    this.methods = [];
-
-    for (var i=0, method; method = node.body.body[i]; i++) {
-      var code = new Code(method.value, context.source, FUNCTYPE.METHOD, false, context.code.strict);
-      if (this.name) {
-        code.name = this.name + '#' + method.key.name;
-      } else {
-        code.name = method.key.name;
-      }
-      context.pending.push(code);
-
-      if (method.kind === '') {
-        method.kind = 'method';
-      }
-
-      if (method.key.name === 'constructor') {
-        this.ctor = code;
-      } else {
-        this.methods.push({
-          kind: method.kind,
-          code: code,
-          name: method.key.name
-        });
-      }
-    }
-
-    if (node.superClass) {
-      recurse(node.superClass);
-      record(GET);
-      this.superClass = node.superClass.name;
-    }
-  }
-
-
-  function Unwinder(type, begin, end){
-    this.type = type;
-    this.begin = begin;
-    this.end = end;
-  }
-
-  define(Unwinder.prototype, [
-    function toJSON(){
-      return [this.type, this.begin, this.end];
-    },
-    function inspect(){
-      return constants.ENTRY.array[this.type] + '(' + this.begin + ' => ' + this.end + ')';
-    }
-  ]);
-
-
-
-  function Entry(labels, level){
-    this.labels = labels;
-    this.level = level;
-    this.breaks = [];
-    this.continues = [];
-  }
-
-  define(Entry.prototype, {
-    labels: null,
-    breaks: null,
-    continues: null,
-    level: null
-  })
-
-  define(Entry.prototype, [
-    function updateContinues(address){
-      if (address !== undefined) {
-        for (var i=0, item; item = this.breaks[i]; i++) {
-          item.position = address;
-        }
-      }
-    },
-    function updateBreaks(address){
-      if (address !== undefined) {
-        for (var i=0, item; item = this.continues[i]; i++) {
-          item.position = address;
-        }
-      }
-    }
-  ]);
-
-
-  function AssemblerOptions(o){
-    o = Object(o);
-    for (var k in this)
-      this[k] = k in o ? o[k] : this[k];
-  }
-
-  AssemblerOptions.prototype = {
-    eval: false,
-    normal: true,
-    scoped: false,
-    natives: false,
-    filename: null
-  };
-
-
-
-  var context;
-
-  function Assembler(options){
-    this.options = new AssemblerOptions(options);
-    define(this, {
-      strings: [],
-      hash: create(null)
-    });
-  }
-
-  define(Assembler.prototype, {
-    source: null,
-    node: null,
-    code: null,
-    pending: null,
-    levels: null,
-    jumps: null,
-    labels: null,
-  });
-
-  define(Assembler.prototype, [
-    function assemble(node, source){
-      context = this;
-      this.pending = new Stack;
-      this.levels = new Stack;
-      this.jumps = new Stack;
-      this.labels = null;
-      this.source = source;
-
-      if (this.options.normal)
-        node = node.body[0].expression;
-
-      var type = this.options.eval ? 'eval' : this.options.normal ? 'function' : 'global';
-      var code = new Code(node, source, type, !this.options.scoped);
-      define(code, {
-        strings: this.strings,
-        hash: this.hash
-      });
-
-      code.topLevel = true;
-
-      if (this.options.natives) {
-        code.natives = true;
-        reinterpretNatives(node);
-      }
-
-      parenter(node);
-      this.queue(code);
-
-      while (this.pending.length) {
-        var lastCode = this.code;
-        this.code = this.pending.pop();
-        this.code.filename = this.filename;
-        if (lastCode) {
-          this.code.inherit(lastCode);
-        }
-        recurse(this.code.body);
-        if (this.code.eval || this.code.global){
-          record(COMPLETE);
-        } else {
-          if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
-            record(GET);
-          } else {
-            record(UNDEFINED);
-          }
-          record(RETURN);
-        }
-      }
-
-      return code;
-    },
-    function queue(code){
-      if (this.code) {
-        this.code.children.push(code);
-      }
-      this.pending.push(code);
-    },
-    function intern(name){
-      return name;
-      if (name === '__proto__') {
-        if (!this.hash[proto]) {
-          var index = this.hash[proto] = this.strings.length;
-          this.strings[index] = '__proto__';
-        }
-        name = proto;
-      }
-
-      if (name in this.hash) {
-        return this.hash[name];
-      } else {
-        var index = this.hash[name] = this.strings.length;
-        this.strings[index] = name;
-        return index;
-      }
-    },
-  ]);
 
   var currentNode;
   function recurse(node){
@@ -618,7 +607,7 @@ var assembler = (function(exports){
 
   function block(callback){
     if (context.labels){
-      var entry = new Entry(context.labels, context.levels.length);
+      var entry = new ControlTransfer(context.labels);
       context.jumps.push(entry);
       context.labels = create(null);
       callback();
@@ -629,8 +618,8 @@ var assembler = (function(exports){
     }
   }
 
-  function entrance(callback){
-    var entry = new Entry(context.labels, context.levels.length);
+  function control(callback){
+    var entry = new ControlTransfer(context.labels);
     context.jumps.push(entry);
     context.labels = create(null);
     entry.updateContinues(callback());
@@ -645,40 +634,20 @@ var assembler = (function(exports){
     }
     var begin = current();
     callback();
-    context.code.entrances.push(new Unwinder(type, begin, current()));
+    context.code.transfers.push(new Unwinder(type, begin, current()));
   }
 
   function move(node){
     if (node.label) {
-      var entry = context.jumps.first(function(entry){
-        return node.label.name in entry.labels;
+      var entry = context.jumps.first(function(transfer){
+        return node.label.name in transfer.labels;
       });
     } else {
-      var entry = context.jumps.first(function(entry){
-        return entry && entry.continues;
+      var entry = context.jumps.first(function(transfer){
+        return transfer && transfer.continues;
       });
     }
 
-    var levels = {
-      FINALLY: function(level){
-        level.entries.push(record(JSR, 0, false));
-      },
-      WITH: function(){
-        record(UPSCOPE);
-      },
-      SUBROUTINE: function(){
-        record(POPN, 3);
-      },
-      FORIN: function(){
-        entry.level + 1 !== len && record(POP);
-      }
-    };
-
-    var min = entry ? entry.level : 0;
-    for (var len = context.levels.length; len > min; --len){
-      var level = context.levels[len - 1];
-      levels[level.type](level);
-    }
     return entry;
   }
 
@@ -777,7 +746,7 @@ var assembler = (function(exports){
         recurse(item);
       }
 
-      record(INDEX, empty, spread);
+      record(INDEX, +empty, +spread);
     }
     record(ARRAY_DONE);
   }
@@ -892,7 +861,7 @@ var assembler = (function(exports){
   }
 
   function DoWhileStatement(node){
-    entrance(function(){
+    control(function(){
       var start = current();
       recurse(node.body);
       var cond = current();
@@ -923,7 +892,7 @@ var assembler = (function(exports){
   }
 
   function ForStatement(node){
-    entrance(function(){
+    control(function(){
       var update;
       lexical(function(){
         var scope = record(BLOCK, { LexicalDeclarations: [] });
@@ -1007,7 +976,7 @@ var assembler = (function(exports){
   }
 
   function iteration(node, kind){
-    entrance(function(){
+    control(function(){
       var update;
       lexical(ENTRY.FOROF, function(){
         recurse(node.right);
@@ -1160,8 +1129,9 @@ var assembler = (function(exports){
   function Path(){}
 
   function Program(node){
-    for (var i=0, item; item = node.body[i]; i++)
+    for (var i=0, item; item = node.body[i]; i++) {
       recurse(item);
+    }
   }
 
   function Property(node){
@@ -1189,29 +1159,6 @@ var assembler = (function(exports){
       record(UNDEFINED);
     }
 
-    var levels = {
-      FINALLY: function(level){
-        level.entries.push(record(JSR, 0, true));
-      },
-      WITH: function(){
-        record(UPSCOPE);
-      },
-      SUBROUTINE: function(){
-        record(ROTATE, 4);
-        record(POPN, 4);
-      },
-      FORIN: function(){
-        record(ROTATE, 4);
-        record(POP);
-      }
-    };
-
-    for (var len = context.levels.length; len > 0; --len){
-      var level = context.levels[len - 1];
-      console.log(level)
-      levels[level.type](level);
-    }
-
     record(RETURN);
   }
 
@@ -1226,7 +1173,7 @@ var assembler = (function(exports){
   }
 
   function SwitchStatement(node){
-    entrance(function(){
+    control(function(){
       recurse(node.discriminant);
       record(GET);
 
@@ -1255,8 +1202,9 @@ var assembler = (function(exports){
 
           for (var i=0, item; item = node.cases[i]; i++) {
             adjust(cases[i])
-            for (var j=0, consequent; consequent = item.consequent[j]; j++)
+            for (var j=0, consequent; consequent = item.consequent[j]; j++) {
               recurse(consequent);
+            }
           }
 
           if (last) {
@@ -1352,7 +1300,7 @@ var assembler = (function(exports){
   function VariableDeclarator(node){}
 
   function WhileStatement(node){
-    entrance(function(update){
+    control(function(){
       var start = current();
       recurse(node.test);
       record(GET);
