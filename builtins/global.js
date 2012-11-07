@@ -1,5 +1,4 @@
 $__defineProps(this, {
-  JSON: $__JSONCreate(),
   Math: $__MathCreate(),
   StopIteration: $__StopIteration,
   clearInterval(id){
@@ -61,3 +60,5 @@ $__defineProps(this, {
     }
   }
 });
+
+
