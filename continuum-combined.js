@@ -6799,63 +6799,66 @@ exports.assembler = (function(exports){
 
 
 
-  var ARRAY         = new OpCode(0, 'ARRAY'),
-      ARG           = new OpCode(0, 'ARG'),
-      ARGS          = new OpCode(0, 'ARGS'),
-      ARRAY_DONE    = new OpCode(0, 'ARRAY_DONE'),
-      BINARY        = new OpCode(1, 'BINARY'),
-      BLOCK         = new OpCode(1, 'BLOCK'),
-      CALL          = new OpCode(0, 'CALL'),
-      CASE          = new OpCode(1, 'CASE'),
-      CLASS_DECL    = new OpCode(1, 'CLASS_DECL'),
-      CLASS_EXPR    = new OpCode(1, 'CLASS_EXPR'),
-      COMPLETE      = new OpCode(0, 'COMPLETE'),
-      CONST         = new OpCode(1, 'CONST'),
-      CONSTRUCT     = new OpCode(0, 'CONSTRUCT'),
-      DEBUGGER      = new OpCode(0, 'DEBUGGER'),
-      DEFAULT       = new OpCode(1, 'DEFAULT'),
-      DUP           = new OpCode(0, 'DUP'),
-      ELEMENT       = new OpCode(0, 'ELEMENT'),
-      ENUM          = new OpCode(0, 'ENUM'),
-      FUNCTION      = new OpCode(2, 'FUNCTION'),
-      GET           = new OpCode(0, 'GET'),
-      IFEQ          = new OpCode(2, 'IFEQ'),
-      IFNE          = new OpCode(2, 'IFNE'),
-      INDEX         = new OpCode(2, 'INDEX'),
-      ITERATE       = new OpCode(0, 'ITERATE'),
-      JUMP          = new OpCode(1, 'JUMP'),
-      LET           = new OpCode(1, 'LET'),
-      LITERAL       = new OpCode(1, 'LITERAL'),
-      LOG           = new OpCode(0, 'LOG'),
-      MEMBER        = new OpCode(1, 'MEMBER'),
-      METHOD        = new OpCode(3, 'METHOD'),
-      NATIVE_CALL   = new OpCode(0, 'NATIVE_CALL'),
-      NATIVE_REF    = new OpCode(1, 'NATIVE_REF'),
-      OBJECT        = new OpCode(0, 'OBJECT'),
-      POP           = new OpCode(0, 'POP'),
-      POPN          = new OpCode(1, 'POPN'),
-      PROPERTY      = new OpCode(1, 'PROPERTY'),
-      PUT           = new OpCode(0, 'PUT'),
-      REF           = new OpCode(1, 'REF'),
-      REGEXP        = new OpCode(1, 'REGEXP'),
-      RETURN        = new OpCode(0, 'RETURN'),
-      ROTATE        = new OpCode(1, 'ROTATE'),
-      RUN           = new OpCode(0, 'RUN'),
-      SAVE          = new OpCode(0, 'SAVE'),
-      SPREAD        = new OpCode(1, 'SPREAD'),
-      SPREAD_ARG    = new OpCode(0, 'SPREAD_ARG'),
-      STRING        = new OpCode(1, 'STRING'),
-      SUPER_CALL    = new OpCode(0, 'SUPER_CALL'),
-      SUPER_ELEMENT = new OpCode(0, 'SUPER_ELEMENT'),
-      SUPER_MEMBER  = new OpCode(1, 'SUPER_MEMBER'),
-      THIS          = new OpCode(0, 'THIS'),
-      THROW         = new OpCode(0, 'THROW'),
-      UNARY         = new OpCode(1, 'UNARY'),
-      UNDEFINED     = new OpCode(0, 'UNDEFINED'),
-      UPDATE        = new OpCode(1, 'UPDATE'),
-      UPSCOPE       = new OpCode(0, 'UPSCOPE'),
-      VAR           = new OpCode(1, 'VAR'),
-      WITH          = new OpCode(0, 'WITH');
+  var ARRAY            = new OpCode(0, 'ARRAY'),
+      ARG              = new OpCode(0, 'ARG'),
+      ARGS             = new OpCode(0, 'ARGS'),
+      ARRAY_DONE       = new OpCode(0, 'ARRAY_DONE'),
+      BINARY           = new OpCode(1, 'BINARY'),
+      BLOCK            = new OpCode(1, 'BLOCK'),
+      CALL             = new OpCode(0, 'CALL'),
+      CASE             = new OpCode(1, 'CASE'),
+      CLASS_DECL       = new OpCode(1, 'CLASS_DECL'),
+      CLASS_EXPR       = new OpCode(1, 'CLASS_EXPR'),
+      COMPLETE         = new OpCode(0, 'COMPLETE'),
+      CONST            = new OpCode(1, 'CONST'),
+      CONSTRUCT        = new OpCode(0, 'CONSTRUCT'),
+      DEBUGGER         = new OpCode(0, 'DEBUGGER'),
+      DEFAULT          = new OpCode(1, 'DEFAULT'),
+      DEFINE           = new OpCode(1, 'DEFINE'),
+      DUP              = new OpCode(0, 'DUP'),
+      ELEMENT          = new OpCode(0, 'ELEMENT'),
+      ENUM             = new OpCode(0, 'ENUM'),
+      FUNCTION         = new OpCode(2, 'FUNCTION'),
+      GET              = new OpCode(0, 'GET'),
+      IFEQ             = new OpCode(2, 'IFEQ'),
+      IFNE             = new OpCode(2, 'IFNE'),
+      INC              = new OpCode(0, 'INC'),
+      INDEX            = new OpCode(2, 'INDEX'),
+      ITERATE          = new OpCode(0, 'ITERATE'),
+      JUMP             = new OpCode(1, 'JUMP'),
+      LET              = new OpCode(1, 'LET'),
+      LITERAL          = new OpCode(1, 'LITERAL'),
+      LOG              = new OpCode(0, 'LOG'),
+      MEMBER           = new OpCode(1, 'MEMBER'),
+      METHOD           = new OpCode(3, 'METHOD'),
+      NATIVE_CALL      = new OpCode(0, 'NATIVE_CALL'),
+      NATIVE_REF       = new OpCode(1, 'NATIVE_REF'),
+      OBJECT           = new OpCode(0, 'OBJECT'),
+      POP              = new OpCode(0, 'POP'),
+      POPN             = new OpCode(1, 'POPN'),
+      PROPERTY         = new OpCode(1, 'PROPERTY'),
+      PUT              = new OpCode(0, 'PUT'),
+      REF              = new OpCode(1, 'REF'),
+      REGEXP           = new OpCode(1, 'REGEXP'),
+      RETURN           = new OpCode(0, 'RETURN'),
+      ROTATE           = new OpCode(1, 'ROTATE'),
+      RUN              = new OpCode(0, 'RUN'),
+      SAVE             = new OpCode(0, 'SAVE'),
+      SPREAD           = new OpCode(1, 'SPREAD'),
+      SPREAD_ARG       = new OpCode(0, 'SPREAD_ARG'),
+      STRING           = new OpCode(1, 'STRING'),
+      SUPER_CALL       = new OpCode(0, 'SUPER_CALL'),
+      SUPER_ELEMENT    = new OpCode(0, 'SUPER_ELEMENT'),
+      SUPER_MEMBER     = new OpCode(1, 'SUPER_MEMBER'),
+      TEMPLATE_ELEMENT = new OpCode(0, 'TEMPLATE_ELEMENT'),
+      THIS             = new OpCode(0, 'THIS'),
+      THROW            = new OpCode(0, 'THROW'),
+      UNARY            = new OpCode(1, 'UNARY'),
+      UNDEFINED        = new OpCode(0, 'UNDEFINED'),
+      UPDATE           = new OpCode(1, 'UPDATE'),
+      UPSCOPE          = new OpCode(0, 'UPSCOPE'),
+      VAR              = new OpCode(1, 'VAR'),
+      WITH             = new OpCode(0, 'WITH');
 
 
 
@@ -7965,11 +7968,77 @@ exports.assembler = (function(exports){
     });
   }
 
-  function TemplateElement(node){}
 
-  function TemplateLiteral(node){}
+// function GetTemplateCallSite(){
 
-  function TaggedTemplateExpression(node){}
+// }
+
+// function(r){
+//   for (var i=0, o=''; r[i]; o += r[i].raw + (++i === r.length ? '' : arguments[i]));
+//   return o;
+// }
+
+// function ArgumentListEvaluation(){
+//   var siteObj = GetTemplateCallSite(this.TemplateLiteral);
+
+// }
+
+
+
+  function TemplateElement(node){
+    record(STRING, intern(node.value.cooked));
+    record(DEFINE, 1);
+    record(POP);
+    record(ROTATE, 1);
+    record(ROTATE, 2);
+    record(STRING, intern(node.value.raw));
+    record(DEFINE, 1);
+    record(POP);
+    record(INC);
+    record(LOG);
+  }
+
+  function TemplateLiteral(node){
+    record(ARRAY);
+    record(POP);
+    record(DUP);
+    record(ARRAY);
+    record(POP);
+    record(DUP);
+    record(ROTATE, 2);
+    record(OBJECT);
+    record(STRING, intern('raw'));
+    record(ROTATE, 2);
+    record(ROTATE, 2);
+    record(DEFINE, 1);
+    record(POPN, 2);
+    record(STRING, intern('cooked'));
+    record(ROTATE, 2);
+    record(ROTATE, 2);
+    record(DEFINE, 1);
+    record(POPN, 2);
+    record(ROTATE, 2);
+    record(LITERAL, 0);
+    for (var i=0, element; element = node.quasis[i]; i++) {
+      recurse(element);
+    }
+    record(LOG);
+    record(DEBUGGER);
+    record(ARRAY_DONE);
+    record(ARRAY_DONE);
+  }
+
+  function TaggedTemplateExpression(node){
+    recurse(node.tag);
+    record(DUP);
+    record(GET);
+    record(ARGS);
+    recurse(node.quasi);
+    record(GET);
+    record(LOG);
+    //record(ARG);
+    //record(CALL);
+  }
 
   function ThisExpression(node){
     record(THIS);
@@ -8963,6 +9032,24 @@ exports.thunk = (function(exports){
   Desc.prototype.Enumerable = true;
   Desc.prototype.Writable = true;
 
+  var D = (function(d, i){
+    while (i--) {
+      d[i] = new Function('return function '+
+        ((i & 1) ? 'E' : '_') +
+        ((i & 2) ? 'C' : '_') +
+        ((i & 4) ? 'W' : '_') +
+        '(v){ this.Value = v }')();
+
+      d[i].prototype = {
+        Enumerable  : (i & 1) > 0,
+        Configurable: (i & 2) > 0,
+        Writable    : (i & 4) > 0
+      };
+    }
+    return d;
+  })([], 8);
+
+
   function DefineProperty(obj, key, val) {
     if (val && val.Completion) {
       if (val.Abrupt) {
@@ -8991,12 +9078,12 @@ exports.thunk = (function(exports){
 
   function Thunk(code){
     var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
-      CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT,
-      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INDEX, ITERATE, JUMP, LET,
+      CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT, DEFINE,
+      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INC, INDEX, ITERATE, JUMP, LET,
       LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
-      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, THIS,
-      THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
+      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, TEMPLATE_ELEMENT,
+      THIS, THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
 
     var thunk = this,
         ops = code.ops,
@@ -9203,6 +9290,23 @@ exports.thunk = (function(exports){
       return cmds[++ip];
     }
 
+    function DEFINE(){
+      a = stack[--sp];
+      b = stack[sp - 1];
+      c = stack[sp - 2];
+      d = c.DefineOwnProperty(b, new D[ops[ip][0]](a));
+      if (d && d.Completion) {
+        if (d.Abrupt) {
+          error = d;
+          return ƒ;
+        } else {
+          d = d.value;
+        }
+      }
+      stack[sp++] = d;
+      return cmds[++ip];
+    }
+
     function DUP(){
       a = stack[sp - 1];
       stack[sp++] = a;
@@ -9262,6 +9366,11 @@ exports.thunk = (function(exports){
       } else {
         sp--;
       }
+      return cmds[++ip];
+    }
+
+    function INC(){
+      stack[sp - 1]++;
       return cmds[++ip];
     }
 
@@ -9506,6 +9615,16 @@ exports.thunk = (function(exports){
       return cmds[++ip];
     }
 
+
+    function TEMPLATE_ELEMENT(){
+      a = stack[--sp];
+      b = stack[--sp];
+      c = stack[sp - 1];
+      c.DefineOwnProperty(b, new TemplateElement(a));
+      stack[sp++] = b + 1;
+      return cmds[++ip];
+    }
+
     function THIS(){
       a = context.ThisResolution();
       if (a && a.Completion) {
@@ -9642,7 +9761,6 @@ exports.thunk = (function(exports){
       prepare = normalPrepare;
       context = ctx;
       ctx = undefined;
-      context.realm.activate();
     }
 
     function pauseCleanup(){
@@ -12293,12 +12411,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     inherit($Error, $Object, {
       NativeBrand: BRANDS.NativeError
     }, [
-      function setOrigin(filename, type){
+      function setOrigin(filename, kind){
         if (filename) {
           setDirect(this, 'filename', filename);
         }
-        if (type) {
-          setDirect(this, 'type', type);
+        if (kind) {
+          setDirect(this, 'kind', kind);
         }
       },
       function setCode(loc, code){
@@ -12918,6 +13036,14 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     hasOwnDirect: hasOwnDirect,
     hasDirect: hasDirect,
     setDirect: setDirect,
+    updateAttrDirect: function(obj, key, attr){
+      var prop = obj.properties.getProperty(key);
+      if (prop) {
+        prop[2] &= attr;
+        return true;
+      }
+      return false;
+    },
     ToObject: ToObject,
     ToString: ToString,
     ToNumber: ToNumber,
@@ -13695,6 +13821,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 })((0,eval)('this'), typeof module !== 'undefined' ? module.exports : {});
 
 
+
+
+
+
 exports.debug = (function(exports){
 
   var utility = require('./utility'),
@@ -14140,7 +14270,7 @@ exports.debug = (function(exports){
       },
       function origin(){
         var file = this.getValue('filename') || '',
-            type = this.getValue('type') || '';
+            type = this.getValue('kind') || '';
 
         return file && type ? type + ' ' + file : type + file;
       },
@@ -14764,11 +14894,11 @@ exports.debug = (function(exports){
 })(typeof module !== 'undefined' ? module.exports : {});
 
 
-exports.builtins.$utility = "var ___ = 0x00,\n    E__ = 0x01,\n    _C_ = 0x02,\n    EC_ = 3,\n    __W = 0x04,\n    E_W = 5,\n    _CW = 6,\n    ECW = 7,\n    __A = 0x08,\n    E_A = 9,\n    _CA = 10,\n    ECA = 11;\n\n\n$__defineMethods = function defineMethods(obj, props){\n  for (var i=0; i < props.length; i++) {\n    $__SetInternal(props[i], 'Native', true);\n    $__defineDirect(obj, props[i].name, props[i], _CW);\n    $__deleteDirect(props[i], 'prototype');\n  }\n  return obj;\n};\n\n$__defineProps = function defineProps(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    var name = keys[i],\n        prop = props[name];\n\n    $__defineDirect(obj, name, prop, _CW);\n\n    if (typeof prop === 'function') {\n      $__SetInternal(prop, 'Native', true);\n      $__defineDirect(prop, 'name', name, ___);\n      $__deleteDirect(prop, 'prototype');\n    }\n  }\n  return obj;\n};\n\n$__defineConstants = function defineConstants(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    $__defineDirect(obj, keys[i], props[keys[i]], ___);\n  }\n};\n\n$__setupConstructor = function setupConstructor(ctor, proto){\n  $__defineDirect(ctor, 'prototype', proto, ___);\n  $__defineDirect(ctor.prototype, 'constructor', ctor, ___);\n  $__defineDirect(global, ctor.name, ctor, _CW);\n  $__SetInternal(ctor, 'Native', true);\n  $__SetInternal(ctor, 'NativeConstructor', true);\n};\n\n\n$__setLength = function setLength(f, length){\n  if (typeof length === 'string') {\n    $__setDirect(f, 'length', length);\n  } else {\n    var keys = $__Enumerate(length, false, false);\n    for (var i=0; i < keys.length; i++) {\n      var key = keys[i];\n      $__setDirect(f[key], 'length', length[key]);\n    }\n  }\n};\n\n$__EmptyClass = function constructor(...args){\n  super(...args);\n};\n";
+exports.builtins.$utility = "var ___ = 0x00,\n    E__ = 0x01,\n    _C_ = 0x02,\n    EC_ = 3,\n    __W = 0x04,\n    E_W = 5,\n    _CW = 6,\n    ECW = 7,\n    __A = 0x08,\n    E_A = 9,\n    _CA = 10,\n    ECA = 11;\n\n\n$__defineMethods = function defineMethods(obj, props){\n  for (var i=0; i < props.length; i++) {\n    $__SetInternal(props[i], 'Native', true);\n    $__defineDirect(obj, props[i].name, props[i], _CW);\n    $__deleteDirect(props[i], 'prototype');\n  }\n  return obj;\n};\n\n$__defineProps = function defineProps(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    var name = keys[i],\n        prop = props[name];\n\n    $__defineDirect(obj, name, prop, _CW);\n\n    if (typeof prop === 'function') {\n      $__SetInternal(prop, 'Native', true);\n      $__defineDirect(prop, 'name', name, ___);\n      $__deleteDirect(prop, 'prototype');\n    }\n  }\n  return obj;\n};\n\n$__defineConstants = function defineConstants(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    $__defineDirect(obj, keys[i], props[keys[i]], ___);\n  }\n};\n\n$__setupConstructor = function setupConstructor(ctor, proto){\n  $__defineDirect(ctor, 'prototype', proto, ___);\n  $__defineDirect(ctor.prototype, 'constructor', ctor, ___);\n  $__defineDirect(global, ctor.name, ctor, _CW);\n  $__SetInternal(ctor, 'Native', true);\n  $__SetInternal(ctor, 'NativeConstructor', true);\n};\n\n\n$__setLength = function setLength(f, length){\n  if (typeof length === 'string') {\n    $__setDirect(f, 'length', length);\n  } else {\n    var keys = $__Enumerate(length, false, false);\n    for (var i=0; i < keys.length; i++) {\n      var key = keys[i];\n      $__setDirect(f[key], 'length', length[key]);\n    }\n  }\n};\n\n\nvar hidden = { enumerable: false };\n\n$__hideEverything = function hideEverything(o){\n  $__Enumerate(o, false, true).forEach(function(k){\n    $__updateAttrDirect(o, k, ~E__);\n  });\n  if (typeof o === 'function') {\n    hideEverything(o.prototype);\n  }\n  return o;\n};\n\n$__EmptyClass = function constructor(...args){\n  super(...args);\n};\n";
 
 exports.modules["@reflect"] = "export function Proxy(target, handler){}\n\nexport function getOwnPropertyDescriptor(target, name){\n  ensureObject(target, 'Reflect.getOwnPropertyDescriptor');\n  name = $__ToPropertyName(name);\n  return $__GetOwnProperty(target, name);\n}\n\nexport function defineProperty(target, name, desc){\n  ensureObject(target, 'Reflect.defineProperty');\n  ensureDescriptor(desc);\n  name = $__ToPropertyName(name);\n  $__DefineOwnProperty(target, name, desc);\n  return object;\n}\n\nexport function getOwnPropertyNames(target){\n  ensureObject(target, 'Reflect.getOwnPropertyNames');\n  return $__Enumerate(target, false, false);\n}\n\nexport function getPrototypeOf(target){\n  ensureObject(target, 'Reflect.getPrototypeOf');\n  return $__GetPrototype(target);\n}\n\nexport function deleteProperty(target, name){\n  return $__Delete(target, name, false);\n}\n\nexport function enumerate(target){\n  ensureObject(target, 'Reflect.enumerate');\n  return $__Enumerate(target, false, false);\n}\n\nexport function freeze(target){\n  ensureObject(target, 'Reflect.freeze');\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc.configurable) {\n      desc.configurable = false;\n      if ('writable' in desc) {\n        desc.writable = false;\n      }\n      $__DefineOwnProperty(target, props[i], desc);\n    }\n  }\n\n  $__SetExtensible(target, false);\n  return target;\n}\n\nexport function seal(target){\n\n}\n\nexport function preventExtensions(target){\n  ensureObject(target, 'Reflect.preventExtensions');\n  $__SetExtensible(target, false);\n  return target;\n}\n\nexport function isFrozen(target){\n  ensureObject(target, 'Reflect.isFrozen');\n  if ($__GetExtensible(target)) {\n    return false;\n  }\n\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc) {\n      if (desc.configurable || 'writable' in desc && desc.writable) {\n        return false;\n      }\n    }\n  }\n\n  return true;\n}\n\nexport function isSealed(target){\n  ensureObject(target, 'Reflect.isSealed');\n  if ($__GetExtensible(target)) {\n    return false;\n  }\n\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc && desc.configurable) {\n      return false;\n    }\n  }\n\n  return true;\n}\n\nexport function isExtensible(target){\n  ensureObject(target, 'Reflect.isExtensible');\n  return $__GetExtensible(target);\n}\n\nexport function has(target, name){\n  ensureObject(target, 'Reflect.has');\n  name = $__ToPropertyName(name);\n  return $__HasProperty(target, name);\n}\n\nexport function hasOwn(target, name){\n  ensureObject(target, 'Reflect.hasOwn');\n  name = $__ToPropertyName(name);\n  return $__HasOwnProperty(target, name);\n}\n\nexport function keys(target){\n  ensureObject(target, 'Reflect.keys');\n  return $__Enumerate(target, false, true);\n}\n\nexport function get(target, name, receiver){\n  ensureObject(target, 'Reflect.get');\n  name = $__ToPropertyName(name);\n  return $__GetP(target, name, receiver);\n}\n\nexport function set(target, name, value, receiver){\n  ensureObject(target, 'Reflect.set');\n  name = $__ToPropertyName(name);\n  return $__SetP(target, name, value, receiver);\n}\n\nexport function apply(target, thisArg, args){\n  return $__CallFunction(target, thisArg, args);\n}\n\nexport function construct(target, args){\n  return $__Construct(target, args);\n}\n\n\nexport function Handler(){}\n\n$__defineProps(Handler.prototype, {\n  // fundamental traps\n  getOwnPropertyDescriptor: getOwnPropertyDescriptor,\n  getOwnPropertyNames:      getOwnPropertyNames,\n  getPrototypeOf:           getPrototypeOf,\n  defineProperty:           defineProperty,\n  deleteProperty:           deleteProperty,\n  preventExtensions:        preventExtensions,\n  isExtensible:             isExtensible,\n  apply:                    apply,\n\n  // derived traps\n  seal(target) {\n    var success = this.preventExtensions(target);\n    success = !!success;\n    if (success) {\n      var props = this.getOwnPropertyNames(target);\n      var l = +props.length;\n      for (var i = 0; i < l; i++) {\n        var name = props[i];\n        success = success &&\n          this.defineProperty(target, name, { configurable: false });\n      }\n    }\n    return success;\n  },\n  freeze(target){\n    var success = this.preventExtensions(target);\n    if (success = !!success) {\n      var props = this.getOwnPropertyNames(target),\n          l = +props.length;\n\n      for (var i = 0; i < l; i++) {\n        var name = props[i],\n            desc = this.getOwnPropertyDescriptor(target, name);\n\n        desc = normalizeAndCompletePropertyDescriptor(desc);\n        if (isDataDescriptor(desc)) {\n          success = success && this.defineProperty(target, name, { writable: false, configurable: false });\n        } else if (desc !== undefined) {\n          success = success && this.defineProperty(target, name, { configurable: false });\n        }\n      }\n    }\n    return success;\n  },\n  isSealed(target){\n    var props = this.getOwnPropertyNames(target),\n        l = +props.length;\n\n    for (var i = 0; i < l; i++) {\n      var name = props[i],\n          desc = this.getOwnPropertyDescriptor(target, name);\n\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc.configurable) {\n        return false;\n      }\n    }\n    return !this.isExtensible(target);\n  },\n  isFrozen(target){\n    var props = this.getOwnPropertyNames(target),\n        l = +props.length;\n\n    for (var i = 0; i < l; i++) {\n      var name = props[i],\n          desc = this.getOwnPropertyDescriptor(target, name);\n\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (isDataDescriptor(desc)) {\n        if (desc.writable) {\n          return false;\n        }\n      }\n      if (desc.configurable) {\n        return false;\n      }\n    }\n    return !this.isExtensible(target);\n  },\n  has(target, name){\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    desc = normalizeAndCompletePropertyDescriptor(desc);\n    if (desc !== undefined) {\n      return true;\n    }\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      return false;\n    }\n    return Reflect.has(proto, name);\n  },\n  hasOwn(target,name){\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    return undefined !== normalizeAndCompletePropertyDescriptor(desc);\n  },\n  get(target, name, receiver){\n    receiver = receiver || target;\n\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    desc = normalizeAndCompletePropertyDescriptor(desc);\n    if (desc === undefined) {\n      var proto = $__GetPrototype(target);\n      if (proto === null) {\n        return undefined;\n      }\n      return Reflect.get(proto, name, receiver);\n    }\n    if (isDataDescriptor(desc)) {\n      return desc.value;\n    }\n    var getter = desc.get;\n    if (getter === undefined) {\n      return undefined;\n    }\n    return $__CallFunction(desc.get, receiver, []);\n  },\n  set(target, name, value, receiver){\n    var ownDesc = this.getOwnPropertyDescriptor(target, name);\n    ownDesc = normalizeAndCompletePropertyDescriptor(ownDesc);\n\n    if (ownDesc !== undefined) {\n      if (isAccessorDescriptor(ownDesc)) {\n        var setter = ownDesc.set;\n        if (setter === undefined) return false;\n        $__CallFunction(setter, receiver, [value]); // assumes Function.prototype.call\n        return true;\n      }\n      // otherwise, isDataDescriptor(ownDesc) must be true\n      if (ownDesc.writable === false) return false;\n      if (receiver === target) {\n        var updateDesc = { value: value };\n        $__DefineOwnProperty(receiver, name, updateDesc);\n        return true;\n      } else {\n        if (!$__GetExtensible(receiver)) return false;\n        var newDesc =\n          { value: value,\n            writable: true,\n            enumerable: true,\n            configurable: true };\n        $__DefineOwnProperty(receiver, name, newDesc);\n        return true;\n      }\n    }\n\n    // name is not defined in target, search target's prototype\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      if (!$__GetExtensible(receiver)) return false;\n      var newDesc =\n        { value: value,\n          writable: true,\n          enumerable: true,\n          configurable: true };\n      $__DefineOwnProperty(receiver, name, newDesc);\n      return true;\n    }\n    // continue the search in target's prototype\n    return Reflect.set(proto, name, value, receiver);\n  },\n  enumerate(target){\n    var trapResult = this.getOwnPropertyNames(target);\n    var l = +trapResult.length;\n    var result = [];\n    for (var i = 0; i < l; i++) {\n      var name = $__ToString(trapResult[i]);\n      var desc = this.getOwnPropertyDescriptor(name);\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc !== undefined && desc.enumerable) {\n        result.push(name);\n      }\n    }\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      return result;\n    }\n    var inherited = Reflect.enumerate(proto);\n    // FIXME: filter duplicates\n    return result.concat(inherited);\n  },\n  iterate(target){\n    var trapResult = this.enumerate(target);\n    var l = +trapResult.length;\n    var idx = 0;\n    return {\n      next: function() {\n        if (idx === l) {\n          throw StopIteration;\n        } else {\n          return trapResult[idx++];\n        }\n      }\n    };\n  },\n  keys(target){\n    var trapResult = this.getOwnPropertyNames(target);\n    var l = +trapResult.length;\n    var result = [];\n    for (var i = 0; i < l; i++) {\n      var name = $__ToString(trapResult[i]);\n      var desc = this.getOwnPropertyDescriptor(name);\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc !== undefined && desc.enumerable) {\n        result.push(name);\n      }\n    }\n    return result;\n  },\n  construct(target, args) {\n    var proto = this.get(target, 'prototype', target);\n    var instance;\n    if (Object(proto) === proto) {\n      instance = $__ObjectCreate(proto);\n    } else {\n      instance = {};\n    }\n    var res = this.apply(target, instance, args);\n    if (Object(res) === res) {\n      return res;\n    }\n    return instance;\n  }\n});\n\n";
 
-exports.builtins.Array = "function Array(...values){\n  if (values.length === 1 && typeof values[0] === 'number') {\n    var out = [];\n    out.length = values[0];\n    return out;\n  } else {\n    return values;\n  }\n}\n\n$__setupConstructor(Array, $__ArrayProto);\n\n\n$__defineProps(Array, {\n  isArray(array){\n    return $__GetNativeBrand(array) === 'Array';\n  },\n  from(iterable){\n    var out = [];\n    iterable = $__ToObject(iterable);\n\n    for (var i = 0, len = iterable.length >>> 0; i < len; i++) {\n      if (i in iterable) {\n        out[i] = iterable[i];\n      }\n    }\n\n    return out;\n  }\n});\n\n$__defineProps(Array.prototype, {\n  every(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.every']);\n    }\n\n    for (var i = 0; i < len; i++) {\n      if (i in array && !$__CallFunction(callback, context, [array[i], i, array])) {\n        return false;\n      }\n    }\n\n    return true;\n  },\n  filter(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [],\n        count = 0;\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.filter']);\n    }\n\n    for (var i = 0; i < len; i++) {\n      if (i in array) {\n        var element = array[i];\n        if ($__CallFunction(callback, context, [element, i, array])) {\n          result[count++] = element;\n        }\n      }\n    }\n\n    return result;\n  },\n  forEach(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length);\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.forEach']);\n    }\n\n    for (var i=0; i < len; i++) {\n      if (i in array) {\n        $__CallFunction(callback, context, [array[i], i, this]);\n      }\n    }\n  },\n  indexOf(search, fromIndex){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length);\n\n    if (len === 0) {\n      return -1;\n    }\n\n    fromIndex = $__ToInteger(fromIndex);\n    if (fromIndex > len) {\n      return -1;\n    }\n\n    for (var i=fromIndex; i < len; i++) {\n      if (i in array && array[i] === search) {\n        return i;\n      }\n    }\n\n    return -1;\n  },\n  items(){\n    return new ArrayIterator(this, 'key+value');\n  },\n  iterator(){\n    return new ArrayIterator(this, 'key+value');\n  },\n  join(separator){\n    return joinArray(this, separator);\n  },\n  keys(){\n    return new ArrayIterator(this, 'key');\n  },\n  lastIndexOf(search, fromIndex){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length);\n\n    if (len === 0) {\n      return -1;\n    }\n\n    fromIndex = arguments.length > 1 ? $__ToInteger(fromIndex) : len - 1;\n\n    if (fromIndex >= len) {\n      fromIndex = len - 1;\n    } else if (fromIndex < 0) {\n      fromIndex += fromIndex;\n    }\n\n    for (var i=fromIndex; i >= 0; i--) {\n      if (i in array && array[i] === search) {\n        return i;\n      }\n    }\n\n    return -1;\n  },\n  map(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.map']);\n    }\n\n    for (var i=0; i < len; i++) {\n      if (i in array) {\n        result[i] = $__CallFunction(callback, context, [array[i], i, this]);\n      }\n    }\n    return result;\n  },\n  pop(){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = array[len - 1];\n\n    array.length = len - 1;\n    return result;\n  },\n  push(...values){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        valuesLen = values.length;\n\n    for (var i=0; i < valuesLen; i++) {\n      array[len++] = values[i];\n    }\n    return len;\n  },\n  reduce(callback, initial){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.reduce']);\n    }\n\n    var i = 0;\n    if (arguments.length === 1) {\n      initial = array[0];\n      i = 1;\n    }\n\n    for (; i < len; i++) {\n      if (i in array) {\n        initial = $__CallFunction(callback, this, [initial, array[i], array]);\n      }\n    }\n    return initial;\n  },\n  reduceRight(callback, initial){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.reduceRight']);\n    }\n\n    var i = len - 1;\n    if (arguments.length === 1) {\n      initial = array[i];\n      i--;\n    }\n\n    for (; i >= 0; i--) {\n      if (i in array) {\n        initial = $__CallFunction(callback, this, [initial, array[i], array]);\n      }\n    }\n    return initial;\n  },\n  slice(start, end){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    start = start === undefined ? 0 : +start || 0;\n    end = end === undefined ? len - 1 : +end || 0;\n\n    if (start < 0) {\n      start += len;\n    }\n\n    if (end < 0) {\n      end += len;\n    } else if (end >= len) {\n      end = len - 1;\n    }\n\n    if (start > end || end < start || start === end) {\n      return [];\n    }\n\n    for (var i=0, count = start - end; i < count; i++) {\n      result[i] = array[i + start];\n    }\n\n    return result;\n  },\n  some(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.some']);\n    }\n\n    for (var i = 0; i < len; i++) {\n      if (i in array && $__CallFunction(callback, context, [array[i], i, array])) {\n        return true;\n      }\n    }\n\n    return false;\n  },\n  toString(){\n    return joinArray(this, ',');\n  },\n  values(){\n    return new ArrayIterator(this, 'value');\n  }\n});\n\n$__setLength(Array.prototype, {\n  every: 1,\n  filter: 1,\n  forEach: 1,\n  indexOf: 1,\n  lastIndexOf: 1,\n  map: 1,\n  reduce: 1,\n  reduceRight: 1,\n  some: 1,\n  reduce: 1\n});\n\nfunction joinArray(array, separator){\n  array = $__ToObject(array);\n\n  var result = '',\n      len = $__ToUint32(array.length);\n\n  if (len === 0) {\n    return result;\n  }\n\n  if (arguments.length === 1) {\n    separator = ',';\n  } else if (typeof separator !== 'string') {\n    separator = $__ToString(separator);\n  }\n\n  len--;\n  for (var i=0; i < len; i++) {\n    result += $__ToString(array[i]) + separator;\n  }\n\n  return result + $__ToString(array[i]);\n}\n\n\n\nvar ARRAY = 'IteratedObject',\n    INDEX  = 'ArrayIteratorNextIndex',\n    KIND  = 'ArrayIterationKind';\n\n\nvar K = 0x01,\n    V = 0x02,\n    S = 0x04;\n\nvar kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3,\n  'sparse:key': 5,\n  'sparse:value': 6,\n  'sparse:key+value': 7\n};\n\nfunction ArrayIterator(array, kind){\n  array = $__ToObject(array);\n  $__SetInternal(this, ARRAY, array);\n  $__SetInternal(this, INDEX, 0);\n  $__SetInternal(this, KIND, kinds[kind]);\n  this.next = () => next.call(this);\n}\n\n$__defineProps(ArrayIterator.prototype, {\n  next(){\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['ArrayIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, ARRAY) || !$__HasInternal(this, INDEX) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('incompatible_array_iterator', ['ArrayIterator.prototype.next']);\n    }\n    var array = $__GetInternal(this, ARRAY),\n        index = $__GetInternal(this, INDEX),\n        kind = $__GetInternal(this, KIND),\n        len = $__ToUint32(array.length),\n        key = $__ToString(index);\n\n    if (kind & S) {\n      var found = false;\n      while (!found && index < len) {\n        found = index in array;\n        if (!found) {\n          index++;\n        }\n      }\n    }\n    if (index >= len) {\n      $__SetInternal(this, INDEX, Infinity);\n      throw $__StopIteration;\n    }\n    $__SetInternal(this, INDEX, index + 1);\n\n    if (kind & V) {\n      var value = array[key];\n      if (kind & K) {\n        return [key, value];\n      }\n      return value;\n    }\n    return key;\n  },\n  iterator(){\n    return this;\n  }\n});\n\nvar next = ArrayIterator.prototype.next;\n";
+exports.builtins.Array = "function Array(...values){\n  if (values.length === 1 && typeof values[0] === 'number') {\n    var out = [];\n    out.length = values[0];\n    return out;\n  } else {\n    return values;\n  }\n}\n\n$__setupConstructor(Array, $__ArrayProto);\n\n\n$__defineProps(Array, {\n  isArray(array){\n    return $__GetNativeBrand(array) === 'Array';\n  },\n  from(iterable){\n    var out = [];\n    iterable = $__ToObject(iterable);\n\n    for (var i = 0, len = iterable.length >>> 0; i < len; i++) {\n      if (i in iterable) {\n        out[i] = iterable[i];\n      }\n    }\n\n    return out;\n  }\n});\n\n$__defineProps(Array.prototype, {\n  every(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.every']);\n    }\n\n    for (var i = 0; i < len; i++) {\n      if (i in array && !$__CallFunction(callback, context, [array[i], i, array])) {\n        return false;\n      }\n    }\n\n    return true;\n  },\n  filter(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [],\n        count = 0;\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.filter']);\n    }\n\n    for (var i = 0; i < len; i++) {\n      if (i in array) {\n        var element = array[i];\n        if ($__CallFunction(callback, context, [element, i, array])) {\n          result[count++] = element;\n        }\n      }\n    }\n\n    return result;\n  },\n  forEach(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length);\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.forEach']);\n    }\n\n    for (var i=0; i < len; i++) {\n      if (i in array) {\n        $__CallFunction(callback, context, [array[i], i, this]);\n      }\n    }\n  },\n  indexOf(search, fromIndex){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length);\n\n    if (len === 0) {\n      return -1;\n    }\n\n    fromIndex = $__ToInteger(fromIndex);\n    if (fromIndex > len) {\n      return -1;\n    }\n\n    for (var i=fromIndex; i < len; i++) {\n      if (i in array && array[i] === search) {\n        return i;\n      }\n    }\n\n    return -1;\n  },\n  items(){\n    return new ArrayIterator(this, 'key+value');\n  },\n  iterator(){\n    return new ArrayIterator(this, 'key+value');\n  },\n  join(separator){\n    return joinArray(this, separator);\n  },\n  keys(){\n    return new ArrayIterator(this, 'key');\n  },\n  lastIndexOf(search, fromIndex){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length);\n\n    if (len === 0) {\n      return -1;\n    }\n\n    fromIndex = arguments.length > 1 ? $__ToInteger(fromIndex) : len - 1;\n\n    if (fromIndex >= len) {\n      fromIndex = len - 1;\n    } else if (fromIndex < 0) {\n      fromIndex += fromIndex;\n    }\n\n    for (var i=fromIndex; i >= 0; i--) {\n      if (i in array && array[i] === search) {\n        return i;\n      }\n    }\n\n    return -1;\n  },\n  map(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.map']);\n    }\n\n    for (var i=0; i < len; i++) {\n      if (i in array) {\n        result[i] = $__CallFunction(callback, context, [array[i], i, this]);\n      }\n    }\n    return result;\n  },\n  pop(){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = array[len - 1];\n\n    array.length = len - 1;\n    return result;\n  },\n  push(...values){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        valuesLen = values.length;\n\n    for (var i=0; i < valuesLen; i++) {\n      array[len++] = values[i];\n    }\n    return len;\n  },\n  reduce(callback, initial){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.reduce']);\n    }\n\n    var i = 0;\n    if (arguments.length === 1) {\n      initial = array[0];\n      i = 1;\n    }\n\n    for (; i < len; i++) {\n      if (i in array) {\n        initial = $__CallFunction(callback, this, [initial, array[i], array]);\n      }\n    }\n    return initial;\n  },\n  reduceRight(callback, initial){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.reduceRight']);\n    }\n\n    var i = len - 1;\n    if (arguments.length === 1) {\n      initial = array[i];\n      i--;\n    }\n\n    for (; i >= 0; i--) {\n      if (i in array) {\n        initial = $__CallFunction(callback, this, [initial, array[i], array]);\n      }\n    }\n    return initial;\n  },\n  slice(start, end){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    start = start === undefined ? 0 : +start || 0;\n    end = end === undefined ? len - 1 : +end || 0;\n\n    if (start < 0) {\n      start += len;\n    }\n\n    if (end < 0) {\n      end += len;\n    } else if (end >= len) {\n      end = len - 1;\n    }\n\n    if (start > end || end < start || start === end) {\n      return [];\n    }\n\n    for (var i=0, count = start - end; i < count; i++) {\n      result[i] = array[i + start];\n    }\n\n    return result;\n  },\n  some(callback, context){\n    var array = $__ToObject(this),\n        len = $__ToUint32(array.length),\n        result = [];\n\n    if (typeof callback !== 'function') {\n      throw $__Exception('callback_must_be_callable', ['Array.prototype.some']);\n    }\n\n    for (var i = 0; i < len; i++) {\n      if (i in array && $__CallFunction(callback, context, [array[i], i, array])) {\n        return true;\n      }\n    }\n\n    return false;\n  },\n  toString(){\n    return joinArray(this, ',');\n  },\n  values(){\n    return new ArrayIterator(this, 'value');\n  }\n});\n\n$__setLength(Array.prototype, {\n  every: 1,\n  filter: 1,\n  forEach: 1,\n  indexOf: 1,\n  lastIndexOf: 1,\n  map: 1,\n  reduce: 1,\n  reduceRight: 1,\n  some: 1,\n  reduce: 1\n});\n\nfunction joinArray(array, separator){\n  array = $__ToObject(array);\n\n  var result = '',\n      len = $__ToUint32(array.length);\n\n  if (len === 0) {\n    return result;\n  }\n\n  if (arguments.length === 1) {\n    separator = ',';\n  } else if (typeof separator !== 'string') {\n    separator = $__ToString(separator);\n  }\n\n  len--;\n  for (var i=0; i < len; i++) {\n    result += $__ToString(array[i]) + separator;\n  }\n\n  return result + $__ToString(array[i]);\n}\n\n\n\nvar ARRAY = 'IteratedObject',\n    INDEX  = 'ArrayIteratorNextIndex',\n    KIND  = 'ArrayIterationKind';\n\n\nvar K = 0x01,\n    V = 0x02,\n    S = 0x04;\n\nvar kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3,\n  'sparse:key': 5,\n  'sparse:value': 6,\n  'sparse:key+value': 7\n};\n\nclass ArrayIterator {\n  constructor(array, kind){\n    array = $__ToObject(array);\n    $__SetInternal(this, ARRAY, array);\n    $__SetInternal(this, INDEX, 0);\n    $__SetInternal(this, KIND, kinds[kind]);\n    this.next = () => next.call(this);\n  }\n\n  next(){\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['ArrayIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, ARRAY) || !$__HasInternal(this, INDEX) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('incompatible_array_iterator', ['ArrayIterator.prototype.next']);\n    }\n    var array = $__GetInternal(this, ARRAY),\n        index = $__GetInternal(this, INDEX),\n        kind = $__GetInternal(this, KIND),\n        len = $__ToUint32(array.length),\n        key = $__ToString(index);\n\n    if (kind & S) {\n      var found = false;\n      while (!found && index < len) {\n        found = index in array;\n        if (!found) {\n          index++;\n        }\n      }\n    }\n    if (index >= len) {\n      $__SetInternal(this, INDEX, Infinity);\n      throw $__StopIteration;\n    }\n    $__SetInternal(this, INDEX, index + 1);\n\n    if (kind & V) {\n      var value = array[key];\n      if (kind & K) {\n        return [key, value];\n      }\n      return value;\n    }\n    return key;\n  }\n\n  iterator(){\n    return this;\n  }\n}\n\n$__hideEverything(ArrayIterator);\n\nvar next = ArrayIterator.prototype.next;\n";
 
 exports.builtins.Boolean = "function Boolean(value){\n  value = $__ToBoolean(value);\n  if ($__IsConstructCall()) {\n    return $__BooleanCreate(value);\n  } else {\n    return value;\n  }\n}\n\n$__setupConstructor(Boolean, $__BooleanProto);\n\n$__defineProps(Boolean.prototype, {\n  toString(){\n    if ($__GetNativeBrand(this) === 'Boolean') {\n      return $__GetPrimitiveValue(this) ? 'true' : 'false';\n    } else {\n      throw $__Exception('not_generic', ['Boolean.prototype.toString']);\n    }\n  },\n  valueOf(){\n    if ($__GetNativeBrand(this) === 'Boolean') {\n      return $__GetPrimitiveValue(this);\n    } else {\n      throw $__Exception('not_generic', ['Boolean.prototype.valueOf']);\n    }\n  }\n});\n";
 
