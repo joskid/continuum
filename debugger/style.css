@@ -138,9 +138,9 @@ h1, h2
     { content: '}'; color: #aaa; }
     .ƒpreview > li
     { display: inline-block; vertical-align: top; margin-left: 2px }
-      .ƒpreview > li:after
+      .ƒpreview > li:before
       { content: ', '; color: #aaa; }
-      .ƒpreview > li:last-child:after
+      .ƒpreview > li:first-child:before
       { content: ''; margin-right: 2px }
         .ƒpreview-property > .ƒkey
         { margin-right: 0; }
