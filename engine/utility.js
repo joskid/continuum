@@ -71,6 +71,7 @@ var utility = (function(exports){
   if (Object.create && !Object.create(null).toString) {
     var create = exports.create = Object.create;
   } else {
+    var Empty = function(){};
     var create = exports.create = (function(F, empty){
       var iframe = document.createElement('iframe');
       iframe.style.display = 'none';
@@ -80,18 +81,24 @@ var utility = (function(exports){
       document.body.removeChild(iframe);
 
       var keys = ['constructor', 'hasOwnProperty', 'propertyIsEnumerable',
-                  'isProtoypeOf', 'toLocaleString', 'toString', 'valueOf'];
+                  'isPrototypeOf', 'toLocaleString', 'toString', 'valueOf'];
 
       for (var i=0; i < keys.length; i++)
         delete empty[keys[i]];
 
-      iframe = keys = null;
+      Empty.prototype = empty;
+      keys = null;
+
 
       function create(object){
-        F.prototype = object === null ? empty : object;
-        object = new F;
-        F.prototype = null;
-        return object;
+        if (object === null) {
+          return new Empty;
+        } else {
+          F.prototype = object;
+          object = new F;
+          F.prototype = null;
+          return object;
+        }
       }
 
       return create;
@@ -149,7 +156,7 @@ var utility = (function(exports){
   exports.getPrototypeOf = getPrototypeOf
 
 
-  if (Object.defineProperty) {
+  if (Object.getOwnPropertyNames) {
     var defineProperty = Object.defineProperty;
   } else {
     var defineProperty = (function(){
@@ -164,7 +171,7 @@ var utility = (function(exports){
   exports.defineProperty = defineProperty;
 
 
-  if (Object.getOwnPropertyDescriptor) {
+  if (Object.getOwnPropertyNames) {
     var describeProperty = Object.getOwnPropertyDescriptor;
   } else {
     var describeProperty = (function(){
@@ -546,7 +553,7 @@ var utility = (function(exports){
 
 
     function collector(o){
-      var handlers = Object.create(null);
+      var handlers = create(null);
       for (var k in o) {
         if (o[k] instanceof Array) {
           handlers[k] = path(o[k]);
@@ -590,7 +597,20 @@ var utility = (function(exports){
     return collector;
   })();
 
-
+  if (Function.prototype.bind) {
+    var applybind = Function.prototype.apply.bind(Function.prototype.bind);
+    exports.applyNew = function(Ctor, args){
+      return new (applybind(Ctor, [null].concat(args)));
+    };
+  } else {
+    exports.applyNew = function(Ctor, args){
+      var params = '';
+      for (var i=0; i < args.length; i++) {
+        params += ',$'+i;
+      }
+      return new Function('F'+params, 'return new F('+params.slice(1)+')').apply(null, args);
+    };
+  }
 
   exports.Emitter = (function(){
     function Emitter(){
@@ -598,7 +618,7 @@ var utility = (function(exports){
     }
 
     function on(events, handler){
-      events.split(/\s+/).forEach(function(event){
+      iterate(events.split(/\s+/), function(event){
         if (!(event in this)) {
           this[event] = [];
         }
@@ -607,7 +627,7 @@ var utility = (function(exports){
     }
 
     function off(events, handler){
-      events.split(/\s+/).forEach(function(event){
+      iterate(events.split(/\s+/), function(event){
         if (event in this) {
           var index = '__index' in handler ? handler.__index : this[event].indexOf(handler);
           if (~index) {
@@ -618,10 +638,11 @@ var utility = (function(exports){
     }
 
     function once(events, handler){
-      this.on(events, function once(val){
-        this.off(events, once);
+      function one(val){
+        this.off(events, one);
         handler.call(this, val);
-      });
+      }
+      this.on(events, one);
     }
 
     function emit(event, val){

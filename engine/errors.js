@@ -5,23 +5,24 @@ var errors = (function(errors, messages, exports){
 
 
   function Exception(name, type, message){
-    var args = {}, argNames = [];
-    var src = message.map(function(str){
+    var args = {},
+        argNames = [],
+        src = '';
+
+    for (var i=0; i < message.length; i++) {
+      var str = message[i];
       if (str[0] === '$') {
         if (!args.hasOwnProperty(str))
           argNames.push(str);
-        return str;
+        src += '+'+str;
       } else {
-        return '"'+str.replace(/["\\\n]/g, '\\$0')+'"';
+        src += '+'+'"'+str.replace(/["\\\n]/g, '\\$0')+'"';
       }
-    }).join('+');
-    var src = 'return '+
-      'function '+name+'('+argNames.join(', ')+') {\n'+
-      '  return '+src+';\n'+
-      '}';
+    }
+
     this.name = name;
     this.type = type;
-    return new Function('e', src)(this);
+    return new Function('e', 'return function '+name+'('+argNames.join(', ')+'){ return '+src.slice(1)+'; }')(this);
   }
 
 

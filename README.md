@@ -17,13 +17,14 @@ Continuum probably works in every modern engine, but has not been tested.
 
 Currently known to work in:
 
+* IE8+
 * Chrome 23+
 * Firefox 15+
-* IE9+
+* Opera 12+
 
 Will soon work in:
 
-* IE6-8
+* IE6-7
 
 # ES6 Implementation Status
 
@@ -45,22 +46,22 @@ Will soon work in:
 * mutable and deletable __proto__
 * Map
 * Set
+* WeakMap (garbage collection semantics not fully realized)
 * Iterators and for...of
 * `is` and `isnt` operators (not in es6 but supported anyway)
 
 ### Partially Implemented
 
 * Proxy and Reflect
-* WeakMap
-* Tail call optimization
 * Templates
 * Generators
 
 ### Soon
-* Array Comprhensions
+* Array Comprehensions
 * Private Names
 * Partial implementation of Modules
-* default params
+* Default parameters
+* Tail call optimization
 
 ### Further out
 * Proper implementation of Modules

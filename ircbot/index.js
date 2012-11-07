@@ -39,7 +39,7 @@ var colors = exports.colors = {
 function color(name, text, reset) {
     reset in colors || (reset = 'reset');
     name in colors || (name = 'white');
-    return colors[name] + text + colors[reset];
+    return text; //colors[name] + text + colors[reset];
 };
 
 
@@ -70,7 +70,7 @@ function renderWithNativeBrand(mirror){
 
 function renderIndexed(mirror){
   return color('gray', '[')+mirror.list(false, false).map(function(prop){
-    if (prop > 0 || prop == 0) {
+    if (prop > -1 && !(prop < 0)) {
       return mirror.hasOwn(prop) ? renderer.render(mirror.get(prop)) : '';
     } else {
       return color('white', prop)+': '+renderer.render(mirror.get(prop));
@@ -117,7 +117,7 @@ var renderer = new continuum.debug.Renderer({
   //NumberValue   : standard,
   //UndefinedValue: standard,
   //NullValue     : standard,
-  Thrown        : function(mirror){ color('red', renderer.render()) },
+  Thrown        : function(mirror){ return color('red', renderer.render(mirror)) },
   Global        : renderWithNativeBrand,
   Arguments     : prepend(renderIndexed, color('yellow', 'Arguments ')),
   Array         : renderIndexed,
@@ -140,18 +140,30 @@ var users = {};
 
 function createContext(callback){
   var context;
+  var render = true;
+
+  function disableUntilTick(){
+    render = false;
+    setTimeout(function(){
+      render = true;
+    }, 1);
+  }
+
   function reset(){
     context = continuum();
     context.evaluate(extras, true);
     context.on('reset', function(){
       callback(color('fuchsia', 'resetting'));
       reset();
+      disableUntilTick();
     });
     context.on('pause', function(){
       callback(color('fuchsia', 'paused'));
+      disableUntilTick();
     });
     context.on('resume', function(){
       callback(color('fuchsia', 'resumed'));
+      disableUntilTick();
     });
     context.on('write', function(args){
       var text = args[0];
@@ -161,9 +173,14 @@ function createContext(callback){
       callback('console: '+text);
     });
   }
+
   reset();
+
   return function run(code){
-    return renderer.render(context.evaluate(code));
+    var result = context.evaluate(code);
+    if (render) {
+      callback(renderer.render(result));
+    }
   };
 }
 
@@ -175,8 +192,7 @@ function execute(context, text, command, code){
       context.channel.send_reply(context.sender, signal);
     });
   }
-  var result = users[user.name](code);
-  context.channel.send_reply(context.sender, result);
+  users[user.name](code);
 }
 
 

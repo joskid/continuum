@@ -12,7 +12,7 @@ h1, h2
 
 
 #masthead
-{ padding: 10px; background: #046; }
+{ padding: 10px; background: #046; height: 50px; }
   #masthead h1
   { font-size: 36px; color: #3aa; text-shadow: 3px 3px 1px #024; display: inline-block; margin-right: 15px; }
   #masthead h3
@@ -329,8 +329,8 @@ h1, h2
 .ƒParams         { color: #08f } /* hsl(208, 100%, 50%) */
 .ƒParams:before  { color: #8cf; content: '('; } /* hsl(206, 100%, 77%) */
 .ƒParams:after   { color: #8cf; content: ')'; } /* hsl(206, 100%, 77%) */
-.ƒParam:after    { color: #8cf; content: ', ' } /* hsl(206, 100%, 77%) */
-.ƒParam:last-child:after { content: '' }
+.ƒParam:before    { color: #8cf; content: ', ' } /* hsl(206, 100%, 77%) */
+.ƒParam:first-child:before { content: '' }
 
 .ƒECW            { color: #ccc } /* hsl(  0,   0%, 80%) */
 .ƒE_W            { color: #ccf } /* hsl(240, 100%, 90%) */

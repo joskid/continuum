@@ -91,7 +91,7 @@ var assembler = (function(exports){
     }
     return function(node){
       node.IsConstantDeclaration = isConst(node);
-      node.BoundNames = BoundNames(node).map(intern);
+      node.BoundNames = BoundNames(node)//.map(intern);
       return node;
     };
   });
@@ -182,7 +182,7 @@ var assembler = (function(exports){
       push.apply(this, params)
     }
     this.Rest = rest;
-    this.BoundNames = BoundNames(node).map(intern);
+    this.BoundNames = BoundNames(node);//.map(intern);
     var args = collectExpectedArguments(this);
     this.ExpectedArgumentCount = args.length;
     this.ArgNames = [];
@@ -233,7 +233,7 @@ var assembler = (function(exports){
     this.NeedsSuperBinding = ReferencesSuper(this.body);
     this.Strict = strict || isStrict(this.body);
     this.params = new Params(node.params, node, node.rest);
-    this.ops = new Ops;
+    this.ops = [];
   }
 
   function Ops(){
@@ -560,6 +560,7 @@ var assembler = (function(exports){
       this.pending.push(code);
     },
     function intern(name){
+      return name;
       if (name === '__proto__') {
         if (!this.hash[proto]) {
           var index = this.hash[proto] = this.strings.length;
@@ -590,8 +591,8 @@ var assembler = (function(exports){
     }
   }
 
-  function intern(string){
-    return string//context.intern(string);
+  function intern(str){
+    return str;//context.intern(string);
   }
 
   function record(){
@@ -1376,7 +1377,7 @@ var assembler = (function(exports){
 
   var handlers = {};
 
-  [ ArrayExpression, ArrayPattern, ArrowFunctionExpression, AssignmentExpression,
+  utility.iterate([ ArrayExpression, ArrayPattern, ArrowFunctionExpression, AssignmentExpression,
     BinaryExpression, BlockStatement, BreakStatement, CallExpression,
     CatchClause, ClassBody, ClassDeclaration, ClassExpression, ClassHeritage,
     ConditionalExpression, DebuggerStatement, DoWhileStatement, EmptyStatement,
@@ -1388,7 +1389,7 @@ var assembler = (function(exports){
     ObjectPattern, Path, Program, Property, ReturnStatement, SequenceExpression, SwitchStatement,
     TaggedTemplateExpression, TemplateElement, TemplateLiteral, ThisExpression,
     ThrowStatement, TryStatement, UnaryExpression, UpdateExpression, VariableDeclaration,
-    VariableDeclarator, WhileStatement, WithStatement, YieldExpression].forEach(function(handler){
+    VariableDeclarator, WhileStatement, WithStatement, YieldExpression], function(handler){
       handlers[utility.fname(handler)] = handler;
     });
 
