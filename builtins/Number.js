@@ -46,7 +46,9 @@ var isFinite = Number.isFinite;
 $__defineProps(Number.prototype, {
   toString(radix){
     if ($__GetNativeBrand(this) === 'Number') {
-      return $__ToString($__GetPrimitiveValue(this));
+      var number = $__GetPrimitiveValue(this);
+      radix = $__ToInteger(radix);
+      return $__NumberToString(number, radix);
     } else {
       throw $__Exception('not_generic', ['Number.prototype.toString']);
     }
