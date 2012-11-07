@@ -776,7 +776,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       scope.CreateImmutableBinding(name.name ? name.name : name);
     }
 
-    constructor || (constructor = intrinsics.EmptyClass);
+    constructor || (constructor = intrinsics.EmptyClass.Code);
 
     var ctor = PropertyDefinitionEvaluation('method', proto, 'constructor', constructor);
     if (ctor && ctor.Completion) {

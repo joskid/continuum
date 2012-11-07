@@ -27,12 +27,9 @@ $__defineProps(Function.prototype, {
     ensureFunction(this, 'call');
     return $__CallFunction(this, receiver, args);
   },
-  toString(radix){
+  toString(){
     ensureFunction(this, 'toString');
-    if (radix !== undefined) {
-      radix = $__ToInteger(radix);
-    }
-    return $__FunctionToString(this, radix);
+    return $__FunctionToString(this);
   }
 });
 

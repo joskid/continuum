@@ -136,6 +136,9 @@ var debug = (function(exports){
     }, [
       function get(key){
         if (this.isPropAccessor(key)) {
+          if (this.subject.IsProto) {
+            return _Undefined;
+          }
           var prop = this.getProperty(key),
               accessor = prop[1] || prop[3];
 
@@ -914,6 +917,7 @@ var debug = (function(exports){
   }
 
   void function(){
+    return;
     if (typeof Proxy !== 'object' || typeof require !== 'function') return;
 
     var util = require('util'),
