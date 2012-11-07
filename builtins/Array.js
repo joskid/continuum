@@ -271,10 +271,15 @@ $__defineProps(Array.prototype, {
 });
 
 $__setLength(Array.prototype, {
+  every: 1,
+  filter: 1,
+  forEach: 1,
   indexOf: 1,
   lastIndexOf: 1,
-  forEach: 1,
   map: 1,
+  reduce: 1,
+  reduceRight: 1,
+  some: 1,
   reduce: 1
 });
 
