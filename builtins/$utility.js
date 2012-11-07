@@ -53,6 +53,19 @@ $__setupConstructor = function setupConstructor(ctor, proto){
   $__SetInternal(ctor, 'NativeConstructor', true);
 };
 
+
+$__setLength = function setLength(f, length){
+  if (typeof length === 'string') {
+    $__setDirect(f, 'length', length);
+  } else {
+    var keys = $__Enumerate(length, false, false);
+    for (var i=0; i < keys.length; i++) {
+      var key = keys[i];
+      $__setDirect(f[key], 'length', length[key]);
+    }
+  }
+};
+
 $__EmptyClass = function constructor(...args){
   super(...args);
 };
