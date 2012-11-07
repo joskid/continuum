@@ -93,7 +93,11 @@ builder.addDirectory('../builtins', function(name, source){
   if (name === 'index') {
     return '';
   } else {
-    return 'exports.builtins.'+name+' = '+escapeJS(source) + ';';
+    if (name[0] === '@') {
+      return 'exports.modules["'+name+'"] = '+escapeJS(source) + ';';
+    } else {
+      return 'exports.builtins.'+name+' = '+escapeJS(source) + ';';
+    }
   }
 });
 
