@@ -7,7 +7,7 @@ var utility = (function(exports){
       UNDEFINED = 'undefined';
 
   var toBrand = {}.toString,
-      slice = [].slice,
+      _slice = [].slice,
       hasOwn = {}.hasOwnProperty,
       toSource = Function.toString;
 
@@ -25,21 +25,56 @@ var utility = (function(exports){
   }
 
 
-  function fname(func){
-    if (typeof func !== 'function') {
-      return '';
-    } else if ('name' in func) {
-      return func.name;
+  function slice(o, start, end){
+    if (!o.length) {
+      return [];
+    } else if (!end && !start) {
+      return toArray(o);
+    } else {
+      return _slice.call(o, start, end);
     }
-
-    return toSource.call(func).match(/^\n?function\s?(\w*)?_?\(/)[1];
   }
-  exports.fname = fname;
+  exports.slice = slice;
+
+
+  function toArray(o){
+    var len = o.length;
+    if (!len) return [];
+    if (len === 1) return [o[0]];
+    if (len === 2) return [o[0], o[1]];
+    if (len === 3) return [o[0], o[1], o[2]];
+    if (len > 9)   return _slice.call(o);
+    if (len === 4) return [o[0], o[1], o[2], o[3]];
+    if (len === 5) return [o[0], o[1], o[2], o[3], o[4]];
+    if (len === 6) return [o[0], o[1], o[2], o[3], o[4], o[5]];
+    if (len === 7) return [o[0], o[1], o[2], o[3], o[4], o[5], o[6]];
+    if (len === 8) return [o[0], o[1], o[2], o[3], o[4], o[5], o[6], o[7]];
+    if (len === 9) return [o[0], o[1], o[2], o[3], o[4], o[5], o[6], o[7], o[8]];
+  }
+  exports.toArray = toArray;
+
+
+
+  if (Function.name === 'Function') {
+    var fname = exports.fname = (function(){
+      function fname(f){
+        return typeof f === FUNCTION ? f.name || '' : '';
+      }
+      return fname;
+    })();
+  } else {
+    var fname = exports.fname = (function(){
+      function fname(f){
+        return typeof f === FUNCTION ? toSource.call(f).match(/^\n?function\s?(\w*)?_?\(/)[1] : '';
+      }
+      return fname;
+    })();
+  }
 
   function isObject(v){
-    return typeof v === OBJECT ? v !== null : typeof v === FUNCTION;
+    var type = typeof v;
+    return type === OBJECT ? v !== null : type === FUNCTION;
   }
-
   exports.isObject = isObject;
 
 
@@ -71,28 +106,26 @@ var utility = (function(exports){
   if (Object.create && !Object.create(null).toString) {
     var create = exports.create = Object.create;
   } else {
-    var Empty = function(){};
-    var create = exports.create = (function(F, empty){
+    var Null = function(){};
+
+    var create = exports.create = (function(F){
       var iframe = document.createElement('iframe');
       iframe.style.display = 'none';
       document.body.appendChild(iframe);
       iframe.src = 'javascript:';
-      empty = iframe.contentWindow.Object.prototype;
+      Null.prototype = iframe.contentWindow.Object.prototype;
       document.body.removeChild(iframe);
 
       var keys = ['constructor', 'hasOwnProperty', 'propertyIsEnumerable',
                   'isPrototypeOf', 'toLocaleString', 'toString', 'valueOf'];
 
-      for (var i=0; i < keys.length; i++)
-        delete empty[keys[i]];
-
-      Empty.prototype = empty;
-      keys = null;
-
+      while (keys.length) {
+        delete Null.prototype[keys.pop()];
+      }
 
       function create(object){
         if (object === null) {
-          return new Empty;
+          return new Null;
         } else {
           F.prototype = object;
           object = new F;
@@ -107,27 +140,29 @@ var utility = (function(exports){
 
 
   function enumerate(o){
-    var keys = [], i = 0;
-    for (keys[i++] in o);
-    return keys;
+    var out = [], i = 0;
+    for (out[i++] in o);
+    return out;
   }
-
   exports.enumerate = enumerate;
 
 
   if (Object.keys) {
     var ownKeys = exports.keys = Object.keys;
   } else {
-    var ownKeys = exports.keys = (function(hasOwn){
+    var ownKeys = exports.keys = (function(){
       function keys(o){
         var out = [], i=0;
-        for (var k in o)
-          if (hasOwn.call(o, k))
+        for (var k in o) {
+          if (hasOwn.call(o, k)) {
             out[i++] = k;
+          }
+        }
         return out;
       }
+
       return keys;
-    })({}.hasOwnProperty);
+    })();
   }
 
 
@@ -139,16 +174,33 @@ var utility = (function(exports){
         ensureObject('getPrototypeOf', o);
         return o.__proto__;
       }
+
       return getPrototypeOf;
     })();
   } else {
     var getPrototypeOf = (function(){
       function getPrototypeOf(o){
         ensureObject('getPrototypeOf', o);
-        if (typeof o.constructor === 'function') {
-          return o.constructor.prototype;
+
+        var ctor = o.constructor;
+
+        if (typeof ctor === FUNCTION) {
+          var proto = ctor.prototype;
+          if (o !== proto) {
+            return proto;
+          } else if (!ctor._super) {
+            delete o.constructor;
+            ctor._super = o.constructor;
+            o.constructor = ctor;
+          }
+          return ctor._super.prototype;
+        } else if (o instanceof Null) {
+          return null;
+        } else if (o instanceof Object) {
+          return Object.prototype;
         }
       }
+
       return getPrototypeOf;
     })();
   }
@@ -245,7 +297,7 @@ var utility = (function(exports){
   function iterate(o, callback, context){
     if (!o) return;
     var type = typeof o;
-    context = context || this;
+    context = context || o;
     if (type === 'number' || type === 'boolean') {
       return void callback.call(context, o, 0, o);
     }
@@ -263,6 +315,48 @@ var utility = (function(exports){
   }
 
   exports.iterate = iterate;
+
+  function each(o, callback){
+    for (var i=0; i < o.length; i++) {
+      callback(o[i]);
+    }
+  }
+
+  exports.each = each;
+
+  function map(o, callback){
+    var out = new Array(o.length);
+    for (var i=0; i < o.length; i++) {
+      out[i] = callback(o[i]);
+    }
+    return out;
+  }
+
+  exports.map = map;
+
+  function repeat(n, args, callback){
+    if (typeof args === FUNCTION) {
+      callback = args;
+      for (var i=0; i < n; i++) {
+        callback();
+      }
+    } else {
+      for (var i=0; i < n; i++) {
+        callback.apply(this, args);
+      }
+    }
+  }
+  exports.repeat = repeat;
+
+
+  function generate(n, callback){
+    var out = new Array(n);
+    for (var i=0; i < n; i++) {
+      out[i] = callback(i, n, out);
+    }
+    return out;
+  }
+  exports.generate = generate;
 
 
   function Hidden(value){
@@ -597,20 +691,74 @@ var utility = (function(exports){
     return collector;
   })();
 
-  if (Function.prototype.bind) {
-    var applybind = Function.prototype.apply.bind(Function.prototype.bind);
-    exports.applyNew = function(Ctor, args){
-      return new (applybind(Ctor, [null].concat(args)));
-    };
+
+
+
+  var _call, _apply, _bind;
+
+  if (typeof Function.prototype.bind === FUNCTION && !('prototype' in Function.prototype.bind)) {
+    _call = Function.prototype.call;
+    _apply = Function.prototype.apply;
+    _bind = Function.prototype.bind;
   } else {
-    exports.applyNew = function(Ctor, args){
-      var params = '';
-      for (var i=0; i < args.length; i++) {
-        params += ',$'+i;
+    void function(){
+      function bind(receiver){
+        if (typeof this !== 'function') {
+          throw new TypeError("Function.prototype.bind called on non-callable");
+        }
+
+        var args = toArray(arguments),
+            params = '',
+            F = this;
+
+        for (var i=1; i < args.length; i++) {
+          if (i > 1) params += ',';
+          params += '$['+i+']';
+        }
+
+        var bound = function(){
+          if (this instanceof bound) {
+            var p = params;
+            for (var i=0; i < arguments.length; i++) {
+              p += ',_['+i+']';
+            }
+            return new Function('F,$,_', 'return new F('+p+')')(F, args, arguments);
+          } else {
+            var a = toArray(args);
+            for (var i=0; i < arguments.length; i++) {
+              a[a.length] = arguments[i];
+            }
+            return _call.apply(F, a);
+          }
+        };
+
+        return bound;
       }
-      return new Function('F'+params, 'return new F('+params.slice(1)+')').apply(null, args);
-    };
+
+      var iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      iframe.src = 'javascript:';
+      _call = iframe.contentWindow.Function.prototype.call;
+      _apply = _call.apply;
+      _bind = bind;
+      document.body.removeChild(iframe);
+    }();
   }
+
+  var bindbind  = exports.bindbind  = _bind.bind(_bind),
+      callbind  = exports.callbind  = bindbind(_call),
+      applybind = exports.applybind = bindbind(_apply),
+      bindapply = exports.bindapply = applybind(_bind),
+      bind      = exports.bind      = callbind(_bind),
+      call      = exports.call      = callbind(_call),
+      apply     = exports.apply     = callbind(_apply);
+
+
+  function applyNew(Ctor, args){
+    return new (bindapply(Ctor, [null].concat(args)));
+  }
+  exports.applyNew = applyNew;
 
   exports.Emitter = (function(){
     function Emitter(){
@@ -667,9 +815,8 @@ var utility = (function(exports){
 
 
 
-  function Hash(){}
+  var Hash = exports.Hash = function(){};
   Hash.prototype = create(null);
-  exports.Hash = Hash;
 
 
   var proto = Math.random().toString(36).slice(2);
