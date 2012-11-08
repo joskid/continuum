@@ -13,6 +13,10 @@ var assembler = (function(exports){
       inherit   = utility.inherit,
       ownKeys   = utility.keys,
       isObject  = utility.isObject,
+      iterate   = utility.iterate,
+      each      = utility.each,
+      repeat    = utility.repeat,
+      map       = utility.map,
       quotes    = utility.quotes;
 
   var constants = require('./constants'),
@@ -33,6 +37,10 @@ var assembler = (function(exports){
     this.id = opcodes++;
     this.params = params;
     this.name = name;
+    var opcode = this;
+    return function(){
+      return context.code.createOperation(opcode, arguments);
+    };
   }
 
   define(OpCode.prototype, [
@@ -115,12 +123,12 @@ var assembler = (function(exports){
 
 
 
-  function Operation(op, a, b, c, d){
+  function Operation(op, args){
     this.op = op;
     this.loc = currentNode.loc;
     this.range = currentNode.range;
     for (var i=0; i < op.params; i++) {
-      this[i] = arguments[i + 1];
+      this[i] = args[i];
     }
   }
 
@@ -139,13 +147,6 @@ var assembler = (function(exports){
   function Params(params, node, rest){
     this.length = 0;
     if (params) {
-      // for (var i=0; i < params.length; i++) {
-      //   if (params[i].type === 'Identifier') {
-      //     push.call(this, intern(params[i].name))
-      //   } else {
-      //     push.call(this, params[i]);
-      //   }
-      // }
       push.apply(this, params)
     }
     this.Rest = rest;
@@ -164,8 +165,8 @@ var assembler = (function(exports){
 
 
   function Code(node, source, type, global, strict){
-    function Instruction(args){
-      Operation.apply(this, args);
+    function Instruction(opcode, args){
+      Operation.call(this, opcode, args);
     }
 
     inherit(Instruction, Operation, {
@@ -182,8 +183,8 @@ var assembler = (function(exports){
       loc: node.loc,
       children: [],
       LexicalDeclarations: LexicalDeclarations(body),
-      createOperation: function(args){
-        var op =  new Instruction(args);
+      createOperation: function(opcode, args){
+        var op = new Instruction(opcode, args);
         this.ops.push(op);
         return op;
       }
@@ -257,7 +258,7 @@ var assembler = (function(exports){
 
     if (node.superClass) {
       recurse(node.superClass);
-      record(GET);
+      GET();
       this.superClass = node.superClass.name;
     }
   }
@@ -386,14 +387,14 @@ var assembler = (function(exports){
           }
           recurse(this.code.body);
           if (this.code.eval || this.code.global){
-            record(COMPLETE);
+            COMPLETE();
           } else {
             if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
-              record(GET);
+              GET();
             } else {
-              record(UNDEFINED);
+              UNDEFINED();
             }
-            record(RETURN);
+            RETURN();
           }
         }
 
@@ -590,6 +591,11 @@ var assembler = (function(exports){
     return context.code.createOperation(arguments);
   }
 
+  function pattern(ops){
+    return function(){
+      each(ops, record);
+    };
+  }
 
   function current(){
     return context.code.ops.length;
@@ -678,36 +684,37 @@ var assembler = (function(exports){
         if (binding.type === 'SpreadElement') {
           recurse(binding.argument);
           recurse(right);
-          record(SPREAD, i);
+          SPREAD(i);
         } else {
           recurse(binding);
           recurse(right);
           if (left.type === 'ArrayPattern') {
-            record(LITERAL, i);
-            record(ELEMENT, i);
+            LITERAL(i);
+            ELEMENT(i);
           } else {
-            record(MEMBER, binding.name)
+            MEMBER(binding.name)
           }
         }
-        record(PUT);
+        PUT();
       }
     }
   }
 
   function args(node){
-    record(ARGS);
+    ARGS();
     for (var i=0, item; item = node[i]; i++) {
       if (item && item.type === 'SpreadElement') {
         recurse(item.argument);
-        record(GET);
-        record(SPREAD_ARG);
+        GET();
+        SPREAD_ARG();
       } else {
         recurse(item);
-        record(GET);
-        record(ARG);
+        GET();
+        ARG();
       }
     }
   }
+
 
 
 
@@ -718,22 +725,22 @@ var assembler = (function(exports){
       } else {
         recurse(node.left);
         recurse(node.right);
-        record(GET);
-        record(PUT);
+        GET();
+        PUT();
       }
     } else {
       recurse(node.left);
-      record(DUP);
-      record(GET);
+      DUP();
+      GET();
       recurse(node.right);
-      record(GET);
-      record(BINARY, BINARYOPS[node.operator.slice(0, -1)]);
-      record(PUT);
+      GET();
+      BINARY(BINARYOPS[node.operator.slice(0, -1)]);
+      PUT();
     }
   }
 
   function ArrayExpression(node){
-    record(ARRAY);
+    ARRAY();
     for (var i=0, item; i < node.elements.length; i++) {
       var empty = false,
           spread = false,
@@ -748,9 +755,9 @@ var assembler = (function(exports){
         recurse(item);
       }
 
-      record(INDEX, empty, spread);
+      INDEX(empty, spread);
     }
-    record(ARRAY_DONE);
+    ARRAY_DONE();
   }
 
   function ArrayPattern(node){}
@@ -758,34 +765,34 @@ var assembler = (function(exports){
   function ArrowFunctionExpression(node){
     var code = new Code(node, context.code.source, FUNCTYPE.ARROW, false, context.code.strict);
     context.queue(code);
-    record(FUNCTION, null, code);
+    FUNCTION(null, code);
   }
 
   function BinaryExpression(node){
     recurse(node.left);
-    record(GET);
+    GET();
     recurse(node.right);
-    record(GET);
-    record(BINARY, BINARYOPS[node.operator]);
+    GET();
+    BINARY(BINARYOPS[node.operator]);
   }
 
   function BreakStatement(node){
     var entry = move(node);
     if (entry) {
-      entry.breaks.push(record(JUMP, 0));
+      entry.breaks.push(JUMP(0));
     }
   }
 
   function BlockStatement(node){
     block(function(){
       lexical(function(){
-        record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.body) });
+        BLOCK({ LexicalDeclarations: LexicalDeclarations(node.body) });
 
         for (var i=0, item; item = node.body[i]; i++) {
           recurse(item);
         }
 
-        record(UPSCOPE);
+        UPSCOPE();
       });
     });
   }
@@ -795,14 +802,14 @@ var assembler = (function(exports){
       if (context.code.Type === 'global' || context.code.Type === 'eval' && context.code.global) {
         throwError('illegal_super');
       }
-      record(SUPER_CALL);
+      SUPER_CALL();
     } else {
       recurse(node.callee);
     }
-    record(DUP);
-    record(GET);
+    DUP();
+    GET();
     args(node.arguments);
-    record(node.callee.type === 'NativeIdentifier' ? NATIVE_CALL : CALL);
+    node.callee.type === 'NativieIdentifier' ? NATIVE_CALL(): CALL();
   }
 
   function CatchClause(node){
@@ -819,46 +826,46 @@ var assembler = (function(exports){
           init: undefined
         }]
       });
-      record(BLOCK, { LexicalDeclarations: decls });
+      BLOCK({ LexicalDeclarations: decls });
       recurse(node.param);
-      record(PUT);
+      PUT();
       for (var i=0, item; item = node.body.body[i]; i++) {
         recurse(item);
       }
 
-      record(UPSCOPE);
+      UPSCOPE();
     });
   }
 
   function ClassBody(node){}
 
   function ClassDeclaration(node){
-    record(CLASS_DECL, new ClassDefinition(node));
+    CLASS_DECL(new ClassDefinition(node));
   }
 
   function ClassExpression(node){
-    record(CLASS_EXPR, new ClassDefinition(node));
+    CLASS_EXPR(new ClassDefinition(node));
   }
 
   function ClassHeritage(node){}
 
   function ConditionalExpression(node){
     recurse(node.test);
-    record(GET);
-    var test = record(IFEQ, 0, false);
+    GET();
+    var test = IFEQ(0, false);
     recurse(node.consequent)
-    record(GET);
-    var alt = record(JUMP, 0);
+    GET();
+    var alt = JUMP(0);
     adjust(test);
     recurse(node.alternate);
-    record(GET);
+    GET();
     adjust(alt)
   }
 
   function ContinueStatement(node){
     var entry = move(node);
     if (entry) {
-      entry.continues.push(record(JUMP, 0));
+      entry.continues.push(JUMP(0));
     }
   }
 
@@ -868,14 +875,14 @@ var assembler = (function(exports){
       recurse(node.body);
       var cond = current();
       recurse(node.test);
-      record(GET);
-      record(IFEQ, start, true);
+      GET();
+      IFEQ(start, true);
       return cond;
     });
   }
 
   function DebuggerStatement(node){
-    record(DEBUGGER);
+    DEBUGGER();
   }
 
   function EmptyStatement(node){}
@@ -885,11 +892,11 @@ var assembler = (function(exports){
 
   function ExpressionStatement(node){
     recurse(node.expression);
-    record(GET);
+    GET();
     if (context.code.eval || context.code.global) {
-      record(SAVE)
+      SAVE()
     } else {
-      record(POP);
+      POP();
     }
   }
 
@@ -897,7 +904,7 @@ var assembler = (function(exports){
     control(function(){
       var update;
       lexical(function(){
-        var scope = record(BLOCK, { LexicalDeclarations: [] });
+        var scope = BLOCK({ LexicalDeclarations: [] });
         var init = node.init;
         if (init){
           if (init.type === 'VariableDeclaration') {
@@ -918,8 +925,8 @@ var assembler = (function(exports){
               recurse(decl);
             }
           } else {
-            record(GET);
-            record(POP);
+            GET();
+            POP();
           }
         }
 
@@ -927,8 +934,8 @@ var assembler = (function(exports){
 
         if (node.test) {
           recurse(node.test);
-          record(GET);
-          var op = record(IFEQ, 0, false);
+          GET();
+          var op = IFEQ(0, false);
         }
 
         update = current();
@@ -938,17 +945,17 @@ var assembler = (function(exports){
             lexical(function(){
               var lexicals = LexicalDeclarations(node.body.body);
               lexicals.push(lexicalDecl);
-              record(GET);
-              record(BLOCK, { LexicalDeclarations: lexicals });
+              GET();
+              BLOCK({ LexicalDeclarations: lexicals });
               recurse(decl);
-              record(ROTATE, 1);
-              record(PUT);
+              ROTATE(1);
+              PUT();
 
               for (var i=0, item; item = node.body.body[i]; i++) {
                 recurse(item);
               }
 
-              record(UPSCOPE);
+              UPSCOPE();
             });
           });
         } else {
@@ -957,13 +964,13 @@ var assembler = (function(exports){
 
         if (node.update) {
           recurse(node.update);
-          record(GET);
-          record(POP);
+          GET();
+          POP();
         }
 
-        record(JUMP, test);
+        JUMP(test);
         adjust(op);
-        record(UPSCOPE);
+        UPSCOPE();
       });
       return update;
     });
@@ -977,38 +984,38 @@ var assembler = (function(exports){
     iteration(node, ITERATE);
   }
 
-  function iteration(node, kind){
+  function iteration(node, KIND){
     control(function(){
       var update;
       lexical(ENTRY.FOROF, function(){
         recurse(node.right);
-        record(GET);
-        record(kind);
-        record(GET);
-        record(DUP);
-        record(MEMBER, 'next');
-        record(GET);
+        GET();
+        KIND();
+        GET();
+        DUP();
+        MEMBER('next');
+        GET();
         update = current();
-        record(DUP);
-        record(DUP);
-        record(ARGS);
-        record(CALL);
-        record(DUP);
-        var compare = record(IFEQ, 0, false);
+        DUP();
+        DUP();
+        ARGS();
+        CALL();
+        DUP();
+        var compare = IFEQ(0, false);
         if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
           block(function(){
             lexical(function(){
-              record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.left) });
+              BLOCK({ LexicalDeclarations: LexicalDeclarations(node.left) });
               recurse(node.left);
               recurse(node.body);
-              record(UPSCOPE);
+              UPSCOPE();
             });
           });
         } else {
           recurse(node.left);
           recurse(node.body);
         }
-        record(JUMP, update);
+        JUMP(update);
         adjust(compare);
       });
       return update;
@@ -1026,23 +1033,23 @@ var assembler = (function(exports){
       code.name = methodName;
     }
     context.queue(code);
-    record(FUNCTION, intern(node.id ? node.id.name : ''), code);
+    FUNCTION(intern(node.id ? node.id.name : ''), code);
   }
 
   function Glob(node){}
 
   function Identifier(node){
-    record(REF, intern(node.name));
+    REF(intern(node.name));
   }
 
   function IfStatement(node){
     recurse(node.test);
-    record(GET);
-    var test = record(IFEQ, 0, false);
+    GET();
+    var test = IFEQ(0, false);
     recurse(node.consequent);
 
     if (node.alternate) {
-      var alt = record(JUMP, 0);
+      var alt = JUMP(0);
       adjust(test);
       recurse(node.alternate);
       adjust(alt);
@@ -1057,11 +1064,11 @@ var assembler = (function(exports){
 
   function Literal(node){
     if (node.value instanceof RegExp) {
-      record(REGEXP, node.value);
+      REGEXP(node.value);
     } else if (typeof node.value === 'string') {
-      record(STRING, intern(node.value));
+      STRING(intern(node.value));
     } else {
-      record(LITERAL, node.value);
+      LITERAL(node.value);
     }
   }
 
@@ -1078,10 +1085,10 @@ var assembler = (function(exports){
 
   function LogicalExpression(node){
     recurse(node.left);
-    record(GET);
-    var op = record(IFNE, 0, node.operator === '||');
+    GET();
+    var op = IFNE(0, node.operator === '||');
     recurse(node.right);
-    record(GET);
+    GET();
     adjust(op);
   }
 
@@ -1093,15 +1100,15 @@ var assembler = (function(exports){
       }
     } else {
       recurse(node.object);
-      record(GET);
+      GET();
     }
 
     if (node.computed){
       recurse(node.property);
-      record(GET);
-      record(isSuper ? SUPER_ELEMENT : ELEMENT);
+      GET();
+      isSuper ? SUPER_ELEMENT() : ELEMENT();
     } else {
-      record(isSuper ? SUPER_MEMBER : MEMBER, intern(node.property.name));
+      isSuper ? SUPER_MEMBER() : MEMBER(intern(node.property.name));
     }
   }
   function MethodDefinition(node){}
@@ -1109,18 +1116,18 @@ var assembler = (function(exports){
   function ModuleDeclaration(node){}
 
   function NativeIdentifier(node){
-    record(NATIVE_REF, intern(node.name));
+    NATIVE_REF(intern(node.name));
   }
 
   function NewExpression(node){
     recurse(node.callee);
-    record(GET);
+    GET();
     args(node.arguments);
-    record(CONSTRUCT);
+    CONSTRUCT();
   }
 
   function ObjectExpression(node){
-    record(OBJECT);
+    OBJECT();
     for (var i=0, item; item = node.properties[i]; i++) {
       recurse(item);
     }
@@ -1144,51 +1151,51 @@ var assembler = (function(exports){
       } else {
         recurse(node.value);
       }
-      record(GET);
-      record(PROPERTY, intern(key));
+      GET();
+      PROPERTY(intern(key));
     } else {
       var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, false, context.code.strict);
       context.queue(code);
-      record(METHOD, node.kind, code, intern(node.key.name));
+      METHOD(node.kind, code, intern(node.key.name));
     }
   }
 
   function ReturnStatement(node){
     if (node.argument){
       recurse(node.argument);
-      record(GET);
+      GET();
     } else {
-      record(UNDEFINED);
+      UNDEFINED();
     }
 
-    record(RETURN);
+    RETURN();
   }
 
   function SequenceExpression(node){
     for (var i=0, item; item = node.expressions[i]; i++) {
       recurse(item)
-      record(GET);
-      record(POP);
+      GET();
+      POP();
     }
     recurse(item);
-    record(GET);
+    GET();
   }
 
   function SwitchStatement(node){
     control(function(){
       recurse(node.discriminant);
-      record(GET);
+      GET();
 
       lexical(function(){
-        record(BLOCK, { LexicalDeclarations: LexicalDeclarations(node.cases) });
+        BLOCK({ LexicalDeclarations: LexicalDeclarations(node.cases) });
 
         if (node.cases){
           var cases = [];
           for (var i=0, item; item = node.cases[i]; i++) {
             if (item.test){
               recurse(item.test);
-              record(GET);
-              cases.push(record(CASE, 0));
+              GET();
+              cases.push(CASE(0));
             } else {
               var defaultFound = i;
               cases.push(0);
@@ -1196,10 +1203,10 @@ var assembler = (function(exports){
           }
 
           if (defaultFound != null){
-            record(DEFAULT, cases[defaultFound]);
+            DEFAULT(cases[defaultFound]);
           } else {
-            record(POP);
-            var last = record(JUMP, 0);
+            POP();
+            var last = JUMP(0);
           }
 
           for (var i=0, item; item = node.cases[i]; i++) {
@@ -1213,10 +1220,10 @@ var assembler = (function(exports){
             adjust(last);
           }
         } else {
-          record(POP);
+          POP();
         }
 
-        record(UPSCOPE);
+        UPSCOPE();
       });
     });
   }
@@ -1239,68 +1246,79 @@ var assembler = (function(exports){
 
 
   function TemplateElement(node){
-    record(STRING, intern(node.value.cooked));
-    record(DEFINE, 1);
-    record(POP);
-    record(ROTATE, 1);
-    record(ROTATE, 2);
-    record(STRING, intern(node.value.raw));
-    record(DEFINE, 1);
-    record(POP);
-    record(INC);
-    record(LOG);
+    STRING(intern(node.value.cooked));
+    DEFINE(1);
+    POP();
+    ROTATE(1);
+    ROTATE(2);
+    STRING(intern(node.value.raw));
+    DEFINE(1);
+    POP();
+    INC();
   }
 
+  function repeat(count, callback){
+    for (var i=0; i < count; i++) {
+      callback(i);
+    }
+  }
+
+
+
   function TemplateLiteral(node){
-    record(ARRAY);
-    record(POP);
-    record(DUP);
-    record(ARRAY);
-    record(POP);
-    record(DUP);
-    record(ROTATE, 2);
-    record(OBJECT);
-    record(STRING, intern('raw'));
-    record(ROTATE, 2);
-    record(ROTATE, 2);
-    record(DEFINE, 1);
-    record(POPN, 2);
-    record(STRING, intern('cooked'));
-    record(ROTATE, 2);
-    record(ROTATE, 2);
-    record(DEFINE, 1);
-    record(POPN, 2);
-    record(ROTATE, 2);
-    record(LITERAL, 0);
+    ARRAY();
+    POP();
+    DUP();
+    ARRAY();
+    POP();
+    DUP();
+    ROTATE(2);
+    OBJECT();
+    each(['raw', 'cooked'], function(n){
+      STRING(intern(n));
+      ROTATE(2);
+      ROTATE(2);
+      DEFINE(1);
+      POPN(2);
+    });
+    ROTATE(2);
+    LITERAL(0);
     for (var i=0, element; element = node.quasis[i]; i++) {
       recurse(element);
     }
-    record(LOG);
-    record(DEBUGGER);
-    record(ARRAY_DONE);
-    record(ARRAY_DONE);
+    DUP();
+    ROTATE(2);
+    STRING(intern('length'));
+    ROTATE(1);
+    DEFINE(1);
+    POP();
+    LOG();
+    DEBUGGER();
+    DEFINE(0);
+    ARRAY_DONE();
+    ARRAY_DONE();
   }
 
   function TaggedTemplateExpression(node){
     recurse(node.tag);
-    record(DUP);
-    record(GET);
-    record(ARGS);
+    DUP();
+    GET();
+    ARGS();
     recurse(node.quasi);
-    record(GET);
-    record(LOG);
-    //record(ARG);
-    //record(CALL);
+    GET();
+    LOG();
+    //ARG();
+    //CALL();
   }
 
   function ThisExpression(node){
-    record(THIS);
+    THIS();
   }
 
   function ThrowStatement(node){
     recurse(node.argument);
-    record(GET);
-    record(THROW);
+    GET();
+    THROW();
   }
 
   function TryStatement(node){
@@ -1308,13 +1326,13 @@ var assembler = (function(exports){
       recurse(node.block);
     });
 
-    var tryer = record(JUMP, 0),
+    var tryer = JUMP(0),
         handlers = [];
 
     for (var i=0, handler; handler = node.handlers[i]; i++) {
       recurse(handler);
       if (i < node.handlers.length - 1) {
-        handlers.push(record(JUMP, 0));
+        handlers.push(JUMP(0));
       }
     }
 
@@ -1330,16 +1348,16 @@ var assembler = (function(exports){
 
   function UnaryExpression(node){
     recurse(node.argument);
-    record(UNARY, UNARYOPS[node.operator]);
+    UNARY(UNARYOPS[node.operator]);
   }
 
   function UpdateExpression(node){
     recurse(node.argument);
-    record(UPDATE, !!node.prefix | ((node.operator === '++') << 1));
+    UPDATE(!!node.prefix | ((node.operator === '++') << 1));
   }
 
   function VariableDeclaration(node){
-    var op = {
+    var OP = {
       'var': VAR,
       'const': CONST,
       'let': LET
@@ -1348,15 +1366,15 @@ var assembler = (function(exports){
     for (var i=0, item; item = node.declarations[i]; i++) {
       if (item.init) {
         recurse(item.init);
-        record(GET);
+        GET();
       } else if (item.kind === 'let') {
-        record(UNDEFINED);
+        UNDEFINED();
       }
 
       //if (item.id.type === 'Identifier') {
-      //  record(op, intern(item.id.name));
+      //  op(intern(item.id.name));
       //} else {
-        record(op, item.id);
+        OP(item.id);
       //}
 
       if (node.kind === 'var') {
@@ -1371,10 +1389,10 @@ var assembler = (function(exports){
     control(function(){
       var start = current();
       recurse(node.test);
-      record(GET);
-      var op = record(IFEQ, 0, false)
+      GET();
+      var op = IFEQ(0, false)
       recurse(node.body);
-      record(JUMP, start);
+      JUMP(start);
       adjust(op);
       return start;
     });
@@ -1383,9 +1401,9 @@ var assembler = (function(exports){
   function WithStatement(node){
     recurse(node.object)
     lexical(function(){
-      record(WITH);
+      WITH();
       recurse(node.body);
-      record(UPSCOPE);
+      UPSCOPE();
     });
   }
 
