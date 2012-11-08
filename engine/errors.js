@@ -78,7 +78,7 @@ var errors = (function(errors, messages, exports){
     if (!(args instanceof Array)) {
       args = [args];
     }
-    error = errors[type];
+    var error = errors[type];
     return exports.createError(error.name, type, error.apply(null, args));
   }
 
