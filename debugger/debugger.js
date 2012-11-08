@@ -1387,11 +1387,11 @@ var Editor = (function(commands, Pass){
       return this;
     },
     function disable(){
-      this.codemirror.readonly(true);
+      this.codemirror.setOption('readOnly', true);
       this.disabled = true;
     },
     function enable(){
-      this.codemirror.readonly(false);
+      this.codemirror.setOption('readOnly', false);
       this.disabled = false;
     }
   ]);
