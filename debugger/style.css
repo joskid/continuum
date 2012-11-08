@@ -204,33 +204,39 @@ h1, h2
   box-shadow: 3px 1px 5px 0 rgba(0,0,0,.6); }
 
 .ƒsplitter-vertical
-{ background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+{ background: #048;
+  background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6)); }
 .ƒsplitter-vertical:hover
-{ background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
+{ background: #06a;
+  background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8)); }
 .ƒsplitter-vertical.ƒdragging
-{ background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
+{ background: #09c;
+  background: -webkit-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:    -moz-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:     -ms-linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:         linear-gradient(bottom, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1)); }
 
 .ƒsplitter-horizontal
-{ background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
+{ background: #048;
+  background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:    -moz-linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:     -ms-linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6));
   background:         linear-gradient(right, hsla(200, 100%, 50%, .1), hsla(200, 100%, 50%, .6)); }
 .ƒsplitter-horizontal:hover
-{ background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
+{ background: #06a;
+  background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:    -moz-linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:     -ms-linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8));
   background:         linear-gradient(right, hsla(200, 100%, 50%, .3), hsla(200, 100%, 50%, .8)); }
 .ƒsplitter-horizontal.ƒdragging
-{ background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
+{ background: #09c;
+  background: -webkit-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:    -moz-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:     -ms-linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1));
   background:         linear-gradient(right, hsla(200, 100%, 50%, .5), hsla(200, 100%, 50%, 1)); }
@@ -253,13 +259,15 @@ h1, h2
 .ƒscroll
 { background: #000408; box-shadow: 0 0 30px #024; border-left: 1px solid #014; }
 .ƒscroll-track
-{ background: -webkit-linear-gradient(bottom, #012, #000408);
+{ background: #012;
+  background: -webkit-linear-gradient(bottom, #012, #000408);
   background:    -moz-linear-gradient(bottom, #012, #000408);
   background:     -ms-linear-gradient(bottom, #012, #000408);
   background:         linear-gradient(to top, #013, #000408); }
 
 .ƒscroll-thumb, .ƒscroll-top, .ƒscroll-bottom
 { cursor: pointer; box-shadow: 0 0 7px 0 #06a; border-radius: 3px;
+  background: #024;
   background: -webkit-linear-gradient(left, #013, #024);
   background:    -moz-linear-gradient(left, #013, #024);
   background:     -ms-linear-gradient(left, #013, #024);
@@ -270,6 +278,7 @@ h1, h2
 {  }
 .ƒscroll-thumb:hover, .ƒscroll-top:hover, .ƒscroll-bottom:hover
 { box-shadow: 0 0 10px 2px #06a;
+  background: #001a6c;
   background: -webkit-linear-gradient(left, #001a6c, #002c50);
   background:    -moz-linear-gradient(left, #001a6c, #002c50);
   background:     -ms-linear-gradient(left, #001a6c, #002c50);
@@ -279,6 +288,7 @@ h1, h2
 
 .ƒscrolling.ƒscroll-thumb, .ƒscrolling.ƒscroll-top, .ƒscrolling.ƒscroll-bottom
 { box-shadow: 0 0 15px 2px #2cf;
+  background: #036;
   background: -webkit-linear-gradient(left, #024, #036);
   background:    -moz-linear-gradient(left, #024, #036);
   background:     -ms-linear-gradient(left, #024, #036);

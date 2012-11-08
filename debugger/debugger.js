@@ -40,6 +40,14 @@ var scrollbarWidth = (function(d, b, e, s) {
 })(document);
 
 
+function forward(o, from, to){
+  Object.defineProperty(o, to, {
+    configurable: true,
+    get: function(){ return this[from] },
+    set: function(v){ this[from] = v }
+  });
+  return o;
+}
 
 try {
   new global.Event('test');
@@ -80,6 +88,16 @@ catch (e) {
           }
           return evt;
         }
+
+        function preventDefault(){
+          this.returnValue = false;
+        }
+
+        define(E.prototype, preventDefault);
+
+        forward(E.prototype, 'screenX', 'pageX');
+        forward(E.prototype, 'screenY', 'pageY');
+
         return Event;
       })();
     }
@@ -143,7 +161,15 @@ void function(){
         if (subject.element) {
           subject = subject.element;
         }
-        this.element.removeChild(subject);
+        if (subject && subject.parentNode) {
+          if (subject.parentNode === this.element) {
+            this.element.removeChild(subject);
+          }
+        } else if (subject === this.element.parentNode) {
+          subject.removeChild(this.element);
+        } else {
+          console.dir(subject);
+        }
       }
     },
     function replace(child, replacement){
@@ -206,7 +232,8 @@ void function(){
       return this.element.getBoundingClientRect();
     },
     function getMetric(name){
-      return parseFloat(this.getComputed(name));
+      var v = this.getComputed(name);
+      return v === 'auto' ? 0 : parseFloat(v);
     },
     function getComputed(name){
       if (!this.computedStyles) {
@@ -359,10 +386,12 @@ if ('dispatchEvent' in document.body) {
       },
       function once(event, listener, receiver){
         receiver = receiver || this;
+
         function bound(e){
           this.removeEventListener(event, bound, false);
           return listener.call(receiver, e);
         }
+
         this.element.addEventListener(event, bound, false);
         return this;
       },
@@ -409,7 +438,9 @@ if ('dispatchEvent' in document.body) {
         var real = event in realEvents;
 
         if (real) {
-          var bound = function(e){ return listener.call(receiver, e) };
+          var bound = function(e){
+            return listener.call(receiver, e);
+          };
         } else {
           var bound = function(e){
             e = e.srcElement.customEvent;
@@ -419,7 +450,7 @@ if ('dispatchEvent' in document.body) {
           };
         }
 
-        define(listener, bound);
+        define(listener, 'bound', bound);
         if (real) {
           this.element.attachEvent('on'+event, bound);
         } else {
@@ -457,6 +488,7 @@ if ('dispatchEvent' in document.body) {
           return this.element.fireEvent(event);
         } else {
           this.element.customEvent = event;
+          console.dir(event);
           event.expired = true;
           return event.returnValue === undefined ? true : event.returnValue;
         }
@@ -580,7 +612,7 @@ var VerticalScrollbar = function(){
 
     parent.style('overflowX', 'hidden');
     container.style({
-      paddingRight: parseFloat(container.getComputed('paddingRight')) + scrollbarWidth,
+      paddingRight: container.getMetric('paddingRight') + scrollbarWidth,
       overflowY: 'auto'
     });
     parent.addClass('scroll-container');
@@ -610,24 +642,24 @@ var VerticalScrollbar = function(){
 
 
     this.down.on('mousedown', function(e){
-      e.preventDefault();
       self.repeat(.005, 15);
       this.addClass('scrolling');
+      e.preventDefault();
     });
 
     this.up.on('mousedown', function(e){
-      e.preventDefault();
       self.repeat(-.005, 15);
       this.addClass('scrolling');
+      e.preventDefault();
     });
 
     this.track.on('mousedown', function(e){
-      e.preventDefault();
       var compare = e.pageY > self.thumb.bottom() ? 1 : e.pageY < self.thumb.top() ? -1 : 0;
       if (compare) {
         this.addClass('scrolling');
         self.repeat(compare * .1, 300);
       }
+      e.preventDefault();
     });
 
     this.on('scroll-end', function(){
@@ -642,30 +674,35 @@ var VerticalScrollbar = function(){
       var self = this;
       speed = speed || 300;
       self.repeating = true;
+
       body.once('mouseup', function(){
         if (self.repeating) {
           self.repeating = false;
           self.emit('scroll-end')
         }
       });
+
       body.once('click', function(){
         if (self.repeating) {
           self.repeating = false;
           self.emit('scroll-end')
         }
       });
-      setTimeout(function repeat(){
+
+      function loop(){
         if (self.repeating) {
           var percent = max(min(self.percent() + amount, 1), 0);
           self.percent(percent);
           if (percent !== 1 && percent !== 0) {
-            setTimeout(repeat, speed);
+            setTimeout(loop, speed);
           } else if (self.repeating) {
             self.repeating = false;
             self.emit('scroll-end');
           }
         }
-      }, 100);
+      }
+
+      setTimeout(loop, 100);
     },
     function scrollHeight(){
       return this.container.element.scrollHeight - this.container.element.clientHeight;
@@ -823,7 +860,6 @@ var Panel = function(){
 
       win.on('resize', update);
       body.append(this.element);
-      var computed = getComputedStyle(this.element);
       this.size = 1;
       update();
     }
@@ -933,8 +969,7 @@ var Dragger = (function(){
 
   inherit(Dragger, Component, [
     function grab(e){
-      e.preventDefault();
-      document.body.appendChild(this.element);
+      body.append(this);
       this.x = e.pageX;
       this.y = e.pageY;
       this.start = this.target.offset();
@@ -944,13 +979,14 @@ var Dragger = (function(){
         clientX: e.clientX,
         clientY: e.clientY
       });
+      e.preventDefault();
     },
     function drag(e){
       this.emit('drag', this.calculate(e));
     },
     function drop(e){
       if (this.element.parentNode) {
-        document.body.removeChild(this.element);
+        body.remove(this);
         this.emit('drop', this.calculate(e));
       }
     },
@@ -1135,18 +1171,18 @@ var InputBox = (function(){
     this.reset();
 
     keyboard.on('Enter', 'activate', function(e){
-      e.preventDefault();
       self.entry();
+      e.preventDefault();
     });
 
     keyboard.on('Up', 'activate', function(e){
-      e.preventDefault();
       self.previous();
+      e.preventDefault();
     });
 
     keyboard.on('Down', 'activate', function(e){
-      e.preventDefault();
       self.next();
+      e.preventDefault();
     });
 
     if (options.autofocus) {
