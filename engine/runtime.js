@@ -115,14 +115,6 @@ var runtime = (function(GLOBAL, exports, undefined){
   Completion.prototype.Completion   = SYMBOLS.Completion;
 
 
-  var LexicalScope          = 'Lexical',
-      StrictScope           = 'Strict',
-      GlobalScope           = 'Global';
-
-  var GlobalCode            = 'elobal',
-      EvalCode              = 'eval',
-      FuntionCode           = 'function';
-
 
   // ##################################################
   // ### Internal Utilities not from specification ####
@@ -772,7 +764,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         lex = context.LexicalEnvironment;
 
     if (name) {
-      var scope = context.LexicalEnvironment = NewDeclarativeEnvironment(lex);
+      var scope = context.LexicalEnvironment = new DeclarativeEnvironmentRecord(lex);
       scope.CreateImmutableBinding(name.name ? name.name : name);
     }
 
@@ -928,31 +920,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
-
-
-  // ## NewObjectEnvironment
-
-  function NewObjectEnvironment(outer, object){
-    var lex = new ObjectEnvironmentRecord(object);
-    lex.outer = outer;
-    return lex;
-  }
-
-  // ## NewDeclarativeEnvironment
-
-  function NewDeclarativeEnvironment(outer){
-    var lex = new DeclarativeEnvironmentRecord;
-    lex.outer = outer;
-    return lex;
-  }
-
-  // ## NewFunctionEnvironment
-
-  function NewFunctionEnvironment(method, receiver){
-    var lex = new FunctionEnvironmentRecord(receiver, method.Home, method.MethodName);
-    lex.outer = method.Scope;
-    return lex;
-  }
 
 
 
@@ -1365,9 +1332,12 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ### EnvironmentRecord ###
   // #########################
 
-  function EnvironmentRecord(bindings){
+  function EnvironmentRecord(bindings, outer){
     this.bindings = bindings;
+    this.outer = outer;
   }
+
+
 
   define(EnvironmentRecord.prototype, {
     bindings: null,
@@ -1398,8 +1368,8 @@ var runtime = (function(GLOBAL, exports, undefined){
   }();
 
 
-  function DeclarativeEnvironmentRecord(){
-    EnvironmentRecord.call(this, new Hash);
+  function DeclarativeEnvironmentRecord(outer){
+    EnvironmentRecord.call(this, new Hash, outer);
     this.consts = new Hash;
     this.deletables = new Hash;
   }
@@ -1461,8 +1431,8 @@ var runtime = (function(GLOBAL, exports, undefined){
   }();
 
 
-  function ObjectEnvironmentRecord(object){
-    EnvironmentRecord.call(this, object);
+  function ObjectEnvironmentRecord(object, outer){
+    EnvironmentRecord.call(this, object, outer);
   }
 
   void function(){
@@ -1493,11 +1463,11 @@ var runtime = (function(GLOBAL, exports, undefined){
   }();
 
 
-  function FunctionEnvironmentRecord(receiver, holder, name){
-    DeclarativeEnvironmentRecord.call(this);
+  function FunctionEnvironmentRecord(receiver, method){
+    DeclarativeEnvironmentRecord.call(this, method.Scope);
     this.thisValue = receiver;
-    this.HomeObject = holder;
-    this.MethodName = name;
+    this.HomeObject = method.Home;
+    this.MethodName = method.MethodName;
   }
 
   void function(){
@@ -1968,7 +1938,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           activate(this.Realm);
         }
         if (this.ThisMode === 'lexical') {
-          var local = NewDeclarativeEnvironment(this.Scope);
+          var local = new DeclarativeEnvironmentRecord(this.Scope);
         } else {
           if (this.ThisMode !== 'strict') {
             if (receiver == null) {
@@ -1984,7 +1954,7 @@ var runtime = (function(GLOBAL, exports, undefined){
               }
             }
           }
-          var local = NewFunctionEnvironment(this, receiver);
+          var local = new FunctionEnvironmentRecord(receiver, this);
         }
 
         var caller = context ? context.callee : null;
@@ -2334,7 +2304,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         if (key === 'length') {
           if (!(VALUE in desc)) {
-            return $Object.prototype.DefineOwnProperty.call(this, 'length', desc, strict);
+            return DefineOwn.call(this, 'length', desc, strict);
           }
 
           var newLenDesc = copy(desc),
@@ -2362,7 +2332,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
           newLen = newLenDesc.Value;
           if (newLen >= oldLen) {
-            return $Object.prototype.DefineOwnProperty.call(this, 'length', newLenDesc, strict);
+            return DefineOwn.call(this, 'length', newLenDesc, strict);
           }
 
           if (oldLenDesc.Writable === false) {
@@ -2376,7 +2346,7 @@ var runtime = (function(GLOBAL, exports, undefined){
             newLenDesc.Writable = true;
           }
 
-          var success = $Object.prototype.DefineOwnProperty.call(this, 'length', newLenDesc, strict);
+          var success = DefineOwn.call(this, 'length', newLenDesc, strict);
           if (success.Completion) {
             if (success.Abrupt) {
               return success;
@@ -2404,12 +2374,12 @@ var runtime = (function(GLOBAL, exports, undefined){
               if (!newWritable) {
                 newLenDesc.Writable = false;
               }
-              $Object.prototype.DefineOwnProperty.call(this, 'length', newLenDesc, false);
+              DefineOwn.call(this, 'length', newLenDesc, false);
               Reject();
             }
           }
           if (!newWritable) {
-            $Object.prototype.DefineOwnProperty.call(this, 'length', {
+            DefineOwn.call(this, 'length', {
               Writable: false
             }, false);
           }
@@ -2430,7 +2400,7 @@ var runtime = (function(GLOBAL, exports, undefined){
             return Reject();
           }
 
-          success = $Object.prototype.DefineOwnProperty.call(this, key, desc, false);
+          success = DefineOwn.call(this, key, desc, false);
           if (success.Completion) {
             if (success.Abrupt) {
               return success;
@@ -2445,12 +2415,12 @@ var runtime = (function(GLOBAL, exports, undefined){
 
           if (index >= oldLen) {
             oldLenDesc.Value = index + 1;
-            $Object.prototype.DefineOwnProperty.call(this, 'length', oldLenDesc, false);
+            DefineOwn.call(this, 'length', oldLenDesc, false);
           }
           return true;
         }
 
-        return $Object.prototype.DefineOwnProperty.call(this, key, desc, key);
+        return DefineOwn.call(this, key, desc, key);
       }
     ]);
   }();
@@ -2841,14 +2811,14 @@ var runtime = (function(GLOBAL, exports, undefined){
         return block;
       },
       function pushBlock(code){
-        this.LexicalEnvironment = NewDeclarativeEnvironment(this.LexicalEnvironment);
+        this.LexicalEnvironment = new DeclarativeEnvironmentRecord(this.LexicalEnvironment);
         return BlockDeclarationInstantiation(code, this.LexicalEnvironment);
       },
       function pushClass(def, superclass){
         return ClassDefinitionEvaluation(def.pattern, superclass, def.ctor, def.methods);
       },
       function pushWith(obj){
-        this.LexicalEnvironment = NewObjectEnvironment(obj, this.LexicalEnvironment);
+        this.LexicalEnvironment = new ObjectEnvironmentRecord(obj, this.LexicalEnvironment);
         this.LexicalEnvironment.withEnvironment = true;
         return obj;
       },
@@ -2857,7 +2827,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       },
       function createFunction(name, code){
         if (name) {
-          var env = NewDeclarativeEnvironment(this.LexicalEnvironment);
+          var env = new DeclarativeEnvironmentRecord(this.LexicalEnvironment);
           env.CreateImmutableBinding(name);
         } else {
           var env = this.LexicalEnvironment;
@@ -3055,7 +3025,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   function Intrinsics(realm){
-    DeclarativeEnvironmentRecord.call(this);
+    DeclarativeEnvironmentRecord.call(this, null);
     this.realm = realm;
     var bindings = this.bindings;
     bindings.ObjectProto = new $Object(null);
@@ -3362,7 +3332,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (script.error) {
         return script.error;
       }
-      var ctx = new ExecutionContext(context, NewDeclarativeEnvironment(realm.globalEnv), realm, script.bytecode);
+      var ctx = new ExecutionContext(context, new DeclarativeEnvironmentRecord(realm.globalEnv), realm, script.bytecode);
       ExecutionContext.push(ctx);
       var func = script.thunk.run(ctx);
       ExecutionContext.pop();
