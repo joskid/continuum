@@ -4,72 +4,57 @@ var ReplacerFunction,
     indent,
     gap;
 
-function JO(value){
-  var keys = PropertyList || $__Enumerate(value, false, true),
-      partial = [],
-      colon = gap ? ': ' : ':';
 
-  for (var i=0, len=keys.length; i < len; i++) {
-    var prop = Str(keys[i], value);
-    if (prop !== undefined) {
-      partial.push($__Quote(keys[i]) + colon + prop);
-    }
-  }
-
-  return partial;
-}
-
-function JA(value){
-  var partial = [];
-
-  for (var i=0, len = value.length; i < len; i++) {
-    var prop = Str(i, value);
-    if (prop !== undefined) {
-      partial[i] = prop;
-    } else {
-      partial[i] = 'null';
-    }
-  }
-
-  return partial;
-}
-
-
-function J(v){
-  if (stack.has(v)) {
+function J(value){
+  if (stack.has(value)) {
     throw $__Exception('circular_structure', []);
   }
 
   var stepback = indent;
   indent += gap;
-  stack.add(v);
+  stack.add(value);
 
-  var partial, brackets, final;
+  if ($__GetNativeBrand(value) === 'Array') {
+    var brackets = ['[', ']'],
+        partial = [];
 
-  if ($__GetNativeBrand(v) === 'Array') {
-    partial = JA(v);
-    brackets = ['[', ']'];
+    for (var i=0, len = value.length; i < len; i++) {
+      var prop = Str(i, value);
+      partial[i] = prop === undefined ? 'null' : prop;
+    }
   } else {
-    partial = JO(v);
-    brackets = ['{', '}'];
+    var brackets = ['{', '}'],
+        partial = [],
+        keys = PropertyList || $__Enumerate(value, false, true),
+        colon = gap ? ': ' : ':';
+
+    for (var i=0, len=keys.length; i < len; i++) {
+      var prop = Str(keys[i], value);
+      if (prop !== undefined) {
+        partial.push($__Quote(keys[i]) + colon + prop);
+      }
+    }
   }
 
   if (!partial.length) {
-    final = '';
+    stack.delete(value);
+    indent = stepback;
+    return final = '';
   } else if (!gap) {
-    final = partial.join(',');
+    stack.delete(value);
+    indent = stepback;
+    return final = partial.join(',');
   } else {
-    final = '\n' + indent + partial.join(',\n' + indent) + '\n' + stepback;
+    var final = '\n' + indent + partial.join(',\n' + indent) + '\n' + stepback;
+    stack.delete(value);
+    indent = stepback;
+    return final;
   }
-
-  stack.delete(v);
-  indent = stepback;
-  return final;
 }
 
 
 function Str(key, holder){
-  var value = holder[key];
+  let value = holder[key];
   if ($__Type(value) === 'Object') {
     var toJSON = value.toJSON;
     if (typeof toJSON === 'function') {
@@ -77,36 +62,38 @@ function Str(key, holder){
     }
   }
 
+  var v = value;
   if (ReplacerFunction) {
-    value = $__CallFunction(ReplacerFunction, holder, [key, value]);
+    v = $__CallFunction(ReplacerFunction, holder, [key, v]);
   }
 
-  if ($__Type(value) === 'Object') {
-    var brand = $__GetNativeBrand(value);
+  if ($__Type(v) === 'Object') {
+    var brand = $__GetNativeBrand(v);
     if (brand === 'Number') {
-      value = $__ToNumber(value);
+      v = $__ToNumber(v);
     } else if (brand === 'String') {
-      value = $__ToString(value);
+      v = $__ToString(v);
     } else if (brand === 'Boolean') {
-      value = $__GetPrimitiveValue(value);
+      v = $__GetPrimitiveValue(v);
     }
   }
 
-  if (value === null) return 'null';
-  if (value === true) return 'true';
-  if (value === false) return 'false';
 
-
-  if (typeof value === 'string') {
-    return $__Quote(value);
-  }
-
-  if (typeof value === 'number') {
-    return value is NaN || value === Infinity || value === -Infinity ? 'null' : '' + value;
-  }
-
-  if (typeof value === 'object') {
-    return J(value);
+  if (v === null) {
+    return 'null';
+  } else if (v === true) {
+    return 'true';
+  } else if (v === false) {
+    return 'false';
+  } else {
+    var type = typeof v;
+    if (type === 'string') {
+      return $__Quote(v);
+    } else if (type === 'number') {
+      return (v !== v || v === Infinity || v === -Infinity) ? 'null' : '' + v;
+    } else if (type === 'object') {
+      return J(v);
+    }
   }
 
   throw value;
@@ -119,7 +106,7 @@ $__defineProps(global, {
 });
 
 $__defineProps(JSON, {
-  stringify(value, replacer, space){
+  stringify(_value, replacer, space){
     ReplacerFunction = undefined;
     PropertyList = undefined;
     stack = new Set;
@@ -169,6 +156,6 @@ $__defineProps(JSON, {
       gap = '';
     }
 
-    return Str('', { '': value });
+    return Str('x', { 'x': _value });
   }
 });
