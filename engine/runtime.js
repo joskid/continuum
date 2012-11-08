@@ -544,53 +544,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     return new Accessor(thrower);
   }
 
-  // ## CompleteStrictArgumentsObject
-
-  function CompleteStrictArgumentsObject(args) {
-    var obj = new $Arguments(args.length);
-    for (var i=0; i < args.length; i++) {
-      defineDirect(obj, i+'', args[i], ECW);
-    }
-
-    defineDirect(obj, 'arguments', intrinsics.ThrowTypeError, __A);
-    defineDirect(obj, 'caller', intrinsics.ThrowTypeError, __A);
-    return obj;
-  }
-
-
-  // ## CompleteMappedArgumentsObject
-
-  function CompleteMappedArgumentsObject(names, env, args, func) {
-    var obj = new $Arguments(args.length),
-        map = new $Object,
-        mapped = create(null),
-        isMapped;
-
-    for (var i=0; i < args.length; i++) {
-      defineDirect(obj, i+'', args[i], ECW);
-      var name = names[i];
-      if (i < names.length && !(name in mapped)) {
-        isMapped = true;
-        mapped[name] = true;
-        defineDirect(map, name, new ArgAccessor(name, env), _CA);
-      }
-    }
-
-    defineDirect(obj, 'callee', func, _CW);
-    return isMapped ? new $MappedArguments(map, obj) : obj;
-  }
-
-
-  function ArgAccessor(name, env){
-    this.name = name;
-    define(this, { env: env  });
-  }
-
-  define(ArgAccessor.prototype, {
-    Get: { Call: function(){ return this.env.GetBindingValue(this.name) } },
-    Set: { Call: function(v){ this.env.SetMutableBinding(this.name, v) } }
-  });
-
 
   function TopLevelDeclarationInstantiation(code) {
     var env = context.VariableEnvironment,
@@ -670,10 +623,10 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
     if (func.Strict) {
-      var ao = CompleteStrictArgumentsObject(args);
+      var ao = new $StrictArguments(args);
       var status = ArgumentBindingInitialization(formals, ao, env);
     } else {
-      var ao = env.arguments = CompleteMappedArgumentsObject(params, env, args, func)
+      var ao = env.arguments = new $MappedArguments(params, env, args, func);
       var status = ArgumentBindingInitialization(formals, ao);
     }
 
@@ -2476,11 +2429,40 @@ var runtime = (function(GLOBAL, exports, undefined){
     ParameterMap: null,
   });
 
-  function $MappedArguments(map, args){
-    this.properties = args.properties;
-    this.Prototype = args.Prototype;
-    define(this, 'keys', args.keys);
-    this.ParameterMap = map;
+
+  function $StrictArguments(args){
+    $Arguments.call(this, args.length);
+    for (var i=0; i < args.length; i++) {
+      defineDirect(this, i+'', args[i], ECW);
+    }
+
+    defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
+    defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
+  }
+
+  inherit($StrictArguments, $Arguments);
+
+
+
+
+  function $MappedArguments(names, env, args, func){
+    var mapped = create(null);
+    $Arguments.call(this, args.length);
+
+    this.ParameterMap = new $Object;
+    this.isMapped = false;
+
+    for (var i=0; i < args.length; i++) {
+      defineDirect(this, i+'', args[i], ECW);
+      var name = names[i];
+      if (i < names.length && !(name in mapped)) {
+        this.isMapped = true;
+        mapped[name] = true;
+        defineDirect(this.ParameterMap, name, new ArgAccessor(name, env), _CA);
+      }
+    }
+
+    defineDirect(this, 'callee', func, _CW);
   }
 
   void function(){
@@ -2488,7 +2470,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       ParameterMap: null,
     }, [
       function Get(key){
-        if (hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
           return this.ParameterMap.Get(key);
         } else {
           var val = this.GetP(this, key);
@@ -2503,7 +2485,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         if (desc === undefined) {
           return desc;
         }
-        if (hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
           desc.Value = this.ParameterMap.Get(key);
         }
         return desc;
@@ -2513,7 +2495,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           return ThrowException('strict_lhs_assignment');
         }
 
-        if (hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
           if (IsAccessorDescriptor(desc)) {
             this.ParameterMap.Delete(key, false);
           } else {
@@ -2534,7 +2516,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           return result;
         }
 
-        if (result && hasOwnDirect(this.ParameterMap, key)) {
+        if (result && this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
           this.ParameterMap.Delete(key, false);
         }
 
@@ -2542,6 +2524,21 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     ]);
   }();
+
+
+
+
+  function ArgAccessor(name, env){
+    this.name = name;
+    define(this, { env: env  });
+  }
+
+  define(ArgAccessor.prototype, {
+    Get: { Call: function(){ return this.env.GetBindingValue(this.name) } },
+    Set: { Call: function(v){ this.env.SetMutableBinding(this.name, v) } }
+  });
+
+
 
   function $Math(){
     $Object.call(this);
