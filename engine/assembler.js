@@ -33,17 +33,17 @@ var assembler = (function(exports){
 
   var opcodes = 0;
 
-  function OpCode(params, name){
+  function StandardOpCode(params, name){
     this.id = opcodes++;
     this.params = params;
     this.name = name;
     var opcode = this;
     return function(){
-      return context.code.createOperation(opcode, arguments);
+      return context.code.createDirective(opcode, arguments);
     };
   }
 
-  define(OpCode.prototype, [
+  define(StandardOpCode.prototype, [
     function inspect(){
       return this.name;
     },
@@ -59,71 +59,86 @@ var assembler = (function(exports){
   ]);
 
 
+  function InternedOpCode(params, name){
+    this.id = opcodes++;
+    this.params = params;
+    this.name = name;
+    var opcode = this;
+    return function(arg){
+      //return context.code.createDirective(opcode, [context.intern(arg)]);
+      return context.code.createDirective(opcode, [arg]);
+    };
+  }
 
-  var ARRAY            = new OpCode(0, 'ARRAY'),
-      ARG              = new OpCode(0, 'ARG'),
-      ARGS             = new OpCode(0, 'ARGS'),
-      ARRAY_DONE       = new OpCode(0, 'ARRAY_DONE'),
-      BINARY           = new OpCode(1, 'BINARY'),
-      BLOCK            = new OpCode(1, 'BLOCK'),
-      CALL             = new OpCode(0, 'CALL'),
-      CASE             = new OpCode(1, 'CASE'),
-      CLASS_DECL       = new OpCode(1, 'CLASS_DECL'),
-      CLASS_EXPR       = new OpCode(1, 'CLASS_EXPR'),
-      COMPLETE         = new OpCode(0, 'COMPLETE'),
-      CONST            = new OpCode(1, 'CONST'),
-      CONSTRUCT        = new OpCode(0, 'CONSTRUCT'),
-      DEBUGGER         = new OpCode(0, 'DEBUGGER'),
-      DEFAULT          = new OpCode(1, 'DEFAULT'),
-      DEFINE           = new OpCode(1, 'DEFINE'),
-      DUP              = new OpCode(0, 'DUP'),
-      ELEMENT          = new OpCode(0, 'ELEMENT'),
-      ENUM             = new OpCode(0, 'ENUM'),
-      FUNCTION         = new OpCode(2, 'FUNCTION'),
-      GET              = new OpCode(0, 'GET'),
-      IFEQ             = new OpCode(2, 'IFEQ'),
-      IFNE             = new OpCode(2, 'IFNE'),
-      INC              = new OpCode(0, 'INC'),
-      INDEX            = new OpCode(2, 'INDEX'),
-      ITERATE          = new OpCode(0, 'ITERATE'),
-      JUMP             = new OpCode(1, 'JUMP'),
-      LET              = new OpCode(1, 'LET'),
-      LITERAL          = new OpCode(1, 'LITERAL'),
-      LOG              = new OpCode(0, 'LOG'),
-      MEMBER           = new OpCode(1, 'MEMBER'),
-      METHOD           = new OpCode(3, 'METHOD'),
-      NATIVE_CALL      = new OpCode(0, 'NATIVE_CALL'),
-      NATIVE_REF       = new OpCode(1, 'NATIVE_REF'),
-      OBJECT           = new OpCode(0, 'OBJECT'),
-      POP              = new OpCode(0, 'POP'),
-      POPN             = new OpCode(1, 'POPN'),
-      PROPERTY         = new OpCode(1, 'PROPERTY'),
-      PUT              = new OpCode(0, 'PUT'),
-      REF              = new OpCode(1, 'REF'),
-      REGEXP           = new OpCode(1, 'REGEXP'),
-      RETURN           = new OpCode(0, 'RETURN'),
-      ROTATE           = new OpCode(1, 'ROTATE'),
-      RUN              = new OpCode(0, 'RUN'),
-      SAVE             = new OpCode(0, 'SAVE'),
-      SPREAD           = new OpCode(1, 'SPREAD'),
-      SPREAD_ARG       = new OpCode(0, 'SPREAD_ARG'),
-      STRING           = new OpCode(1, 'STRING'),
-      SUPER_CALL       = new OpCode(0, 'SUPER_CALL'),
-      SUPER_ELEMENT    = new OpCode(0, 'SUPER_ELEMENT'),
-      SUPER_MEMBER     = new OpCode(1, 'SUPER_MEMBER'),
-      TEMPLATE_ELEMENT = new OpCode(0, 'TEMPLATE_ELEMENT'),
-      THIS             = new OpCode(0, 'THIS'),
-      THROW            = new OpCode(0, 'THROW'),
-      UNARY            = new OpCode(1, 'UNARY'),
-      UNDEFINED        = new OpCode(0, 'UNDEFINED'),
-      UPDATE           = new OpCode(1, 'UPDATE'),
-      UPSCOPE          = new OpCode(0, 'UPSCOPE'),
-      VAR              = new OpCode(1, 'VAR'),
-      WITH             = new OpCode(0, 'WITH');
+  inherit(InternedOpCode, StandardOpCode);
 
 
 
-  function Operation(op, args){
+  var ARRAY            = new StandardOpCode(0, 'ARRAY'),
+      ARG              = new StandardOpCode(0, 'ARG'),
+      ARGS             = new StandardOpCode(0, 'ARGS'),
+      ARRAY_DONE       = new StandardOpCode(0, 'ARRAY_DONE'),
+      BINARY           = new StandardOpCode(1, 'BINARY'),
+      BLOCK            = new StandardOpCode(1, 'BLOCK'),
+      CALL             = new StandardOpCode(0, 'CALL'),
+      CASE             = new StandardOpCode(1, 'CASE'),
+      CLASS_DECL       = new StandardOpCode(1, 'CLASS_DECL'),
+      CLASS_EXPR       = new StandardOpCode(1, 'CLASS_EXPR'),
+      COMPLETE         = new StandardOpCode(0, 'COMPLETE'),
+      CONST            = new StandardOpCode(1, 'CONST'),
+      CONSTRUCT        = new StandardOpCode(0, 'CONSTRUCT'),
+      DEBUGGER         = new StandardOpCode(0, 'DEBUGGER'),
+      DEFAULT          = new StandardOpCode(1, 'DEFAULT'),
+      DEFINE           = new StandardOpCode(1, 'DEFINE'),
+      DUP              = new StandardOpCode(0, 'DUP'),
+      ELEMENT          = new StandardOpCode(0, 'ELEMENT'),
+      ENUM             = new StandardOpCode(0, 'ENUM'),
+      FUNCTION         = new StandardOpCode(2, 'FUNCTION'),
+      GET              = new StandardOpCode(0, 'GET'),
+      IFEQ             = new StandardOpCode(2, 'IFEQ'),
+      IFNE             = new StandardOpCode(2, 'IFNE'),
+      INC              = new StandardOpCode(0, 'INC'),
+      INDEX            = new StandardOpCode(2, 'INDEX'),
+      ITERATE          = new StandardOpCode(0, 'ITERATE'),
+      JUMP             = new StandardOpCode(1, 'JUMP'),
+      LET              = new StandardOpCode(1, 'LET'),
+      LITERAL          = new StandardOpCode(1, 'LITERAL'),
+      LOG              = new StandardOpCode(0, 'LOG'),
+      MEMBER           = new InternedOpCode(1, 'MEMBER'),
+      METHOD           = new StandardOpCode(3, 'METHOD'),
+      NATIVE_CALL      = new StandardOpCode(0, 'NATIVE_CALL'),
+      NATIVE_REF       = new InternedOpCode(1, 'NATIVE_REF'),
+      OBJECT           = new StandardOpCode(0, 'OBJECT'),
+      POP              = new StandardOpCode(0, 'POP'),
+      POPN             = new StandardOpCode(1, 'POPN'),
+      PROPERTY         = new InternedOpCode(1, 'PROPERTY'),
+      PUT              = new StandardOpCode(0, 'PUT'),
+      REF              = new InternedOpCode(1, 'REF'),
+      REGEXP           = new StandardOpCode(1, 'REGEXP'),
+      RETURN           = new StandardOpCode(0, 'RETURN'),
+      ROTATE           = new StandardOpCode(1, 'ROTATE'),
+      RUN              = new StandardOpCode(0, 'RUN'),
+      SAVE             = new StandardOpCode(0, 'SAVE'),
+      SPREAD           = new StandardOpCode(1, 'SPREAD'),
+      SPREAD_ARG       = new StandardOpCode(0, 'SPREAD_ARG'),
+      STRING           = new InternedOpCode(1, 'STRING'),
+      SUPER_CALL       = new StandardOpCode(0, 'SUPER_CALL'),
+      SUPER_ELEMENT    = new StandardOpCode(0, 'SUPER_ELEMENT'),
+      SUPER_MEMBER     = new StandardOpCode(1, 'SUPER_MEMBER'),
+      TEMPLATE_ELEMENT = new StandardOpCode(0, 'TEMPLATE_ELEMENT'),
+      THIS             = new StandardOpCode(0, 'THIS'),
+      THROW            = new StandardOpCode(0, 'THROW'),
+      UNARY            = new StandardOpCode(1, 'UNARY'),
+      UNDEFINED        = new StandardOpCode(0, 'UNDEFINED'),
+      UPDATE           = new StandardOpCode(1, 'UPDATE'),
+      UPSCOPE          = new StandardOpCode(0, 'UPSCOPE'),
+      VAR              = new StandardOpCode(1, 'VAR'),
+      WITH             = new StandardOpCode(0, 'WITH');
+
+
+
+
+  function Directive(op, args){
     this.op = op;
     this.loc = currentNode.loc;
     this.range = currentNode.range;
@@ -132,7 +147,7 @@ var assembler = (function(exports){
     }
   }
 
-  define(Operation.prototype, [
+  define(Directive.prototype, [
     function inspect(){
       var out = [];
       for (var i=0; i < this.op.params; i++) {
@@ -166,10 +181,10 @@ var assembler = (function(exports){
 
   function Code(node, source, type, global, strict){
     function Instruction(opcode, args){
-      Operation.call(this, opcode, args);
+      Directive.call(this, opcode, args);
     }
 
-    inherit(Instruction, Operation, {
+    inherit(Instruction, Directive, {
       code: this
     });
 
@@ -183,7 +198,7 @@ var assembler = (function(exports){
       loc: node.loc,
       children: [],
       LexicalDeclarations: LexicalDeclarations(body),
-      createOperation: function(opcode, args){
+      createDirective: function(opcode, args){
         var op = new Instruction(opcode, args);
         this.ops.push(op);
         return op;
@@ -583,18 +598,9 @@ var assembler = (function(exports){
     }
   }
 
+
   function intern(str){
     return str;//context.intern(string);
-  }
-
-  function record(){
-    return context.code.createOperation(arguments);
-  }
-
-  function pattern(ops){
-    return function(){
-      each(ops, record);
-    };
   }
 
   function current(){
@@ -1039,7 +1045,7 @@ var assembler = (function(exports){
   function Glob(node){}
 
   function Identifier(node){
-    REF(intern(node.name));
+    REF(node.name);
   }
 
   function IfStatement(node){
@@ -1066,7 +1072,7 @@ var assembler = (function(exports){
     if (node.value instanceof RegExp) {
       REGEXP(node.value);
     } else if (typeof node.value === 'string') {
-      STRING(intern(node.value));
+      STRING(node.value);
     } else {
       LITERAL(node.value);
     }
@@ -1108,7 +1114,7 @@ var assembler = (function(exports){
       GET();
       isSuper ? SUPER_ELEMENT() : ELEMENT();
     } else {
-      isSuper ? SUPER_MEMBER() : MEMBER(intern(node.property.name));
+      isSuper ? SUPER_MEMBER() : MEMBER(node.property.name);
     }
   }
   function MethodDefinition(node){}
@@ -1116,7 +1122,7 @@ var assembler = (function(exports){
   function ModuleDeclaration(node){}
 
   function NativeIdentifier(node){
-    NATIVE_REF(intern(node.name));
+    NATIVE_REF(node.name);
   }
 
   function NewExpression(node){
@@ -1152,7 +1158,7 @@ var assembler = (function(exports){
         recurse(node.value);
       }
       GET();
-      PROPERTY(intern(key));
+      PROPERTY(key);
     } else {
       var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, false, context.code.strict);
       context.queue(code);
@@ -1246,12 +1252,12 @@ var assembler = (function(exports){
 
 
   function TemplateElement(node){
-    STRING(intern(node.value.cooked));
+    STRING(node.value.cooked);
     DEFINE(1);
     POP();
     ROTATE(1);
     ROTATE(2);
-    STRING(intern(node.value.raw));
+    STRING(node.value.raw);
     DEFINE(1);
     POP();
     INC();
@@ -1275,7 +1281,7 @@ var assembler = (function(exports){
     ROTATE(2);
     OBJECT();
     each(['raw', 'cooked'], function(n){
-      STRING(intern(n));
+      STRING(n);
       ROTATE(2);
       ROTATE(2);
       DEFINE(1);
@@ -1288,15 +1294,12 @@ var assembler = (function(exports){
     }
     DUP();
     ROTATE(2);
-    STRING(intern('length'));
+    STRING('length');
     ROTATE(1);
-    DEFINE(1);
+    DEFINE(4);
     POP();
     LOG();
     DEBUGGER();
-    DEFINE(0);
-    ARRAY_DONE();
-    ARRAY_DONE();
   }
 
   function TaggedTemplateExpression(node){
