@@ -17,6 +17,8 @@ var assembler = (function(exports){
       each      = utility.each,
       repeat    = utility.repeat,
       map       = utility.map,
+      fold      = utility.fold,
+      generate  = utility.generate,
       quotes    = utility.quotes;
 
   var constants = require('./constants'),
@@ -34,16 +36,21 @@ var assembler = (function(exports){
   var opcodes = 0;
 
   function StandardOpCode(params, name){
-    this.id = opcodes++;
-    this.params = params;
-    this.name = name;
     var opcode = this;
-    return function(){
-      return context.code.createDirective(opcode, arguments);
-    };
+    var func = this.creator();
+    this.id = func.id = opcodes++;
+    this.params = func.params = params;
+    this.name = func.opname = name;
+    return func;
   }
 
   define(StandardOpCode.prototype, [
+    function creator(){
+      var opcode = this;
+      return function(){
+        return context.code.createDirective(opcode, arguments);
+      };
+    },
     function inspect(){
       return this.name;
     },
@@ -60,17 +67,18 @@ var assembler = (function(exports){
 
 
   function InternedOpCode(params, name){
-    this.id = opcodes++;
-    this.params = params;
-    this.name = name;
-    var opcode = this;
-    return function(arg){
-      //return context.code.createDirective(opcode, [context.intern(arg)]);
-      return context.code.createDirective(opcode, [arg]);
-    };
+    return StandardOpCode.call(this, params, name);
   }
 
-  inherit(InternedOpCode, StandardOpCode);
+  inherit(InternedOpCode, StandardOpCode, [
+    function creator(){
+      var opcode = this;
+      return function(arg){
+        //return context.code.createDirective(opcode, [context.intern(arg)]);
+        return context.code.createDirective(opcode, [arg]);
+      };
+    }
+  ]);
 
 
 
@@ -93,6 +101,8 @@ var assembler = (function(exports){
       DUP              = new StandardOpCode(0, 'DUP'),
       ELEMENT          = new StandardOpCode(0, 'ELEMENT'),
       ENUM             = new StandardOpCode(0, 'ENUM'),
+      EXTENSIBLE       = new StandardOpCode(1, 'EXTENSIBLE'),
+      FLIP             = new StandardOpCode(1, 'FLIP'),
       FUNCTION         = new StandardOpCode(2, 'FUNCTION'),
       GET              = new StandardOpCode(0, 'GET'),
       IFEQ             = new StandardOpCode(2, 'IFEQ'),
@@ -125,7 +135,7 @@ var assembler = (function(exports){
       SUPER_CALL       = new StandardOpCode(0, 'SUPER_CALL'),
       SUPER_ELEMENT    = new StandardOpCode(0, 'SUPER_ELEMENT'),
       SUPER_MEMBER     = new StandardOpCode(1, 'SUPER_MEMBER'),
-      TEMPLATE_ELEMENT = new StandardOpCode(0, 'TEMPLATE_ELEMENT'),
+      TEMPLATE         = new StandardOpCode(1, 'TEMPLATE'),
       THIS             = new StandardOpCode(0, 'THIS'),
       THROW            = new StandardOpCode(0, 'THROW'),
       UNARY            = new StandardOpCode(1, 'UNARY'),
@@ -617,6 +627,23 @@ var assembler = (function(exports){
 
   function adjust(op){
     return op[0] = context.code.ops.length;
+  }
+
+  function macro(){
+    var opcodes = arguments;
+    MACRO.params = opcodes.length;
+    return MACRO;
+
+    function MACRO(){
+      var offset = 0,
+          args = arguments;
+
+      each(opcodes, function(opcode){
+        opcode.apply(null, generate(opcode.params, function(){
+          return args[offset++]
+        }));
+      });
+    }
   }
 
   function block(callback){
@@ -1235,83 +1262,41 @@ var assembler = (function(exports){
   }
 
 
-// function GetTemplateCallSite(){
+  function TemplateElement(node){}
 
-// }
-
-// function(r){
-//   for (var i=0, o=''; r[i]; o += r[i].raw + (++i === r.length ? '' : arguments[i]));
-//   return o;
-// }
-
-// function ArgumentListEvaluation(){
-//   var siteObj = GetTemplateCallSite(this.TemplateLiteral);
-
-// }
-
-
-
-  function TemplateElement(node){
-    STRING(node.value.cooked);
-    DEFINE(1);
-    POP();
-    ROTATE(1);
-    ROTATE(2);
-    STRING(node.value.raw);
-    DEFINE(1);
-    POP();
-    INC();
-  }
-
-  function repeat(count, callback){
-    for (var i=0; i < count; i++) {
-      callback(i);
-    }
-  }
-
-
-
-  function TemplateLiteral(node){
-    ARRAY();
-    POP();
-    DUP();
-    ARRAY();
-    POP();
-    DUP();
-    ROTATE(2);
-    OBJECT();
-    each(['raw', 'cooked'], function(n){
-      STRING(n);
-      ROTATE(2);
-      ROTATE(2);
-      DEFINE(1);
-      POPN(2);
+  function TemplateLiteral(node, tagged){
+    each(node.quasis, function(element, i){
+      STRING(element.value.raw);
+      if (!element.tail) {
+        recurse(node.expressions[i]);
+        GET();
+        BINARY(BINARYOPS['string+']);
+      }
+      if (i) {
+        BINARY(BINARYOPS['string+']);
+      }
     });
-    ROTATE(2);
-    LITERAL(0);
-    for (var i=0, element; element = node.quasis[i]; i++) {
-      recurse(element);
-    }
-    DUP();
-    ROTATE(2);
-    STRING('length');
-    ROTATE(1);
-    DEFINE(4);
-    POP();
-    LOG();
-    DEBUGGER();
   }
 
   function TaggedTemplateExpression(node){
+    var template = [];
+    each(node.quasi.quasis, function(element){
+      template.push(element.value);
+    });
+
+    UNDEFINED();
     recurse(node.tag);
-    DUP();
     GET();
     ARGS();
-    recurse(node.quasi);
+    TEMPLATE(template);
     GET();
-    LOG();
-    //ARG();
-    //CALL();
+    ARG();
+    each(node.quasi.expressions, function(node){
+      recurse(node);
+      GET();
+      ARG();
+    });
+    CALL();
   }
 
   function ThisExpression(node){

@@ -2139,7 +2139,6 @@ var win = new Component(window),
 
 
 void function(){
-  //var input = new InputBox({ hint: 'Enter code to run...', autofocus: true }),
   var stdout = new Console,
       inspector = new Tree,
       input = new Editor,

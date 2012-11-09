@@ -1216,6 +1216,8 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
+
+
   // ##########################
   // ### PropertyDescriptor ###
   // ##########################
@@ -1537,6 +1539,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       },
       function GetExtensible(){
         return this.Extensible;
+      },
+      function SetExtensible(v){
+        this.Extensible = v;
       },
       function GetOwnProperty(key){
         if (key === '__proto__') {
@@ -2980,6 +2985,31 @@ var runtime = (function(GLOBAL, exports, undefined){
         defineDirect(array, 'length', offset, _CW);
         return offset;
       },
+      function GetTemplateCallSite(template){
+        if (!('id' in template)) {
+          GetTemplateCallSite.count = (GetTemplateCallSite.count || 0) + 1;
+          template.id = GetTemplateCallSite.count;
+        }
+        if (template.id in realm.templates) {
+          return realm.templates[template.id];
+        }
+
+        var count = template.length,
+            site = new $Array(count),
+            raw = new $Array(count);
+
+        for (var i=0; i < count; i++) {
+          defineDirect(site, i+'', template[i].cooked, E__);
+          defineDirect(raw, i+'', template[i].raw, E__);
+        }
+        defineDirect(site, 'length', count, ___);
+        defineDirect(raw, 'length', count, ___);
+        defineDirect(site, 'raw', raw, ___);
+        site.SetExtensible(false);
+        raw.SetExtensible(false);
+        realm.templates[template.id] = site;
+        return site;
+      },
       function SpreadDestructuring(target, index){
         var array = new $Array(0);
         if (target == null) {
@@ -3394,7 +3424,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       return obj.GetExtensible();
     },
     SetExtensible: function(obj, value){
-      obj.Extensible = value;
+      obj.SetExtensible(value);
     },
     GetPrototype: function(obj){
       return obj.GetPrototype();
@@ -3895,6 +3925,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     realms.push(this);
     this.active = false;
     this.scripts = [];
+    this.templates = {};
     this.natives = new Intrinsics(this);
     this.intrinsics = this.natives.bindings;
     this.global = new $Object(new $Object(this.intrinsics.ObjectProto));

@@ -453,6 +453,8 @@ var operators = (function(exports){
     return a + b;
   }
 
+
+
   function ADD(lval, rval) {
     lval = ToPrimitive(lval);
     if (lval && lval.Completion) {
@@ -483,6 +485,13 @@ var operators = (function(exports){
     return convertAdd(lval, rval, type, converter);
   }
   exports.ADD = ADD;
+
+
+
+  function STRING_ADD(lval, rval){
+    return convertAdd(lval, rval, STRING, ToString);
+  }
+  exports.STRING_ADD = STRING_ADD;
 
 
 
@@ -796,28 +805,29 @@ var operators = (function(exports){
   function BinaryOp(operator, lval, rval) {
     switch (operator) {
       case 'instanceof': return INSTANCE_OF(lval, rval);
-      case 'in':   return IN(lval, rval);
-      case 'is':   return IS(lval, rval);
-      case 'isnt': return NOT(IS(lval, rval));
-      case '==':   return EQUAL(lval, rval);
-      case '!=':   return NOT(EQUAL(lval, rval));
-      case '===':  return STRICT_EQUAL(lval, rval);
-      case '!==':  return NOT(STRICT_EQUAL(lval, rval));
-      case '<':    return LT(lval, rval);
-      case '>':    return GT(lval, rval);
-      case '<=':   return LTE(lval, rval);
-      case '>=':   return GTE(lval, rval);
-      case '*':    return MUL(lval, rval);
-      case '/':    return DIV(lval, rval);
-      case '%':    return MOD(lval, rval);
-      case '+':    return ADD(lval, rval);
-      case '-':    return SUB(lval, rval);
-      case '<<':   return SHL(lval, rval);
-      case '>>':   return SHR(lval, rval);
-      case '>>>':  return SAR(lval, rval);
-      case '|':    return BIT_OR(lval, rval);
-      case '&':    return BIT_AND(lval, rval);
-      case '^':    return BIT_XOR(lval, rval);
+      case 'in':         return IN(lval, rval);
+      case 'is':         return IS(lval, rval);
+      case 'isnt':       return NOT(IS(lval, rval));
+      case '==':         return EQUAL(lval, rval);
+      case '!=':         return NOT(EQUAL(lval, rval));
+      case '===':        return STRICT_EQUAL(lval, rval);
+      case '!==':        return NOT(STRICT_EQUAL(lval, rval));
+      case '<':          return LT(lval, rval);
+      case '>':          return GT(lval, rval);
+      case '<=':         return LTE(lval, rval);
+      case '>=':         return GTE(lval, rval);
+      case '*':          return MUL(lval, rval);
+      case '/':          return DIV(lval, rval);
+      case '%':          return MOD(lval, rval);
+      case '+':          return ADD(lval, rval);
+      case 'string+':    return STRING_ADD(lval, rval);
+      case '-':          return SUB(lval, rval);
+      case '<<':         return SHL(lval, rval);
+      case '>>':         return SHR(lval, rval);
+      case '>>>':        return SAR(lval, rval);
+      case '|':          return BIT_OR(lval, rval);
+      case '&':          return BIT_AND(lval, rval);
+      case '^':          return BIT_XOR(lval, rval);
     }
   }
   exports.BinaryOp = BinaryOp;

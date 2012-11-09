@@ -91,10 +91,10 @@ var thunk = (function(exports){
   function Thunk(code){
     var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
       CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT, DEFINE,
-      DUP, ELEMENT, ENUM, FUNCTION, GET, IFEQ, IFNE, INC, INDEX, ITERATE, JUMP, LET,
+      DUP, ELEMENT, ENUM, EXTENSIBLE, FLIP, FUNCTION, GET, IFEQ, IFNE, INC, INDEX, ITERATE, JUMP, LET,
       LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
-      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, TEMPLATE_ELEMENT,
+      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, TEMPLATE,
       THIS, THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
 
     var thunk = this,
@@ -364,10 +364,33 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
+    function EXTENSIBLE(){
+      stack[sp - 1].SetExtensible(!!ops[ip][0]);
+      return cmds[++ip];
+    }
+
     function FUNCTION(){
       stack[sp++] = context.createFunction(ops[ip][0], ops[ip][1]);
       return cmds[++ip];
     }
+
+    function FLIP(){
+      var buffer = [],
+          index  = 0,
+          count  = ops[ip][0];
+
+      while (index < count) {
+        buffer[index] = stack[sp - index++];
+      }
+
+      index = 0;
+      while (index < count) {
+        stack[sp - index] = buffer[count - ++index];
+      }
+
+      return cmds[++ip];
+    }
+
 
     function GET(){
       var result = GetValue(stack[--sp]);
@@ -560,7 +583,6 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
-
     function REGEXP(){
       stack[sp++] = context.createRegExp(ops[ip][0]);
       return cmds[++ip];
@@ -690,19 +712,9 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
-
-    function TEMPLATE_ELEMENT(){
-      var string   = new TemplateElement(stack[--sp]),
-          index    = stack[--sp],
-          callsite = stack[sp - 1],
-          result   = callsite.DefineOwnProperty(index, string);
-
-      if (result && result.Abrupt) {
-        error = result;
-        return unwind;
-      }
-
-      stack[sp++] = index + 1;
+    function TEMPLATE(){
+      stack[sp++] = context.GetTemplateCallSite(ops[ip][0]);
+      console.log(stack, sp);
       return cmds[++ip];
     }
 
