@@ -318,10 +318,9 @@ var utility = (function(exports){
 
   function each(o, callback){
     for (var i=0; i < o.length; i++) {
-      callback(o[i]);
+      callback(o[i], i, o);
     }
   }
-
   exports.each = each;
 
   function map(o, callback){
@@ -331,8 +330,31 @@ var utility = (function(exports){
     }
     return out;
   }
-
   exports.map = map;
+
+  function fold(o, initial, callback){
+    if (callback) {
+      var val = initial, i = 0;
+    } else {
+      if (typeof initial === STRING) {
+        callback = fold[initial];
+      } else {
+        callback = initial;
+      }
+
+      var val = o[0], i = 1;
+    }
+    for (; i < o.length; i++) {
+      val = callback(val, o[i], i, o);
+    }
+    return val;
+  }
+  exports.fold = fold;
+
+  fold['+'] = function(a, b){ return a + b };
+  fold['*'] = function(a, b){ return a - b };
+  fold['-'] = function(a, b){ return a * b };
+  fold['/'] = function(a, b){ return a / b };
 
   function repeat(n, args, callback){
     if (typeof args === FUNCTION) {
