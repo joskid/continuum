@@ -143,8 +143,8 @@ var assembler = (function(exports){
       UPDATE           = new StandardOpCode(1, 'UPDATE'),
       UPSCOPE          = new StandardOpCode(0, 'UPSCOPE'),
       VAR              = new StandardOpCode(1, 'VAR'),
-      WITH             = new StandardOpCode(0, 'WITH');
-
+      WITH             = new StandardOpCode(0, 'WITH'),
+      YIELD            = new StandardOpCode(1, 'YIELD');
 
 
 
@@ -217,6 +217,9 @@ var assembler = (function(exports){
 
     if (!this.topLevel && node.id) {
       this.name = node.id.name;
+      if (node.generator) {
+        this.generator = true;
+      }
     }
 
     this.global = global;
@@ -788,6 +791,7 @@ var assembler = (function(exports){
         recurse(item);
       }
 
+      GET();
       INDEX(empty, spread);
     }
     ARRAY_DONE();
@@ -1395,7 +1399,16 @@ var assembler = (function(exports){
     });
   }
 
-  function YieldExpression(node){}
+  function YieldExpression(node){
+    if (node.argument){
+      recurse(node.argument);
+      GET();
+    } else {
+      UNDEFINED();
+    }
+
+    YIELD(node.delegate);
+  }
 
   var handlers = {};
 

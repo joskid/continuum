@@ -53,7 +53,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       Pause         = SYMBOLS.Pause,
       Throw         = SYMBOLS.Throw,
       Empty         = SYMBOLS.Empty,
-      Resume        = SYMBOLS.Resume,
       Return        = SYMBOLS.Return,
       Native        = SYMBOLS.Native,
       Continue      = SYMBOLS.Continue,
@@ -495,10 +494,12 @@ var runtime = (function(GLOBAL, exports, undefined){
   void function(){
     function makeDefiner(constructs, field, desc){
       return function(obj, key, code) {
+
         var sup = code.NeedsSuperBinding,
             lex = context.LexicalEnvironment,
             home = sup ? obj : undefined,
-            func = new $Function(METHOD, key, code.params, code, lex, code.Strict, undefined, home, sup);
+            $F = code.generator ? $GeneratorFunction : $Function,
+            func = new $F(METHOD, key, code.params, code, lex, code.Strict, undefined, home, sup);
 
         constructs && MakeConstructor(func);
         desc[field] = func;
@@ -569,7 +570,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           }
         }
         if (decl.type === 'FunctionDeclaration') {
-          env.SetMutableBinding(name, InstantiateFunctionDeclaration(decl), code.Strict);
+          env.SetMutableBinding(name, InstantiateFunctionDeclaration(decl, context.LexicalEnvironment), code.Strict);
         }
       }
     }
@@ -661,12 +662,10 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         if (!(name in funcs)) {
           funcs[name] = true;
-          env.InitializeBinding(name, InstantiateFunctionDeclaration(decl));
+          env.InitializeBinding(name, InstantiateFunctionDeclaration(decl, env));
         }
       }
     }
-
-
   }
 
   function Brand(name){
@@ -752,9 +751,10 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   // ## InstantiateFunctionDeclaration
 
-  function InstantiateFunctionDeclaration(decl){
+  function InstantiateFunctionDeclaration(decl, env){
     var code = decl.Code;
-    var func = new $Function(NORMAL, decl.id.name, code.params, code, context.LexicalEnvironment, code.Strict);
+    var $F = code.generator ? $GeneratorFunction : $Function;
+    var func = new $F(NORMAL, decl.id.name, code.params, code, env, code.Strict);
     MakeConstructor(func);
     return func;
   }
@@ -776,7 +776,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     for (i=0, decl; decl = decls[i]; i++) {
       if (decl.type === 'FunctionDeclaration') {
-        env.InitializeBinding(decl.id.name, InstantiateFunctionDeclaration(decl));
+        env.InitializeBinding(decl.id.name, InstantiateFunctionDeclaration(decl, env));
       }
     }
   }
@@ -1842,7 +1842,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     this.ThisMode = kind === ARROW ? 'lexical' : strict ? 'strict' : 'global';
     this.Strict = !!strict;
     this.Realm = realm;
-    this.Scope = scope;
+    this.Scope = new DeclarativeEnvironmentRecord(scope);
     this.Code = code;
     if (holder !== undefined) {
       this.Home = holder;
@@ -1884,12 +1884,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       FormalParameters: null,
       Code: null,
       Scope: null,
-      TargetFunction: null,
-      BoundThis: null,
-      BoundArguments: null,
       Strict: false,
       ThisMode: 'global',
-      Realm: null,
+      Realm: null
     }, [
       function Call(receiver, args, isConstruct){
         if (realm !== this.Realm) {
@@ -2059,7 +2056,11 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
   void function(){
-    inherit($BoundFunction, $Function, [
+    inherit($BoundFunction, $Function, {
+      TargetFunction: null,
+      BoundThis: null,
+      BoundArguments: null
+    }, [
       function Call(_, newArgs){
         return this.TargetFunction.Call(this.BoundThis, this.BoundArgs.concat(newArgs));
       },
@@ -2077,6 +2078,163 @@ var runtime = (function(GLOBAL, exports, undefined){
       }
     ]);
   }();
+
+  function $GeneratorFunction(){
+    $Function.apply(this, arguments);
+  }
+
+  void function(){
+    inherit($GeneratorFunction, $Function, [
+      function Call(receiver, args){
+        if (realm !== this.Realm) {
+          activate(this.Realm);
+        }
+        if (this.ThisMode === 'lexical') {
+          var local = new DeclarativeEnvironmentRecord(this.Scope);
+        } else {
+          if (this.ThisMode !== 'strict') {
+            if (receiver == null) {
+              receiver = this.Realm.global;
+            } else if (typeof receiver !== OBJECT) {
+              receiver = ToObject(receiver);
+              if (receiver.Completion) {
+                if (receiver.Abrupt) {
+                  return receiver;
+                } else {
+                  receiver = receiver.value;
+                }
+              }
+            }
+          }
+          var local = new FunctionEnvironmentRecord(receiver, this);
+        }
+
+        var ctx = new ExecutionContext(context, local, this.Realm, this.Code, this);
+        ExecutionContext.push(ctx);
+
+        var status = FunctionDeclarationInstantiation(this, args, local);
+        if (status && status.Abrupt) {
+          ExecutionContext.pop();
+          return status;
+        }
+
+        if (!this.thunk) {
+          this.thunk = new Thunk(this.Code);
+          hide(this, 'thunk');
+        }
+
+        var result = new $Generator(this.Realm, local, ctx, this.thunk);
+        ExecutionContext.pop();
+        return result;
+      }
+    ]);
+  }();
+
+  function setFunction(obj, name, func){
+    setDirect(obj, name, new $NativeFunction({
+      name: name,
+      length: func.length,
+      call: func
+    }));
+  }
+
+
+  function $Generator(realm, scope, ctx, thunk){
+    $Object.call(this);
+    this.Realm = realm;
+    this.Scope = scope;
+    this.Code = thunk.code;
+    this.ExecutionContext = ctx;
+    this.State = 'newborn';
+    this.thunk = thunk;
+
+    var self = this;
+    setFunction(this, 'iterator', function(){ return self });
+    setFunction(this, 'next',     function(){ return self.Send() });
+    setFunction(this, 'close',    function(){ return self.Close() });
+    setFunction(this, 'send',     function(v){ return self.Send(v) });
+    setFunction(this, 'throw',    function(v){ return self.Throw(v) });
+
+    hide(this, 'thunk');
+    hide(this, 'Realm');
+    hide(this, 'Code');
+  }
+
+  void function(){
+    inherit($Generator, $Object, {
+      Code: null,
+      ExecutionContext: null,
+      Scope: null,
+      Handler: null,
+      State: null,
+    }, [
+      function Send(value){
+        if (this.State === 'executing') {
+          return ThrowException('generator_executing', 'send');
+        } else if (this.State === 'closed') {
+          return ThrowException('generator_closed', 'send');
+        }
+        if (this.State === 'newborn') {
+          if (value !== undefined) {
+            return ThrowException('generator_send_newborn');
+          }
+          this.ExecutionContext.currentGenerator = this;
+          this.State = 'executing';
+          ExecutionContext.push(this.ExecutionContext);
+          return this.thunk.run(this.ExecutionContext);
+        }
+
+        this.State = 'executing';
+        return Resume(this.ExecutionContext, 'normal', value);
+      },
+      function Throw(value){
+        if (this.State === 'executing') {
+          return ThrowException('generator_executing', 'throw');
+        } else if (this.State === 'closed') {
+          return ThrowException('generator_closed', 'throw');
+        }
+        if (this.State === 'newborn') {
+          this.State = 'closed';
+          this.Code = null;
+          return new AbruptCompletion('throw', value);
+        }
+
+        this.State = 'executing';
+        var result = Resume(this.ExecutionContext, 'throw', value);
+      },
+      function Close(value){
+        if (this.State === 'executing') {
+          return ThrowException('generator_executing', 'close');
+        } else if (this.State === 'closed') {
+          return;
+        }
+
+        if (state === 'newborn') {
+          this.State = 'closed';
+          this.Code = null;
+          return;
+        }
+
+        this.State = 'executing';
+        var result = Resume(this.ExecutionContext, 'return', value);
+        this.State = 'closed';
+        return result;
+      }
+    ]);
+  }();
+
+
+  function Resume(ctx, completionType, value){
+    ExecutionContext.push(ctx);
+    if (completionType !== 'normal') {
+      value = new AbruptCompletion(completionType, value);
+    }
+    return ctx.currentGenerator.thunk.send(ctx, value);
+  }
+
+
+
+
 
   // #############
   // ### $Date ###
@@ -2804,6 +2962,11 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   void function(){
     define(ExecutionContext.prototype, [
+      function pop(){
+        if (context === this) {
+          return context = this.caller;
+        }
+      },
       function initializeBindings(pattern, value, lexical){
         return BindingInitialization(pattern, value, lexical ? this.LexicalEnvironment : undefined);
       },
@@ -2834,7 +2997,8 @@ var runtime = (function(GLOBAL, exports, undefined){
         } else {
           var env = this.LexicalEnvironment;
         }
-        var func = new $Function(code.Type, name, code.params, code, env, code.Strict);
+        var $F = code.generator ? $GeneratorFunction : $Function;
+        var func = new $F(code.Type, name, code.params, code, env, code.Strict);
         if (code.Type !== ARROW) {
           MakeConstructor(func);
           name && env.InitializeBinding(name, func);

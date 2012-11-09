@@ -159,7 +159,10 @@ var errors = (function(errors, messages, exports){
     spread_non_object                   : ["Expecting an object as spread argument, but got ", "$0"],
     called_on_incompatible_object       : ["$0", " called on incompatible object"],
     double_initialization               : ["Initializating an already initialized ", "$0"],
-    construct_arrow_function            : ["Arrow functions cannot be constructed"]
+    construct_arrow_function            : ["Arrow functions cannot be constructed"],
+    generator_executing                 : ["'", "$0", "' called on executing generator"],
+    generator_closed                    : ["'", "$0", "' called on closed generator"],
+    generator_send_newborn              : ["Sent value into newborn generator"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],

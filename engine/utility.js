@@ -836,9 +836,9 @@ var utility = (function(exports){
   })();
 
 
-
-  var Hash = exports.Hash = function(){};
+  function Hash(){}
   Hash.prototype = create(null);
+  exports.Hash = Hash;
 
 
   var proto = Math.random().toString(36).slice(2);

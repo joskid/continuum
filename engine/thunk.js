@@ -95,7 +95,7 @@ var thunk = (function(exports){
       LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
       SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, TEMPLATE,
-      THIS, THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
+      THIS, THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH, YIELD];
 
     var thunk = this,
         ops = code.ops,
@@ -150,6 +150,8 @@ var thunk = (function(exports){
       return false;
     }
 
+
+
     function ARGS(){
       stack[sp++] = [];
       return cmds[++ip];
@@ -176,7 +178,7 @@ var thunk = (function(exports){
     function BINARY(){
       var right  = stack[--sp],
           left   = stack[--sp],
-          result = BinaryOp(BINARYOPS[ops[ip][0]], left, right);
+          result = BinaryOp(BINARYOPS[ops[ip][0]], GetValue(left), GetValue(right));
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -597,6 +599,12 @@ var thunk = (function(exports){
     function RETURN(){
       completion = stack[--sp];
       ip++;
+      if (code.generator) {
+        context.currentGenerator.ExecutionContext = context;
+        context.currentGenerator.State = 'closed';
+        error = new AbruptCompletion('throw', context.realm.intrinsics.StopIteration);
+        unwind();
+      }
       return false;
     }
 
@@ -805,6 +813,16 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
+    function YIELD(){
+      var generator = context.currentGenerator;
+      generator.ExecutionContext = context;
+      generator.State = 'suspended';
+      context.pop();
+      cleanup = yieldCleanup;
+      yielded = stack[--sp];
+      ip++;
+      return false;
+    }
 
     function trace(unwound){
       stacktrace || (stacktrace = []);
@@ -872,6 +890,16 @@ var thunk = (function(exports){
       return Pause;
     }
 
+    function yieldPrepare(){
+      prepare = normalPrepare;
+    }
+
+    function yieldCleanup(){
+      prepare = yieldPrepare;
+      cleanup = normalCleanup;
+      return yielded;
+    }
+
     function run(ctx){
       context = ctx;
       if (context.realm.quiet) {
@@ -884,7 +912,14 @@ var thunk = (function(exports){
       prepare();
       execute();
       if (log && !prevLog) log = false;
-      return cleanup();
+      return GetValue(cleanup());
+    }
+
+    function send(ctx, value){
+      if (stack) {
+        stack[sp++] = value;
+      }
+      return run(ctx);
     }
 
 
@@ -895,6 +930,7 @@ var thunk = (function(exports){
         cleanup = normalCleanup;
 
     this.run = run;
+    this.send = send;
     this.code = code;
     Emitter.call(this);
   }
