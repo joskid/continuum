@@ -6130,9 +6130,9 @@ exports.utility = (function(exports){
   })();
 
 
-
-  var Hash = exports.Hash = function(){};
+  function Hash(){}
   Hash.prototype = create(null);
+  exports.Hash = Hash;
 
 
   var proto = Math.random().toString(36).slice(2);
@@ -6851,7 +6851,10 @@ exports.errors = (function(errors, messages, exports){
     spread_non_object                   : ["Expecting an object as spread argument, but got ", "$0"],
     called_on_incompatible_object       : ["$0", " called on incompatible object"],
     double_initialization               : ["Initializating an already initialized ", "$0"],
-    construct_arrow_function            : ["Arrow functions cannot be constructed"]
+    construct_arrow_function            : ["Arrow functions cannot be constructed"],
+    generator_executing                 : ["'", "$0", "' called on executing generator"],
+    generator_closed                    : ["'", "$0", "' called on closed generator"],
+    generator_send_newborn              : ["Sent value into newborn generator"]
   },
   ReferenceError: {
     unknown_label                  : ["Undefined label '", "$0", "'"],
@@ -7059,8 +7062,8 @@ exports.assembler = (function(exports){
       UPDATE           = new StandardOpCode(1, 'UPDATE'),
       UPSCOPE          = new StandardOpCode(0, 'UPSCOPE'),
       VAR              = new StandardOpCode(1, 'VAR'),
-      WITH             = new StandardOpCode(0, 'WITH');
-
+      WITH             = new StandardOpCode(0, 'WITH'),
+      YIELD            = new StandardOpCode(1, 'YIELD');
 
 
 
@@ -7133,6 +7136,9 @@ exports.assembler = (function(exports){
 
     if (!this.topLevel && node.id) {
       this.name = node.id.name;
+      if (node.generator) {
+        this.generator = true;
+      }
     }
 
     this.global = global;
@@ -7704,6 +7710,7 @@ exports.assembler = (function(exports){
         recurse(item);
       }
 
+      GET();
       INDEX(empty, spread);
     }
     ARRAY_DONE();
@@ -8311,7 +8318,16 @@ exports.assembler = (function(exports){
     });
   }
 
-  function YieldExpression(node){}
+  function YieldExpression(node){
+    if (node.argument){
+      recurse(node.argument);
+      GET();
+    } else {
+      UNDEFINED();
+    }
+
+    YIELD(node.delegate);
+  }
 
   var handlers = {};
 
@@ -9272,21 +9288,6 @@ exports.thunk = (function(exports){
   }
 
 
-    function LR(){
-      registers[ops[ip][0]] = registers[ops[ip][1]];
-      return cmds[++ip];
-    }
-
-    function L(){
-      registers[ops[ip][0]] = stack[--sp];
-      return cmds[++ip];
-    }
-
-    function ST(){
-      stack[sp++] = registers[ops[ip][0]];
-      return cmds[++ip];
-    }
-
   function Thunk(code){
     var opcodes = [ARRAY, ARG, ARGS, ARRAY_DONE, BINARY, BLOCK, CALL, CASE,
       CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT, DEFINE,
@@ -9294,7 +9295,7 @@ exports.thunk = (function(exports){
       LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, OBJECT, POP,
       POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
       SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, TEMPLATE,
-      THIS, THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH];
+      THIS, THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH, YIELD];
 
     var thunk = this,
         ops = code.ops,
@@ -9349,6 +9350,8 @@ exports.thunk = (function(exports){
       return false;
     }
 
+
+
     function ARGS(){
       stack[sp++] = [];
       return cmds[++ip];
@@ -9375,7 +9378,7 @@ exports.thunk = (function(exports){
     function BINARY(){
       var right  = stack[--sp],
           left   = stack[--sp],
-          result = BinaryOp(BINARYOPS[ops[ip][0]], left, right);
+          result = BinaryOp(BINARYOPS[ops[ip][0]], GetValue(left), GetValue(right));
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -9796,6 +9799,12 @@ exports.thunk = (function(exports){
     function RETURN(){
       completion = stack[--sp];
       ip++;
+      if (code.generator) {
+        context.currentGenerator.ExecutionContext = context;
+        context.currentGenerator.State = 'closed';
+        error = new AbruptCompletion('throw', context.realm.intrinsics.StopIteration);
+        unwind();
+      }
       return false;
     }
 
@@ -10004,6 +10013,16 @@ exports.thunk = (function(exports){
       return cmds[++ip];
     }
 
+    function YIELD(){
+      var generator = context.currentGenerator;
+      generator.ExecutionContext = context;
+      generator.State = 'suspended';
+      context.pop();
+      cleanup = yieldCleanup;
+      yielded = stack[--sp];
+      ip++;
+      return false;
+    }
 
     function trace(unwound){
       stacktrace || (stacktrace = []);
@@ -10071,6 +10090,16 @@ exports.thunk = (function(exports){
       return Pause;
     }
 
+    function yieldPrepare(){
+      prepare = normalPrepare;
+    }
+
+    function yieldCleanup(){
+      prepare = yieldPrepare;
+      cleanup = normalCleanup;
+      return yielded;
+    }
+
     function run(ctx){
       context = ctx;
       if (context.realm.quiet) {
@@ -10083,7 +10112,14 @@ exports.thunk = (function(exports){
       prepare();
       execute();
       if (log && !prevLog) log = false;
-      return cleanup();
+      return GetValue(cleanup());
+    }
+
+    function send(ctx, value){
+      if (stack) {
+        stack[sp++] = value;
+      }
+      return run(ctx);
     }
 
 
@@ -10094,6 +10130,7 @@ exports.thunk = (function(exports){
         cleanup = normalCleanup;
 
     this.run = run;
+    this.send = send;
     this.code = code;
     Emitter.call(this);
   }
@@ -10161,7 +10198,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       Pause         = SYMBOLS.Pause,
       Throw         = SYMBOLS.Throw,
       Empty         = SYMBOLS.Empty,
-      Resume        = SYMBOLS.Resume,
       Return        = SYMBOLS.Return,
       Native        = SYMBOLS.Native,
       Continue      = SYMBOLS.Continue,
@@ -10603,10 +10639,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   void function(){
     function makeDefiner(constructs, field, desc){
       return function(obj, key, code) {
+
         var sup = code.NeedsSuperBinding,
             lex = context.LexicalEnvironment,
             home = sup ? obj : undefined,
-            func = new $Function(METHOD, key, code.params, code, lex, code.Strict, undefined, home, sup);
+            $F = code.generator ? $GeneratorFunction : $Function,
+            func = new $F(METHOD, key, code.params, code, lex, code.Strict, undefined, home, sup);
 
         constructs && MakeConstructor(func);
         desc[field] = func;
@@ -10677,7 +10715,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           }
         }
         if (decl.type === 'FunctionDeclaration') {
-          env.SetMutableBinding(name, InstantiateFunctionDeclaration(decl), code.Strict);
+          env.SetMutableBinding(name, InstantiateFunctionDeclaration(decl, context.LexicalEnvironment), code.Strict);
         }
       }
     }
@@ -10769,12 +10807,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
         if (!(name in funcs)) {
           funcs[name] = true;
-          env.InitializeBinding(name, InstantiateFunctionDeclaration(decl));
+          env.InitializeBinding(name, InstantiateFunctionDeclaration(decl, env));
         }
       }
     }
-
-
   }
 
   function Brand(name){
@@ -10860,9 +10896,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   // ## InstantiateFunctionDeclaration
 
-  function InstantiateFunctionDeclaration(decl){
+  function InstantiateFunctionDeclaration(decl, env){
     var code = decl.Code;
-    var func = new $Function(NORMAL, decl.id.name, code.params, code, context.LexicalEnvironment, code.Strict);
+    var $F = code.generator ? $GeneratorFunction : $Function;
+    var func = new $F(NORMAL, decl.id.name, code.params, code, env, code.Strict);
     MakeConstructor(func);
     return func;
   }
@@ -10884,7 +10921,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
     for (i=0, decl; decl = decls[i]; i++) {
       if (decl.type === 'FunctionDeclaration') {
-        env.InitializeBinding(decl.id.name, InstantiateFunctionDeclaration(decl));
+        env.InitializeBinding(decl.id.name, InstantiateFunctionDeclaration(decl, env));
       }
     }
   }
@@ -11950,7 +11987,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     this.ThisMode = kind === ARROW ? 'lexical' : strict ? 'strict' : 'global';
     this.Strict = !!strict;
     this.Realm = realm;
-    this.Scope = scope;
+    this.Scope = new DeclarativeEnvironmentRecord(scope);
     this.Code = code;
     if (holder !== undefined) {
       this.Home = holder;
@@ -11992,12 +12029,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       FormalParameters: null,
       Code: null,
       Scope: null,
-      TargetFunction: null,
-      BoundThis: null,
-      BoundArguments: null,
       Strict: false,
       ThisMode: 'global',
-      Realm: null,
+      Realm: null
     }, [
       function Call(receiver, args, isConstruct){
         if (realm !== this.Realm) {
@@ -12167,7 +12201,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   }
 
   void function(){
-    inherit($BoundFunction, $Function, [
+    inherit($BoundFunction, $Function, {
+      TargetFunction: null,
+      BoundThis: null,
+      BoundArguments: null
+    }, [
       function Call(_, newArgs){
         return this.TargetFunction.Call(this.BoundThis, this.BoundArgs.concat(newArgs));
       },
@@ -12185,6 +12223,163 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       }
     ]);
   }();
+
+  function $GeneratorFunction(){
+    $Function.apply(this, arguments);
+  }
+
+  void function(){
+    inherit($GeneratorFunction, $Function, [
+      function Call(receiver, args){
+        if (realm !== this.Realm) {
+          activate(this.Realm);
+        }
+        if (this.ThisMode === 'lexical') {
+          var local = new DeclarativeEnvironmentRecord(this.Scope);
+        } else {
+          if (this.ThisMode !== 'strict') {
+            if (receiver == null) {
+              receiver = this.Realm.global;
+            } else if (typeof receiver !== OBJECT) {
+              receiver = ToObject(receiver);
+              if (receiver.Completion) {
+                if (receiver.Abrupt) {
+                  return receiver;
+                } else {
+                  receiver = receiver.value;
+                }
+              }
+            }
+          }
+          var local = new FunctionEnvironmentRecord(receiver, this);
+        }
+
+        var ctx = new ExecutionContext(context, local, this.Realm, this.Code, this);
+        ExecutionContext.push(ctx);
+
+        var status = FunctionDeclarationInstantiation(this, args, local);
+        if (status && status.Abrupt) {
+          ExecutionContext.pop();
+          return status;
+        }
+
+        if (!this.thunk) {
+          this.thunk = new Thunk(this.Code);
+          hide(this, 'thunk');
+        }
+
+        var result = new $Generator(this.Realm, local, ctx, this.thunk);
+        ExecutionContext.pop();
+        return result;
+      }
+    ]);
+  }();
+
+  function setFunction(obj, name, func){
+    setDirect(obj, name, new $NativeFunction({
+      name: name,
+      length: func.length,
+      call: func
+    }));
+  }
+
+
+  function $Generator(realm, scope, ctx, thunk){
+    $Object.call(this);
+    this.Realm = realm;
+    this.Scope = scope;
+    this.Code = thunk.code;
+    this.ExecutionContext = ctx;
+    this.State = 'newborn';
+    this.thunk = thunk;
+
+    var self = this;
+    setFunction(this, 'iterator', function(){ return self });
+    setFunction(this, 'next',     function(){ return self.Send() });
+    setFunction(this, 'close',    function(){ return self.Close() });
+    setFunction(this, 'send',     function(v){ return self.Send(v) });
+    setFunction(this, 'throw',    function(v){ return self.Throw(v) });
+
+    hide(this, 'thunk');
+    hide(this, 'Realm');
+    hide(this, 'Code');
+  }
+
+  void function(){
+    inherit($Generator, $Object, {
+      Code: null,
+      ExecutionContext: null,
+      Scope: null,
+      Handler: null,
+      State: null,
+    }, [
+      function Send(value){
+        if (this.State === 'executing') {
+          return ThrowException('generator_executing', 'send');
+        } else if (this.State === 'closed') {
+          return ThrowException('generator_closed', 'send');
+        }
+        if (this.State === 'newborn') {
+          if (value !== undefined) {
+            return ThrowException('generator_send_newborn');
+          }
+          this.ExecutionContext.currentGenerator = this;
+          this.State = 'executing';
+          ExecutionContext.push(this.ExecutionContext);
+          return this.thunk.run(this.ExecutionContext);
+        }
+
+        this.State = 'executing';
+        return Resume(this.ExecutionContext, 'normal', value);
+      },
+      function Throw(value){
+        if (this.State === 'executing') {
+          return ThrowException('generator_executing', 'throw');
+        } else if (this.State === 'closed') {
+          return ThrowException('generator_closed', 'throw');
+        }
+        if (this.State === 'newborn') {
+          this.State = 'closed';
+          this.Code = null;
+          return new AbruptCompletion('throw', value);
+        }
+
+        this.State = 'executing';
+        var result = Resume(this.ExecutionContext, 'throw', value);
+      },
+      function Close(value){
+        if (this.State === 'executing') {
+          return ThrowException('generator_executing', 'close');
+        } else if (this.State === 'closed') {
+          return;
+        }
+
+        if (state === 'newborn') {
+          this.State = 'closed';
+          this.Code = null;
+          return;
+        }
+
+        this.State = 'executing';
+        var result = Resume(this.ExecutionContext, 'return', value);
+        this.State = 'closed';
+        return result;
+      }
+    ]);
+  }();
+
+
+  function Resume(ctx, completionType, value){
+    ExecutionContext.push(ctx);
+    if (completionType !== 'normal') {
+      value = new AbruptCompletion(completionType, value);
+    }
+    return ctx.currentGenerator.thunk.send(ctx, value);
+  }
+
+
+
+
 
   // #############
   // ### $Date ###
@@ -12912,6 +13107,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   void function(){
     define(ExecutionContext.prototype, [
+      function pop(){
+        if (context === this) {
+          return context = this.caller;
+        }
+      },
       function initializeBindings(pattern, value, lexical){
         return BindingInitialization(pattern, value, lexical ? this.LexicalEnvironment : undefined);
       },
@@ -12942,7 +13142,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         } else {
           var env = this.LexicalEnvironment;
         }
-        var func = new $Function(code.Type, name, code.params, code, env, code.Strict);
+        var $F = code.generator ? $GeneratorFunction : $Function;
+        var func = new $F(code.Type, name, code.params, code, env, code.Strict);
         if (code.Type !== ARROW) {
           MakeConstructor(func);
           name && env.InitializeBinding(name, func);
@@ -15190,7 +15391,7 @@ exports.debug = (function(exports){
 })(typeof module !== 'undefined' ? module.exports : {});
 
 
-exports.builtins.$utility = "var ___ = 0x00,\n    E__ = 0x01,\n    _C_ = 0x02,\n    EC_ = 3,\n    __W = 0x04,\n    E_W = 5,\n    _CW = 6,\n    ECW = 7,\n    __A = 0x08,\n    E_A = 9,\n    _CA = 10,\n    ECA = 11;\n\n\n$__defineMethods = function defineMethods(obj, props){\n  for (var i=0; i < props.length; i++) {\n    $__SetInternal(props[i], 'Native', true);\n    $__defineDirect(obj, props[i].name, props[i], _CW);\n    $__deleteDirect(props[i], 'prototype');\n  }\n  return obj;\n};\n\n$__defineProps = function defineProps(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    var name = keys[i],\n        prop = props[name];\n\n    $__defineDirect(obj, name, prop, _CW);\n\n    if (typeof prop === 'function') {\n      $__SetInternal(prop, 'Native', true);\n      $__defineDirect(prop, 'name', name, ___);\n      $__deleteDirect(prop, 'prototype');\n    }\n  }\n  return obj;\n};\n\n$__defineConstants = function defineConstants(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    $__defineDirect(obj, keys[i], props[keys[i]], ___);\n  }\n};\n\n$__setupConstructor = function setupConstructor(ctor, proto){\n  $__defineDirect(ctor, 'prototype', proto, ___);\n  $__defineDirect(ctor.prototype, 'constructor', ctor, ___);\n  $__defineDirect(global, ctor.name, ctor, _CW);\n  $__SetInternal(ctor, 'Native', true);\n  $__SetInternal(ctor, 'NativeConstructor', true);\n};\n\n\n$__setLength = function setLength(f, length){\n  if (typeof length === 'string') {\n    $__setDirect(f, 'length', length);\n  } else {\n    var keys = $__Enumerate(length, false, false);\n    for (var i=0; i < keys.length; i++) {\n      var key = keys[i];\n      $__setDirect(f[key], 'length', length[key]);\n    }\n  }\n};\n\n\nvar hidden = { enumerable: false };\n\n$__hideEverything = function hideEverything(o){\n  $__Enumerate(o, false, true).forEach(function(k){\n    $__updateAttrDirect(o, k, ~E__);\n  });\n  if (typeof o === 'function') {\n    hideEverything(o.prototype);\n  }\n  return o;\n};\n\n$__EmptyClass = function constructor(...args){\n  super(...args);\n};\n\n\n$__TemplateLiteralEvaluation = function TemplateLiteralEvaluation(callsite, ...args){\n  var out = '',\n      len = callsite.raw.length - 1;\n\n  for (var i=0; out < len; i++) {\n    out += callsite.raw[i] + args[i];\n  }\n\n  return out + callsite.raw[i];\n};\n";
+exports.builtins.$utility = "var ___ = 0x00,\n    E__ = 0x01,\n    _C_ = 0x02,\n    EC_ = 3,\n    __W = 0x04,\n    E_W = 5,\n    _CW = 6,\n    ECW = 7,\n    __A = 0x08,\n    E_A = 9,\n    _CA = 10,\n    ECA = 11;\n\n\n$__defineMethods = function defineMethods(obj, props){\n  for (var i=0; i < props.length; i++) {\n    $__SetInternal(props[i], 'Native', true);\n    $__defineDirect(obj, props[i].name, props[i], _CW);\n    $__deleteDirect(props[i], 'prototype');\n  }\n  return obj;\n};\n\n$__defineProps = function defineProps(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    var name = keys[i],\n        prop = props[name];\n\n    $__defineDirect(obj, name, prop, _CW);\n\n    if (typeof prop === 'function') {\n      $__SetInternal(prop, 'Native', true);\n      $__defineDirect(prop, 'name', name, ___);\n      $__deleteDirect(prop, 'prototype');\n    }\n  }\n  return obj;\n};\n\n$__defineConstants = function defineConstants(obj, props){\n  var keys = $__Enumerate(props, false, false);\n  for (var i=0; i < keys.length; i++) {\n    $__defineDirect(obj, keys[i], props[keys[i]], ___);\n  }\n};\n\n$__setupConstructor = function setupConstructor(ctor, proto){\n  $__defineDirect(ctor, 'prototype', proto, ___);\n  $__defineDirect(ctor.prototype, 'constructor', ctor, _CW);\n  $__defineDirect(global, ctor.name, ctor, _CW);\n  $__SetInternal(ctor, 'Native', true);\n  $__SetInternal(ctor, 'NativeConstructor', true);\n};\n\n\n$__setLength = function setLength(f, length){\n  if (typeof length === 'string') {\n    $__setDirect(f, 'length', length);\n  } else {\n    var keys = $__Enumerate(length, false, false);\n    for (var i=0; i < keys.length; i++) {\n      var key = keys[i];\n      $__setDirect(f[key], 'length', length[key]);\n    }\n  }\n};\n\n\nvar hidden = { enumerable: false };\n\n$__hideEverything = function hideEverything(o){\n  $__Enumerate(o, false, true).forEach(function(k){\n    $__updateAttrDirect(o, k, ~E__);\n  });\n  if (typeof o === 'function') {\n    hideEverything(o.prototype);\n  }\n  return o;\n};\n\n$__EmptyClass = function constructor(...args){\n  super(...args);\n};\n";
 
 exports.modules["@reflect"] = "export function Proxy(target, handler){}\n\nexport function getOwnPropertyDescriptor(target, name){\n  ensureObject(target, 'Reflect.getOwnPropertyDescriptor');\n  name = $__ToPropertyName(name);\n  return $__GetOwnProperty(target, name);\n}\n\nexport function defineProperty(target, name, desc){\n  ensureObject(target, 'Reflect.defineProperty');\n  ensureDescriptor(desc);\n  name = $__ToPropertyName(name);\n  $__DefineOwnProperty(target, name, desc);\n  return object;\n}\n\nexport function getOwnPropertyNames(target){\n  ensureObject(target, 'Reflect.getOwnPropertyNames');\n  return $__Enumerate(target, false, false);\n}\n\nexport function getPrototypeOf(target){\n  ensureObject(target, 'Reflect.getPrototypeOf');\n  return $__GetPrototype(target);\n}\n\nexport function deleteProperty(target, name){\n  return $__Delete(target, name, false);\n}\n\nexport function enumerate(target){\n  ensureObject(target, 'Reflect.enumerate');\n  return $__Enumerate(target, false, false);\n}\n\nexport function freeze(target){\n  ensureObject(target, 'Reflect.freeze');\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc.configurable) {\n      desc.configurable = false;\n      if ('writable' in desc) {\n        desc.writable = false;\n      }\n      $__DefineOwnProperty(target, props[i], desc);\n    }\n  }\n\n  $__SetExtensible(target, false);\n  return target;\n}\n\nexport function seal(target){\n\n}\n\nexport function preventExtensions(target){\n  ensureObject(target, 'Reflect.preventExtensions');\n  $__SetExtensible(target, false);\n  return target;\n}\n\nexport function isFrozen(target){\n  ensureObject(target, 'Reflect.isFrozen');\n  if ($__GetExtensible(target)) {\n    return false;\n  }\n\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc) {\n      if (desc.configurable || 'writable' in desc && desc.writable) {\n        return false;\n      }\n    }\n  }\n\n  return true;\n}\n\nexport function isSealed(target){\n  ensureObject(target, 'Reflect.isSealed');\n  if ($__GetExtensible(target)) {\n    return false;\n  }\n\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc && desc.configurable) {\n      return false;\n    }\n  }\n\n  return true;\n}\n\nexport function isExtensible(target){\n  ensureObject(target, 'Reflect.isExtensible');\n  return $__GetExtensible(target);\n}\n\nexport function has(target, name){\n  ensureObject(target, 'Reflect.has');\n  name = $__ToPropertyName(name);\n  return $__HasProperty(target, name);\n}\n\nexport function hasOwn(target, name){\n  ensureObject(target, 'Reflect.hasOwn');\n  name = $__ToPropertyName(name);\n  return $__HasOwnProperty(target, name);\n}\n\nexport function keys(target){\n  ensureObject(target, 'Reflect.keys');\n  return $__Enumerate(target, false, true);\n}\n\nexport function get(target, name, receiver){\n  ensureObject(target, 'Reflect.get');\n  name = $__ToPropertyName(name);\n  return $__GetP(target, name, receiver);\n}\n\nexport function set(target, name, value, receiver){\n  ensureObject(target, 'Reflect.set');\n  name = $__ToPropertyName(name);\n  return $__SetP(target, name, value, receiver);\n}\n\nexport function apply(target, thisArg, args){\n  return $__CallFunction(target, thisArg, args);\n}\n\nexport function construct(target, args){\n  return $__Construct(target, args);\n}\n\n\nexport function Handler(){}\n\n$__defineProps(Handler.prototype, {\n  // fundamental traps\n  getOwnPropertyDescriptor: getOwnPropertyDescriptor,\n  getOwnPropertyNames:      getOwnPropertyNames,\n  getPrototypeOf:           getPrototypeOf,\n  defineProperty:           defineProperty,\n  deleteProperty:           deleteProperty,\n  preventExtensions:        preventExtensions,\n  isExtensible:             isExtensible,\n  apply:                    apply,\n\n  // derived traps\n  seal(target) {\n    var success = this.preventExtensions(target);\n    success = !!success;\n    if (success) {\n      var props = this.getOwnPropertyNames(target);\n      var l = +props.length;\n      for (var i = 0; i < l; i++) {\n        var name = props[i];\n        success = success &&\n          this.defineProperty(target, name, { configurable: false });\n      }\n    }\n    return success;\n  },\n  freeze(target){\n    var success = this.preventExtensions(target);\n    if (success = !!success) {\n      var props = this.getOwnPropertyNames(target),\n          l = +props.length;\n\n      for (var i = 0; i < l; i++) {\n        var name = props[i],\n            desc = this.getOwnPropertyDescriptor(target, name);\n\n        desc = normalizeAndCompletePropertyDescriptor(desc);\n        if (isDataDescriptor(desc)) {\n          success = success && this.defineProperty(target, name, { writable: false, configurable: false });\n        } else if (desc !== undefined) {\n          success = success && this.defineProperty(target, name, { configurable: false });\n        }\n      }\n    }\n    return success;\n  },\n  isSealed(target){\n    var props = this.getOwnPropertyNames(target),\n        l = +props.length;\n\n    for (var i = 0; i < l; i++) {\n      var name = props[i],\n          desc = this.getOwnPropertyDescriptor(target, name);\n\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc.configurable) {\n        return false;\n      }\n    }\n    return !this.isExtensible(target);\n  },\n  isFrozen(target){\n    var props = this.getOwnPropertyNames(target),\n        l = +props.length;\n\n    for (var i = 0; i < l; i++) {\n      var name = props[i],\n          desc = this.getOwnPropertyDescriptor(target, name);\n\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (isDataDescriptor(desc)) {\n        if (desc.writable) {\n          return false;\n        }\n      }\n      if (desc.configurable) {\n        return false;\n      }\n    }\n    return !this.isExtensible(target);\n  },\n  has(target, name){\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    desc = normalizeAndCompletePropertyDescriptor(desc);\n    if (desc !== undefined) {\n      return true;\n    }\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      return false;\n    }\n    return Reflect.has(proto, name);\n  },\n  hasOwn(target,name){\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    return undefined !== normalizeAndCompletePropertyDescriptor(desc);\n  },\n  get(target, name, receiver){\n    receiver = receiver || target;\n\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    desc = normalizeAndCompletePropertyDescriptor(desc);\n    if (desc === undefined) {\n      var proto = $__GetPrototype(target);\n      if (proto === null) {\n        return undefined;\n      }\n      return Reflect.get(proto, name, receiver);\n    }\n    if (isDataDescriptor(desc)) {\n      return desc.value;\n    }\n    var getter = desc.get;\n    if (getter === undefined) {\n      return undefined;\n    }\n    return $__CallFunction(desc.get, receiver, []);\n  },\n  set(target, name, value, receiver){\n    var ownDesc = this.getOwnPropertyDescriptor(target, name);\n    ownDesc = normalizeAndCompletePropertyDescriptor(ownDesc);\n\n    if (ownDesc !== undefined) {\n      if (isAccessorDescriptor(ownDesc)) {\n        var setter = ownDesc.set;\n        if (setter === undefined) return false;\n        $__CallFunction(setter, receiver, [value]); // assumes Function.prototype.call\n        return true;\n      }\n      // otherwise, isDataDescriptor(ownDesc) must be true\n      if (ownDesc.writable === false) return false;\n      if (receiver === target) {\n        var updateDesc = { value: value };\n        $__DefineOwnProperty(receiver, name, updateDesc);\n        return true;\n      } else {\n        if (!$__GetExtensible(receiver)) return false;\n        var newDesc =\n          { value: value,\n            writable: true,\n            enumerable: true,\n            configurable: true };\n        $__DefineOwnProperty(receiver, name, newDesc);\n        return true;\n      }\n    }\n\n    // name is not defined in target, search target's prototype\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      if (!$__GetExtensible(receiver)) return false;\n      var newDesc =\n        { value: value,\n          writable: true,\n          enumerable: true,\n          configurable: true };\n      $__DefineOwnProperty(receiver, name, newDesc);\n      return true;\n    }\n    // continue the search in target's prototype\n    return Reflect.set(proto, name, value, receiver);\n  },\n  enumerate(target){\n    var trapResult = this.getOwnPropertyNames(target);\n    var l = +trapResult.length;\n    var result = [];\n    for (var i = 0; i < l; i++) {\n      var name = $__ToString(trapResult[i]);\n      var desc = this.getOwnPropertyDescriptor(name);\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc !== undefined && desc.enumerable) {\n        result.push(name);\n      }\n    }\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      return result;\n    }\n    var inherited = Reflect.enumerate(proto);\n    // FIXME: filter duplicates\n    return result.concat(inherited);\n  },\n  iterate(target){\n    var trapResult = this.enumerate(target);\n    var l = +trapResult.length;\n    var idx = 0;\n    return {\n      next: function() {\n        if (idx === l) {\n          throw StopIteration;\n        } else {\n          return trapResult[idx++];\n        }\n      }\n    };\n  },\n  keys(target){\n    var trapResult = this.getOwnPropertyNames(target);\n    var l = +trapResult.length;\n    var result = [];\n    for (var i = 0; i < l; i++) {\n      var name = $__ToString(trapResult[i]);\n      var desc = this.getOwnPropertyDescriptor(name);\n      desc = normalizeAndCompletePropertyDescriptor(desc);\n      if (desc !== undefined && desc.enumerable) {\n        result.push(name);\n      }\n    }\n    return result;\n  },\n  construct(target, args) {\n    var proto = this.get(target, 'prototype', target);\n    var instance;\n    if (Object(proto) === proto) {\n      instance = $__ObjectCreate(proto);\n    } else {\n      instance = {};\n    }\n    var res = this.apply(target, instance, args);\n    if (Object(res) === res) {\n      return res;\n    }\n    return instance;\n  }\n});\n\n";
 
