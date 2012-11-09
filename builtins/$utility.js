@@ -47,7 +47,7 @@ $__defineConstants = function defineConstants(obj, props){
 
 $__setupConstructor = function setupConstructor(ctor, proto){
   $__defineDirect(ctor, 'prototype', proto, ___);
-  $__defineDirect(ctor.prototype, 'constructor', ctor, ___);
+  $__defineDirect(ctor.prototype, 'constructor', ctor, _CW);
   $__defineDirect(global, ctor.name, ctor, _CW);
   $__SetInternal(ctor, 'Native', true);
   $__SetInternal(ctor, 'NativeConstructor', true);
