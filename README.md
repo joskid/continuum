@@ -48,12 +48,12 @@ Will soon work in:
 * Set
 * WeakMap (garbage collection semantics not fully realized)
 * Iterators and for...of
+* Templates
 * `is` and `isnt` operators (not in es6 but supported anyway)
 
 ### Partially Implemented
 
 * Proxy and Reflect
-* Templates
 * Generators
 
 ### Soon
