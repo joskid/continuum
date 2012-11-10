@@ -798,22 +798,20 @@ var runtime = (function(GLOBAL, exports, undefined){
       return script.error;
     }
 
-    var bindings = new $Object(global),
-        sandbox = new GlobalEnvironmentRecord(bindings),
-        module = new $Module(sandbox, script.bytecode.ExportedNames);
+    var sandbox = new GlobalEnvironmentRecord(new $Object(global)),
+        sandboxRealm = create(realm);
 
-    bindings.NativeBrand = BRANDS.GlobalObject;
-    ExecutionContext.push(new ExecutionContext(null, sandbox, global.Realm, script.bytecode));
+    sandbox.bindings.NativeBrand = BRANDS.GlobalObject;
+    sandboxRealm.globalEnv = sandbox;
+    ExecutionContext.push(new ExecutionContext(context, sandbox, sandboxRealm, script.bytecode));
 
     var status = TopLevelDeclarationInstantiation(script.bytecode);
     if (status && status.Abrupt) {
       return status;
     }
 
-    run(global.Realm, script.thunk);
-
     ExecutionContext.pop();
-    return module;
+    return new $Module(sandbox, script.bytecode);
   }
 
   // ## IdentifierResolution
@@ -2728,24 +2726,27 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  function ModuleGetter(sandbox, name){
-    var getter = this.Get = new $NativeFunction({
-      name: name,
-      length: 0,
-      call: function(){
-        var value = sandbox.GetBindingValue(name);
-        getter.call = function(){ return value };
-        getter = accessor = null;
+  function ModuleGetter(ref){
+    var getter = this.Get = {
+      Call: function(){
+        var value = GetValue(ref);
+        ref = null;
+        getter.Call = function(){ return value };
         return value;
       }
-    });
+    };
   }
 
-  function $Module(sandbox, exported){
+  inherit(ModuleGetter, Accessor);
+
+  function $Module(sandbox, bytecode){
     var self = this;
     $Object.call(this, null);
-    each(exported, function(name){
-      defineDirect(self, name, new ModuleGetter(sandbox, name), E_A);
+    this.Code = bytecode;
+    this.Scope = sandbox;
+    this.Realm = sandbox.bindings.Realm;
+    each(bytecode.ExportedNames, function(name){
+      defineDirect(self, name, new ModuleGetter(new Reference(sandbox.bindings, name)), E_A);
     });
   }
 
@@ -4184,7 +4185,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     globalEnv = this.globalEnv = new GlobalEnvironmentRecord(this.global);
 
     this.intrinsics.FunctionProto.Scope = this.globalEnv;
-    this.intrinsics.FunctionProto.Realm = true;
+    this.intrinsics.FunctionProto.Realm = this;
     this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
     hide(this.intrinsics.FunctionProto, 'Scope');
 

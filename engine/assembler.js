@@ -481,6 +481,7 @@ var assembler = (function(exports){
     ArrayPattern       : 'elements',
     VariableDeclaration: 'declarations',
     BlockStatement     : visit.RECURSE,
+    Program            : visit.RECURSE,
     Property           : 'value',
     ExportDeclaration  : 'declaration',
     ExportSpecifierSet : 'specifiers',
@@ -489,7 +490,7 @@ var assembler = (function(exports){
     ImportSpecifier    : 'id',
     VariableDeclarator : 'id',
     ModuleDeclaration  : 'id',
-    FunctionDeclaration: ['id', 'name'],
+    FunctionDeclaration: 'id',
     ClassDeclaration   : 'id'
   });
 
@@ -512,6 +513,7 @@ var assembler = (function(exports){
       ClassDeclaration: lexical(false),
       FunctionDeclaration: lexical(false),
       SwitchCase: visit.RECURSE,
+      Program: visit.RECURSE,
       VariableDeclaration: lexical(function(node){
         return node.kind === 'const';
       }),
@@ -536,6 +538,7 @@ var assembler = (function(exports){
     ExportDeclaration: true
   });
       //collectImports = collector({ ImportDeclaration: true });
+
 
   var findExportedDeclarations = collector({
     ClassDeclaration   : true,

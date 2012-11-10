@@ -686,6 +686,9 @@ var utility = (function(exports){
         function visitor(node, parent){
           if (!node) return CONTINUE;
 
+          if (node instanceof Array) {
+            return RECURSE;
+          }
 
           var handler = handlers[node.type];
 
@@ -702,9 +705,7 @@ var utility = (function(exports){
             if (item !== undefined) {
               items.push(item);
             }
-          } else if (node instanceof Array) {
-            return RECURSE;
-          }
+          } else
 
           return CONTINUE;
         }
