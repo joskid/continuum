@@ -1,8 +1,8 @@
 var fs = require('fs');
-exports['_utility.js'] = null;
+exports['$utility.js'] = null;
 
 fs.readdirSync(__dirname).forEach(function(name){
   if (name !== 'index.js') {
-    exports[name] = fs.readFileSync(__dirname+'/'+name, 'utf8');
+    exports[name.slice(0, -3)] = fs.readFileSync(__dirname+'/'+name, 'utf8');
   }
 });
