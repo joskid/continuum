@@ -25,6 +25,7 @@ var assembler = (function(exports){
       BINARYOPS = constants.BINARYOPS.hash,
       UNARYOPS  = constants.UNARYOPS.hash,
       ENTRY     = constants.ENTRY.hash,
+      SCOPE     = constants.SCOPE.hash,
       AST       = constants.AST,
       FUNCTYPE  = constants.FUNCTYPE.hash;
 
@@ -173,23 +174,18 @@ var assembler = (function(exports){
     this.length = 0;
     if (params) {
       push.apply(this, params)
+      this.ArgNames = BoundNames(params);
+    } else {
+      this.ArgNames = [];
     }
     this.Rest = rest;
     this.BoundNames = BoundNames(node);//.map(intern);
-    var args = collectExpectedArguments(this);
-    this.ExpectedArgumentCount = args.length;
-    this.ArgNames = [];
-    for (var i=0; i < args.length; i++) {
-      if (args[i].type === 'Identifier') {
-        this.ArgNames.push(intern(args[i].name));
-      } else {
-
-      }
-    }
+    this.ExpectedArgumentCount = this.ArgNames.length;
+    if (rest) this.ArgNames.push(rest.name);
   }
 
 
-  function Code(node, source, type, global, strict){
+  function Code(node, source, type, scope, strict){
     function Instruction(opcode, args){
       Directive.call(this, opcode, args);
     }
@@ -222,8 +218,8 @@ var assembler = (function(exports){
       }
     }
 
-    this.global = global;
     this.transfers = [];
+    this.ScopeType = scope || SCOPE.GLOBAL;
     this.Type = type || FUNCTYPE.NORMAL;
     this.VarDeclaredNames = [];
     this.NeedsSuperBinding = ReferencesSuper(this.body);
@@ -261,7 +257,7 @@ var assembler = (function(exports){
     this.methods = [];
 
     for (var i=0, method; method = node.body.body[i]; i++) {
-      var code = new Code(method.value, context.source, FUNCTYPE.METHOD, false, context.code.strict);
+      var code = new Code(method.value, context.source, FUNCTYPE.METHOD, SCOPE.FUNCTION, context.code.strict);
       if (this.name) {
         code.name = this.name + '#' + method.key.name;
       } else {
@@ -386,17 +382,23 @@ var assembler = (function(exports){
         this.labels = null;
         this.source = source;
 
-        if (this.options.normal)
+        if (this.options.normal) {
           node = node.body[0].expression;
+          var scope = SCOPE.FUNCTION;
+        } else if (this.options.eval) {
+          var scope = SCOPE.EVAL;
+        } else {
+          var scope = SCOPE.GLOBAL;
+        }
 
-        var type = this.options.eval ? 'eval' : this.options.normal ? 'function' : 'global';
-        var code = new Code(node, source, type, !this.options.scoped);
+        var code = new Code(node, source, FUNCTYPE.NORMAL, scope);
         define(code, {
           strings: this.strings,
           hash: this.hash
         });
 
         code.topLevel = true;
+        //code.exports = Exports(node);
 
         if (this.options.natives) {
           code.natives = true;
@@ -414,7 +416,7 @@ var assembler = (function(exports){
             this.code.inherit(lastCode);
           }
           recurse(this.code.body);
-          if (this.code.eval || this.code.global){
+          if (isGlobalOrEval()){
             COMPLETE();
           } else {
             if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
@@ -477,22 +479,36 @@ var assembler = (function(exports){
     });
   }
 
-
   var boundNamesCollector = collector({
-    ObjectPattern      : visit.RECURSE,
-    ArrayPattern       : visit.RECURSE,
-    VariableDeclaration: visit.RECURSE,
-    VariableDeclarator : ['id', 'name'],
+    ObjectPattern      : 'properties',
+    ArrayPattern       : 'elements',
+    VariableDeclaration: 'declarations',
     BlockStatement     : visit.RECURSE,
-    Property           : visit.RECURSE,
+    Property           : 'value',
+    ExportDeclaration  : 'declaration',
+    ExportSpecifierSet : 'specifiers',
+    ImportDeclaration  : 'specifiers',
     Identifier         : ['name'],
-    FunctionDeclaration: ['id', 'name'],
-    ClassDeclaration   : ['id', 'name']
+    ImportSpecifier    : 'id',
+    VariableDeclarator : 'id',
+    ModuleDeclaration  : 'id',
+    FunctionDeclaration: 'id',
+    ClassDeclaration   : 'id'
   });
 
 
   function BoundNames(node){
-    var names = boundNamesCollector(node);
+    var names = [];
+    if (node.type === 'FunctionDeclaration'
+     || node.type === 'FunctionExpression'
+     || node.type === 'ArrowFunctionExpression'
+     || node.type === 'ClassDeclaration') {
+      names = names.concat(boundNamesCollector(node.params));
+      node = node.body;
+    }
+
+    return names.concat(boundNamesCollector(node));
+
     if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') {
       return names.slice(1);
     } else if (node.type === 'FunctionExpression') {
@@ -523,6 +539,8 @@ var assembler = (function(exports){
       return node;
     };
   });
+
+
 
 
   function isSuperReference(node) {
@@ -751,7 +769,9 @@ var assembler = (function(exports){
     }
   }
 
-
+  function isGlobalOrEval(){
+    return context.code.ScopeType === SCOPE.EVAL || context.code.ScopeType === SCOPE.GLOBAL;
+  }
 
 
   function AssignmentExpression(node){
@@ -800,7 +820,7 @@ var assembler = (function(exports){
   function ArrayPattern(node){}
 
   function ArrowFunctionExpression(node){
-    var code = new Code(node, context.code.source, FUNCTYPE.ARROW, false, context.code.strict);
+    var code = new Code(node, context.code.source, FUNCTYPE.ARROW, SCOPE.FUNCTION, context.code.strict);
     context.queue(code);
     FUNCTION(null, code);
   }
@@ -836,7 +856,7 @@ var assembler = (function(exports){
 
   function CallExpression(node){
     if (isSuperReference(node.callee)) {
-      if (context.code.Type === 'global' || context.code.Type === 'eval' && context.code.global) {
+      if (context.code.ScopeType !== SCOPE.FUNCTION) {
         throwError('illegal_super');
       }
       SUPER_CALL();
@@ -923,18 +943,21 @@ var assembler = (function(exports){
   }
 
   function EmptyStatement(node){}
+
   function ExportSpecifier(node){}
+
   function ExportSpecifierSet(node){}
-  function ExportDeclaration(node){}
+
+  function ExportDeclaration(node){
+    if (node.declaration) {
+      recurse(node.declaration);
+    }
+  }
 
   function ExpressionStatement(node){
     recurse(node.expression);
     GET();
-    if (context.code.eval || context.code.global) {
-      SAVE()
-    } else {
-      POP();
-    }
+    isGlobalOrEval() ? SAVE() : POP();
   }
 
   function ForStatement(node){
@@ -1060,12 +1083,12 @@ var assembler = (function(exports){
   }
 
   function FunctionDeclaration(node){
-    node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, false, context.code.strict);
+    node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.strict);
     context.queue(node.Code);
   }
 
   function FunctionExpression(node, methodName){
-    var code = new Code(node, context.code.source, FUNCTYPE.NORMAL, false, context.code.strict);
+    var code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.strict);
     if (methodName) {
       code.name = methodName;
     }
@@ -1097,7 +1120,7 @@ var assembler = (function(exports){
 
   function ImportDeclaration(node){}
 
-  function ImportSpecifier(spec){}
+  function ImportSpecifier(node){}
 
   function Literal(node){
     if (node.value instanceof RegExp) {
@@ -1132,7 +1155,7 @@ var assembler = (function(exports){
   function MemberExpression(node){
     var isSuper = isSuperReference(node.object);
     if (isSuper){
-      if (context.code.Type === 'global' || context.code.Type === 'eval' && context.code.global) {
+      if (context.code.ScopeType !== SCOPE.FUNCTION) {
         throwError('illegal_super_reference');
       }
     } else {
@@ -1148,9 +1171,19 @@ var assembler = (function(exports){
       isSuper ? SUPER_MEMBER() : MEMBER(node.property.name);
     }
   }
+
   function MethodDefinition(node){}
 
-  function ModuleDeclaration(node){}
+  function ModuleDeclaration(node){
+    recurse(node.id);
+    if (node.from) {
+      recurse(node.from);
+      IMPORT();
+    } else {
+      node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.MODULE, context.code.strict);
+      context.queue(node.Code);
+    }
+  }
 
   function NativeIdentifier(node){
     NATIVE_REF(node.name);
@@ -1165,19 +1198,15 @@ var assembler = (function(exports){
 
   function ObjectExpression(node){
     OBJECT();
-    for (var i=0, item; item = node.properties[i]; i++) {
-      recurse(item);
-    }
+    each(node.properties, recurse);
   }
 
   function ObjectPattern(node){}
 
-  function Path(){}
+  function Path(node){}
 
   function Program(node){
-    for (var i=0, item; item = node.body[i]; i++) {
-      recurse(item);
-    }
+    each(node.body, recurse);
   }
 
   function Property(node){
@@ -1191,7 +1220,7 @@ var assembler = (function(exports){
       GET();
       PROPERTY(key);
     } else {
-      var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, false, context.code.strict);
+      var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.strict);
       context.queue(code);
       METHOD(node.kind, code, intern(node.key.name));
     }

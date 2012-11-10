@@ -66,11 +66,13 @@ var runtime = (function(GLOBAL, exports, undefined){
       UNARYOPS  = constants.UNARYOPS.array,
       BRANDS    = constants.BRANDS,
       ENTRY     = constants.ENTRY.hash,
+      SCOPE     = constants.SCOPE.hash,
       AST       = constants.AST.array;
 
   var ARROW  = constants.FUNCTYPE.getIndex('ARROW'),
       METHOD = constants.FUNCTYPE.getIndex('METHOD'),
       NORMAL = constants.FUNCTYPE.getIndex('NORMAL');
+
 
   var ATTRS = constants.ATTRIBUTES,
       E = ATTRS.ENUMERABLE,
@@ -548,7 +550,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function TopLevelDeclarationInstantiation(code) {
     var env = context.VariableEnvironment,
-        configurable = code.Type === 'eval',
+        configurable = code.ScopeType === SCOPE.EVAL,
         decls = code.LexicalDeclarations;
 
     for (var i=0, decl; decl = decls[i]; i++) {

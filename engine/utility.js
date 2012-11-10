@@ -599,7 +599,7 @@ var utility = (function(exports){
 
 
   function visit(root, callback){
-    var queue = new Queue([root]),
+    var queue = new Queue([[root]]),
         branded = [],
         tag = uid();
 
@@ -638,7 +638,7 @@ var utility = (function(exports){
 
   exports.collector = (function(){
     function path(){
-      var parts = [].slice.call(arguments);
+      var parts = toArray(arguments);
 
       for (var i=0; i < parts.length; i++) {
 
@@ -673,7 +673,7 @@ var utility = (function(exports){
       for (var k in o) {
         if (o[k] instanceof Array) {
           handlers[k] = path(o[k]);
-        } else if (typeof o[k] === 'function') {
+        } else if (typeof o[k] === FUNCTION) {
           handlers[k] = o[k];
         } else {
           handlers[k] = o[k];
@@ -686,13 +686,18 @@ var utility = (function(exports){
         function visitor(node, parent){
           if (!node) return CONTINUE;
 
+
           var handler = handlers[node.type];
 
           if (handler === true) {
             items.push(node);
           } else if (handler === RECURSE || handler === CONTINUE) {
             return handler;
-          } else if (typeof handler === 'function') {
+          } else if (typeof handler === STRING) {
+            if (node[handler]) {
+              visit(node[handler], visitor);
+            }
+          } else if (typeof handler === FUNCTION) {
             var item = handler(node);
             if (item !== undefined) {
               items.push(item);

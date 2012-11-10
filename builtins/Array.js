@@ -110,7 +110,7 @@ $__defineProps(Array.prototype, {
     return new ArrayIterator(this, 'key+value');
   },
   join(separator){
-    return joinArray(this, separator);
+    return joinArray(this, arguments.length ? separator : ',');
   },
   keys(){
     return new ArrayIterator(this, 'key');
@@ -293,9 +293,7 @@ function joinArray(array, separator){
     return result;
   }
 
-  if (arguments.length === 1) {
-    separator = ',';
-  } else if (typeof separator !== 'string') {
+  if (typeof separator !== 'string') {
     separator = $__ToString(separator);
   }
 
