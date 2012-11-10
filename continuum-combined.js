@@ -5980,6 +5980,9 @@ exports.utility = (function(exports){
         function visitor(node, parent){
           if (!node) return CONTINUE;
 
+          if (node instanceof Array) {
+            return RECURSE;
+          }
 
           var handler = handlers[node.type];
 
@@ -5996,9 +5999,7 @@ exports.utility = (function(exports){
             if (item !== undefined) {
               items.push(item);
             }
-          } else if (node instanceof Array) {
-            return RECURSE;
-          }
+          } else
 
           return CONTINUE;
         }
@@ -7407,6 +7408,7 @@ exports.assembler = (function(exports){
     ArrayPattern       : 'elements',
     VariableDeclaration: 'declarations',
     BlockStatement     : visit.RECURSE,
+    Program            : visit.RECURSE,
     Property           : 'value',
     ExportDeclaration  : 'declaration',
     ExportSpecifierSet : 'specifiers',
@@ -7415,7 +7417,7 @@ exports.assembler = (function(exports){
     ImportSpecifier    : 'id',
     VariableDeclarator : 'id',
     ModuleDeclaration  : 'id',
-    FunctionDeclaration: ['id', 'name'],
+    FunctionDeclaration: 'id',
     ClassDeclaration   : 'id'
   });
 
@@ -7437,7 +7439,9 @@ exports.assembler = (function(exports){
     return collector({
       ClassDeclaration: lexical(false),
       FunctionDeclaration: lexical(false),
+      ExportDeclaration: visit.RECURSE,
       SwitchCase: visit.RECURSE,
+      Program: visit.RECURSE,
       VariableDeclaration: lexical(function(node){
         return node.kind === 'const';
       }),
@@ -7455,13 +7459,13 @@ exports.assembler = (function(exports){
     };
   });
 
-
   var collectExports = collector({
     Program          : 'body',
     BlockStatement   : 'body',
     ExportDeclaration: true
   });
       //collectImports = collector({ ImportDeclaration: true });
+
 
   var findExportedDeclarations = collector({
     ClassDeclaration   : true,
@@ -11002,22 +11006,21 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       return script.error;
     }
 
-    var bindings = new $Object(global),
-        sandbox = new GlobalEnvironmentRecord(bindings),
-        module = new $Module(sandbox, script.bytecode.ExportedNames);
+    var sandbox = new GlobalEnvironmentRecord(new $Object(global)),
+        sandboxRealm = create(realm);
 
-    bindings.NativeBrand = BRANDS.GlobalObject;
-    ExecutionContext.push(new ExecutionContext(null, sandbox, global.Realm, script.bytecode));
+    sandbox.bindings.NativeBrand = BRANDS.GlobalObject;
+    sandboxRealm.globalEnv = sandbox;
+    ExecutionContext.push(new ExecutionContext(context, sandbox, sandboxRealm, script.bytecode));
 
     var status = TopLevelDeclarationInstantiation(script.bytecode);
     if (status && status.Abrupt) {
       return status;
     }
 
-    run(global.Realm, script.thunk);
-
+    run(sandboxRealm, script.thunk);
     ExecutionContext.pop();
-    return module;
+    return new $Module(sandbox, script.bytecode);
   }
 
   // ## IdentifierResolution
@@ -12932,24 +12935,27 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  function ModuleGetter(sandbox, name){
-    var getter = this.Get = new $NativeFunction({
-      name: name,
-      length: 0,
-      call: function(){
-        var value = sandbox.GetBindingValue(name);
-        getter.call = function(){ return value };
-        getter = accessor = null;
+  function ModuleGetter(ref){
+    var getter = this.Get = {
+      Call: function(){
+        var value = GetValue(ref);
+        ref = null;
+        getter.Call = function(){ return value };
         return value;
       }
-    });
+    };
   }
 
-  function $Module(sandbox, exported){
+  inherit(ModuleGetter, Accessor);
+
+  function $Module(sandbox, bytecode){
     var self = this;
     $Object.call(this, null);
-    each(exported, function(name){
-      defineDirect(self, name, new ModuleGetter(sandbox, name), E_A);
+    this.Code = bytecode;
+    this.Scope = sandbox;
+    this.Realm = sandbox.bindings.Realm;
+    each(bytecode.ExportedNames, function(name){
+      defineDirect(self, name, new ModuleGetter(new Reference(sandbox.bindings, name)), E_A);
     });
   }
 
@@ -15620,9 +15626,11 @@ exports.builtins["String"] = "function String(string){\n  string = arguments.len
 
 exports.builtins["WeakMap"] = "function WeakMap(iterable){\n  var weakmap;\n  if ($__IsConstructCall()) {\n    weakmap = this;\n  } else {\n    if (this === undefined || this === $__WeakMapProto) {\n      weakmap = $__ObjectCreate($__WeakMapProto) ;\n    } else {\n      weakmap = $__ToObject(this);\n    }\n  }\n\n  if ($__HasInternal(weakmap, 'WeakMapData')) {\n    throw $__Exception('double_initialization', ['WeakMap']);\n  }\n\n  $__WeakMapInitialization(weakmap, iterable);\n  return weakmap;\n}\n\n$__setupConstructor(WeakMap, $__WeakMapProto);\n\n\n$__defineProps(WeakMap.prototype, {\n  set(key, value){\n    ensureWeakMap(this, key, 'set');\n    return $__WeakMapSet(this, key, value);\n  },\n  get(key){\n    ensureWeakMap(this, key, 'get');\n    return $__WeakMapGet(this, key);\n  },\n  has(key){\n    ensureWeakMap(this, key, 'has');\n    return $__WeakMapHas(this, key);\n  },\n  delete: function(key){\n    ensureWeakMap(this, key, 'delete');\n    return $__WeakMapDelete(this, key);\n  }\n});\n\n$__defineDirect(WeakMap.prototype.delete, 'name', 'delete', 0);\n\n\nfunction ensureWeakMap(o, p, name){\n  if (!o || typeof o !== 'object' || !$__HasInternal(o, 'WeakMapData')) {\n    throw $__Exception('called_on_incompatible_object', ['WeakMap.prototype.'+name]);\n  }\n  if (typeof p === 'object' ? p === null : typeof p !== 'function') {\n    throw $__Exception('invalid_weakmap_key', []);\n  }\n}\n";
 
-exports.builtins["global"] = "$__defineProps(this, {\n  Math: $__MathCreate(),\n  StopIteration: $__StopIteration,\n  clearInterval(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  clearTimeout(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  console: {\n    log(...values){\n      var text = '';\n      for (var i=0; i < values.length; i++) {\n        text += $__ToString(values[i]);\n      }\n      $__Signal('write', [text + '\\n', '#fff']);\n    }\n  },\n  decodeURI: $__decodeURI,\n  decodeURIComponent: $__decodeURIComponent,\n  encodeURI: $__encodeURI,\n  encodeURIComponent: $__encodeURIComponent,\n  escape: $__escape,\n  eval: $__eval,\n  isFinite(number){\n    number = $__ToNumber(number);\n    return number === number && number !== Infinity && number !== -Infinity;\n  },\n  isNaN(number){\n    number = $__ToNumber(number);\n    return number !== number;\n  },\n  parseInt: $__parseInt,\n  parseFloat: $__parseFloat,\n  setInterval(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, true);\n  },\n  setTimeout(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, false);\n  },\n  stdout: {\n    write(text, color){\n      $__Signal('write', [text, color]);\n    },\n    clear(){\n      $__Signal('clear');\n    },\n    backspace(count){\n      $__Signal('backspace', $_ToInteger(count));\n    }\n  },\n  require(request){\n    var src;\n    $__Fetch(request, result => src = result);\n    if (typeof src === 'string') {\n      return $__EvaluateModule(src, global, request);\n    } else {\n      return src;\n    }\n  }\n});\n\n\n";
+exports.builtins["global"] = "$__defineProps(this, {\n  Math: $__MathCreate(),\n  StopIteration: $__StopIteration,\n  clearInterval(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  clearTimeout(id){\n    id = $__ToInteger(id);\n    $__ClearTimer(id);\n  },\n  decodeURI: $__decodeURI,\n  decodeURIComponent: $__decodeURIComponent,\n  encodeURI: $__encodeURI,\n  encodeURIComponent: $__encodeURIComponent,\n  escape: $__escape,\n  eval: $__eval,\n  isFinite(number){\n    number = $__ToNumber(number);\n    return number === number && number !== Infinity && number !== -Infinity;\n  },\n  isNaN(number){\n    number = $__ToNumber(number);\n    return number !== number;\n  },\n  parseInt: $__parseInt,\n  parseFloat: $__parseFloat,\n  setInterval(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, true);\n  },\n  setTimeout(callback, milliseconds){\n    milliseconds = $__ToInteger(milliseconds);\n    if (typeof callback !== 'function') {\n      callback = $__ToString(callback);\n    }\n    return $__SetTimer(callback, milliseconds, false);\n  },\n  stdout: {\n    write(text, color){\n      $__Signal('write', [text, color]);\n    },\n    clear(){\n      $__Signal('clear');\n    },\n    backspace(count){\n      $__Signal('backspace', $_ToInteger(count));\n    }\n  },\n  require(request){\n    var src;\n    $__Fetch(request, result => src = result);\n    if (typeof src === 'string') {\n      return $__EvaluateModule(src, global, request);\n    } else {\n      return src;\n    }\n  }\n});\n\n\n";
 
 
+
+exports.modules["@console"] = "export function log(...values){\n  var text = '';\n  for (var i=0; i < values.length; i++) {\n    text += $__ToString(values[i]);\n  }\n  $__Signal('write', [text + '\\n', '#fff']);\n}\n\n\nexport function dir(object){\n\n}\n\nvar timers = $__ObjectCreate(null);\n\nexport function time(name){\n  timers[name] = Date.now();\n}\n\nexport function timeEnd(name){\n  if (name in timers) {\n    var duration = Date.now() - timers[name];\n    log(name + ': ' + duration + 'ms');\n  }\n}\n";
 
 exports.modules["@math"] = "export const E       = 2.718281828459045;\nexport const LN10    = 2.302585092994046;\nexport const LN2     = 0.6931471805599453;\nexport const LOG10E  = 0.4342944819032518;\nexport const LOG2E   = 1.4426950408889634;\nexport const PI      = 3.141592653589793;\nexport const SQRT1_2 = 0.7071067811865476;\nexport const SQRT2   = 1.4142135623730951;\nexport var abs       = $__abs;\nexport var acos      = $__acos;\nexport var acosh     = $__acosh;\nexport var asinh     = $__asinh;\nexport var asin      = $__asin;\nexport var atan      = $__atan;\nexport var atanh     = $__atanh;\nexport var atan2     = $__atan2;\nexport var ceil      = $__ceil;\nexport var cos       = $__cos;\nexport var cosh      = $__cosh;\nexport var exp       = $__exp;\nexport var expm1     = $__expm1;\nexport var floor     = $__floor;\nexport var hypot     = $__hypot;\nexport var log       = $__log;\nexport var log2      = $__log2;\nexport var log10     = $__log10;\nexport var log1p     = $__log1p;\nexport var max       = $__max;\nexport var min       = $__min;\nexport var pow       = $__pow;\nexport var random    = $__random;\nexport var round     = $__round;\nexport var sign      = $__sign;\nexport var sinh      = $__sinh;\nexport var sin       = $__sin;\nexport var sqrt      = $__sqrt;\nexport var tan       = $__tan;\nexport var tanh      = $__tanh;\nexport var trunc     = $__trunc;\n";
 
@@ -15630,7 +15638,7 @@ exports.modules["@reflect"] = "var ___ = 0b0000,\n    E__ = 0b0001,\n    _C_ = 0
 
 exports.modules["@std"] = "// standard constants\nexport const NaN                   = +'';\nexport const Infinity              = 1 / 0;\nexport const undefined             = void 0;\n\n// standard functions\nexport var decodeURI               = $__decodeURI;\nexport var decodeURIComponent      = $__decodeURIComponent;\nexport var encodeURI               = $__encodeURI;\nexport var encodeURIComponent      = $__encodeURIComponent;\nexport var eval                    = $__eval;\nexport var isFinite                = $__isFinite;\nexport var isNaN                   = $__isNaN;\nexport var parseFloat              = $__parseFloat;\nexport var parseInt                = $__parseInt;\n\n// standard types\nexport var Array                   = $__Array;\nexport var Boolean                 = $__Boolean;\nexport var Date                    = $__Date;\nexport var Function                = $__Function;\nexport var Map                     = $__Map;\nexport var Number                  = $__Number;\nexport var Object                  = $__Object;\nexport var RegExp                  = $__RegExp;\nexport var Set                     = $__Set;\nexport var String                  = $__String;\nexport var WeakMap                 = $__WeakMap;\n\n// standard errors\nexport var Error                   = $__Error;\nexport var EvalError               = $__EvalError;\nexport var RangeError              = $__RangeError;\nexport var ReferenceError          = $__ReferenceError;\nexport var SyntaxError             = $__SyntaxError;\nexport var TypeError               = $__TypeError;\nexport var URIError                = $__URIError;\n\n// standard prototypes\nexport var ArrayPrototype          = $__ArrayProto;\nexport var BooleanPrototype        = $__BooleanProto;\nexport var DatePrototype           = $__DateProto;\nexport var FunctionPrototype       = $__FunctionProto;\nexport var MapPrototype            = $__MapProto;\nexport var NumberPrototype         = $__NumberProto;\nexport var ObjectPrototype         = $__ObjectProto;\nexport var ProxyPrototype          = $__ProxyProto;\nexport var RegExpPrototype         = $__RegExpProto;\nexport var SetPrototype            = $__SetProto;\nexport var StringPrototype         = $__StringProto;\nexport var WeakMapPrototype        = $__WeakMapProto;\n\n// standard error prototypes\nexport var ErrorPrototype          = $__ErrorProto;\nexport var EvalErrorPrototype      = $__EvalErrorProto;\nexport var RangeErrorPrototype     = $__RangeErrorProto;\nexport var ReferenceErrorPrototype = $__ReferenceErrorProto;\nexport var SyntaxErrorPrototype    = $__SyntaxErrorProto;\nexport var TypeErrorPrototype      = $__TypeErrorProto;\nexport var URIErrorPrototype       = $__URIErrorProto;\n\n// standard pseudo-modules\nexport module JSON                 = '@json';\nexport module Math                 = '@math';\n\n//export var Symbol                  = '@symbol.js';\n//export var Iterator                = '@iter.js';\n";
 
-exports.modules["@system"] = "// function constructor(...args){\n//   super(...args);\n// }\n\n// $__EmptyClass = constructor;\n\n\nclass Storage {\n  set(props){\n    for (var k in props) {\n      this[k] = props[k];\n    }\n  }\n  empty(){\n    for (var k in this) {\n      delete this[k];\n    }\n  }\n}\n\n$__DefineOwnProperty(Storage.prototype, 'set', { enumerable: false, configurable: false, writable: false });\n$__DefineOwnProperty(Storage.prototype, 'empty', { enumerable: false, configurable: false, writable: false });\n\n\nvar _ = function(object){\n  var internals = $__GetHidden(object, 'loader-internals');\n  if (!internals) $__SetHidden(object, 'loader-internals', internals = new Storage);\n  return internals;\n}\n\n\n\nclass Request {\n  constructor(loader, mrl, resolved, callback, errback){\n    _(this).set({\n      loader: loader,\n      callback: callback,\n      errback: errback,\n      mrl: mrl,\n      resolved: resolved\n    });\n  }\n\n  fulfill(src){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    var translated = (_loader.translate)(src, _this.mrl, _loader.baseURL, _this.resolved);\n    if (_loader.strict) {\n      translated = '\"use strict\";'+translated;\n    }\n\n    var module = $__EvaluateModule(translated, _loader.global, _this.resolved);\n    _loader.modules[_this.resolved] = module;\n    (_this.callback)(module);\n    _this.empty();\n  }\n\n  redirect(mrl, baseURL){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    _this.resolved = (_loader.resolve)(mrl, baseURL);\n    _this.mrl = mrl;\n\n    var module = _this.loader.get(_this.resolved);\n    if (module) {\n      (_this.callback)(module);\n    } else {\n      (_loader.fetch)(mrl, baseURL, this, _this.resolved);\n    }\n  }\n\n  reject(msg){\n    var _this = _(this);\n    (_this.errback)(msg);\n    _this.empty();\n  }\n}\n\n\nexport class Loader {\n  constructor(parent, options){\n    this.linkedTo  = options.linkedTo || null;\n    _(this).set({\n      translate: options.translate || parent.translate,\n      resolve  : options.resolve || parent.resolve,\n      fetch    : options.fetch || parent.fetch,\n      strict   : options.strict === true,\n      global   : options.global || new Function('return this')(),\n      baseURL  : options.baseURL || parent ? parent.baseURL : '.',\n      modules  : $__ObjectCreate(null)\n    });\n  }\n\n  get global(){\n    return _(this).global;\n  }\n\n  get baseURL(){\n    return _(this).baseURL;\n  }\n\n  load(mrl, callback, errback){\n    var _this = _(this),\n        key = (_this.resolve)(mrl, _this.baseURL),\n        module = _this.modules[key];\n\n    if (module) {\n      callback(module);\n    } else {\n      (_this.fetch)(mrl, _this.baseURL, new Request(this, mrl, key, callback, errback), key);\n    }\n  }\n\n  eval(src){\n    var _this = _(this);\n    return $__EvaluateModule(src, _this.global, _this.baseURL);\n  }\n\n  evalAsync(src, callback, errback){\n\n  }\n\n  get(mrl){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n    return _this.modules[canonical];\n  }\n\n  set(mrl, mod){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n\n    if (typeof canonical === 'string') {\n      _this.modules[canonical] = mod;\n    } else {\n      for (var k in canonical) {\n        _this.modules[k] = canonical[k];\n      }\n    }\n  }\n\n  defineBuiltins(object){\n    var std  = $__StandardLibrary(),\n        desc = { configurable: true,\n                 enumerable: false,\n                 writable: true,\n                 value: undefined };\n\n    object || (object = _(this).global);\n    for (var k in std) {\n      desc.value = std[k];\n      $__DefineOwnProperty(object, k, desc);\n    }\n\n    return object;\n  }\n}\n\nexport var System = new Loader(null, {\n  global: this,\n  baseURL: '',\n  strict: false,\n  fetch(relURL, baseURL, request, resolved) {\n    $__Fetch(resolved, src => {\n      if (typeof src === 'string') {\n        request.fulfill(src);\n      } else {\n        request.reject(src.message);\n      }\n    });\n  },\n  resolve(relURL, baseURL){\n    return baseURL + relURL;\n  },\n  translate(src, relURL, baseURL, resolved) {\n    return src;\n  }\n});\n";
+exports.modules["@system"] = "// function constructor(...args){\n//   super(...args);\n// }\n\n// $__EmptyClass = constructor;\n\n\nclass Storage {\n  set(props){\n    for (var k in props) {\n      this[k] = props[k];\n    }\n  }\n  empty(){\n    for (var k in this) {\n      delete this[k];\n    }\n  }\n}\n\n$__DefineOwnProperty(Storage.prototype, 'set', { enumerable: false, configurable: false, writable: false });\n$__DefineOwnProperty(Storage.prototype, 'empty', { enumerable: false, configurable: false, writable: false });\n\n\nvar _ = function(object){\n  var internals = $__GetHidden(object, 'loader-internals');\n  if (!internals) $__SetHidden(object, 'loader-internals', internals = new Storage);\n  return internals;\n}\n\n\n\nclass Request {\n  constructor(loader, mrl, resolved, callback, errback){\n    _(this).set({\n      loader: loader,\n      callback: callback,\n      errback: errback,\n      mrl: mrl,\n      resolved: resolved\n    });\n  }\n\n  fulfill(src){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    var translated = (_loader.translate)(src, _this.mrl, _loader.baseURL, _this.resolved);\n    if (_loader.strict) {\n      translated = '\"use strict\";'+translated;\n    }\n\n    var module = $__EvaluateModule(translated, _loader.global, _this.resolved);\n    _loader.modules[_this.resolved] = module;\n    (_this.callback)(module);\n    _this.empty();\n  }\n\n  redirect(mrl, baseURL){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    _this.resolved = (_loader.resolve)(mrl, baseURL);\n    _this.mrl = mrl;\n\n    var module = _this.loader.get(_this.resolved);\n    if (module) {\n      (_this.callback)(module);\n    } else {\n      (_loader.fetch)(mrl, baseURL, this, _this.resolved);\n    }\n  }\n\n  reject(msg){\n    var _this = _(this);\n    (_this.errback)(msg);\n    _this.empty();\n  }\n}\n\n\nexport class Loader {\n  constructor(parent, options){\n    this.linkedTo  = options.linkedTo || null;\n    _(this).set({\n      translate: options.translate || parent.translate,\n      resolve  : options.resolve || parent.resolve,\n      fetch    : options.fetch || parent.fetch,\n      strict   : options.strict === true,\n      global   : options.global || new Function('return this')(),\n      baseURL  : options.baseURL || parent ? parent.baseURL : '',\n      modules  : $__ObjectCreate(null)\n    });\n  }\n\n  get global(){\n    return _(this).global;\n  }\n\n  get baseURL(){\n    return _(this).baseURL;\n  }\n\n  load(mrl, callback, errback){\n    var _this = _(this),\n        key = (_this.resolve)(mrl, _this.baseURL),\n        module = _this.modules[key];\n\n    if (module) {\n      callback(module);\n    } else {\n      (_this.fetch)(mrl, _this.baseURL, new Request(this, mrl, key, callback, errback), key);\n    }\n  }\n\n  eval(src){\n    var _this = _(this);\n    return $__EvaluateModule(src, _this.global, _this.baseURL);\n  }\n\n  evalAsync(src, callback, errback){\n\n  }\n\n  get(mrl){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n    return _this.modules[canonical];\n  }\n\n  set(mrl, mod){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n\n    if (typeof canonical === 'string') {\n      _this.modules[canonical] = mod;\n    } else {\n      for (var k in canonical) {\n        _this.modules[k] = canonical[k];\n      }\n    }\n  }\n\n  defineBuiltins(object){\n    var std  = $__StandardLibrary(),\n        desc = { configurable: true,\n                 enumerable: false,\n                 writable: true,\n                 value: undefined };\n\n    object || (object = _(this).global);\n    for (var k in std) {\n      desc.value = std[k];\n      $__DefineOwnProperty(object, k, desc);\n    }\n\n    return object;\n  }\n}\n\nexport var System = new Loader(null, {\n  global: this,\n  baseURL: '',\n  strict: false,\n  fetch(relURL, baseURL, request, resolved) {\n    $__Fetch(resolved, src => {\n      if (typeof src === 'string') {\n        request.fulfill(src);\n      } else {\n        request.reject(src.message);\n      }\n    });\n  },\n  resolve(relURL, baseURL){\n    return baseURL + relURL;\n  },\n  translate(src, relURL, baseURL, resolved) {\n    return src;\n  }\n});\n";
 
 
 
