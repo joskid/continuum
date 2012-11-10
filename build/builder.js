@@ -90,16 +90,13 @@ builder.addFiles([
 });
 
 builder.addDirectory('../builtins', function(name, source){
-  if (name === 'index') {
-    return '';
-  } else {
-    if (name[0] === '@') {
-      return 'exports.modules["'+name+'"] = '+escapeJS(source) + ';';
-    } else {
-      return 'exports.builtins.'+name+' = '+escapeJS(source) + ';';
-    }
-  }
+  return name === 'index' ? '' : 'exports.builtins["'+name+'"] = '+escapeJS(source) + ';';
 });
+
+builder.addDirectory('../modules', function(name, source){
+  return name === 'index' ? '' : 'exports.modules["'+name+'"] = '+escapeJS(source) + ';';
+});
+
 
 builder.addFiles('./footer.js');
 

@@ -21,6 +21,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       define           = utility.define,
       copy             = utility.copy,
       inherit          = utility.inherit,
+      each             = utility.each,
       unique           = utility.unique;
 
 
@@ -38,7 +39,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       ToInteger        = operators.ToInteger,
       ToUint32         = operators.ToUint32,
       ToInt32          = operators.ToInt32,
-      ToUint16          = operators.ToUint16,
+      ToUint16         = operators.ToUint16,
       ToString         = operators.ToString,
       UnaryOp          = operators.UnaryOp,
       BinaryOp         = operators.BinaryOp,
@@ -781,6 +782,38 @@ var runtime = (function(GLOBAL, exports, undefined){
         env.InitializeBinding(decl.id.name, InstantiateFunctionDeclaration(decl, env));
       }
     }
+  }
+
+
+
+  function ModuleEvaluation(source, global, name){
+    var script = new Script({
+      name: name,
+      natives: true,
+      source: source,
+      scope: SCOPE.MODULE
+    });
+
+    if (script.error) {
+      return script.error;
+    }
+
+    var bindings = new $Object(global),
+        sandbox = new GlobalEnvironmentRecord(bindings),
+        module = new $Module(sandbox, script.bytecode.ExportedNames);
+
+    bindings.NativeBrand = BRANDS.GlobalObject;
+    ExecutionContext.push(new ExecutionContext(null, sandbox, global.Realm, script.bytecode));
+
+    var status = TopLevelDeclarationInstantiation(script.bytecode);
+    if (status && status.Abrupt) {
+      return status;
+    }
+
+    run(global.Realm, script.thunk);
+
+    ExecutionContext.pop();
+    return module;
   }
 
   // ## IdentifierResolution
@@ -2696,14 +2729,16 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   function ModuleGetter(sandbox, name){
-    var accessor = this.Get = {
-      Call: function(){
-        var value = getDirect(sandbox, name);
-        accessor.Get = function(){ return value };
-        sandbox = accessor = null;
+    var getter = this.Get = new $NativeFunction({
+      name: name,
+      length: 0,
+      call: function(){
+        var value = sandbox.GetBindingValue(name);
+        getter.call = function(){ return value };
+        getter = accessor = null;
         return value;
       }
-    };
+    });
   }
 
   function $Module(sandbox, exported){
@@ -3526,43 +3561,15 @@ var runtime = (function(GLOBAL, exports, undefined){
       return func.Call(receiver, toInternalArray(args));
     },
 
-    EvaluateModule: function(src, global, name){
-      var script = new Script({
-        name: name,
-        natives: true,
-        source: code,
-        scope: SCOPE.MODULE
-      });
-
-      if (script.error) {
-        return script.error;
+    Fetch: function(name, callback){
+      var result = require('../modules')[name];
+      if (!result) {
+        result = new $Error('Error', undefined, 'Unable to locate module "'+name+'"');
       }
-
-      var oldContext = context,
-          sandboxRealm = create(global.Realm);
-
-      activate(sandboxRealm);
-
-      var bindings = new $Object(global),
-          sandbox = new GlobalEnvironmentRecord(bindings),
-          module = new $Module(sandbox, script.bytecode.ExportedNames),
-          sandboxContext = new ExecutionContext(null, sandbox, sandboxRealm, script.bytecode);
-
-      bindings.NativeBrand = BRANDS.GlobalObject;
-
-      context = sandboxContext;
-
-      var status = TopLevelDeclarationInstantiation(script.bytecode);
-      if (status && status.Abrupt) {
-        return status;
-      }
-
-      run(sandboxRealm, script.thunk);
-      context = oldContext;
-
-      deactivate(sandboxRealm);
-      return module;
+      callback.Call(undefined, [result]);
     },
+
+    EvaluateModule: ModuleEvaluation,
     eval: function(code){
       if (typeof code !== 'string') {
         return code;
@@ -4050,11 +4057,11 @@ var runtime = (function(GLOBAL, exports, undefined){
       return realm;
     }
 
-    builtins || (builtins = require('../builtins'));
+    var builtins = require('../builtins');
     activate(realm);
     realm.state = 'initializing';
     realm.initialized = true;
-    realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, new NativeScript('void 0', 'mutation scope'));
+    realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, new NativeScript('void 0', 'mutation scope').bytecode);
 
     for (var k in builtins) {
       var script = new NativeScript(builtins[k], k);
@@ -4156,8 +4163,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     return toggle;
   }
 
-  var builtins,
-      realms = [],
+  var realms = [],
       realmStack = [],
       realm = null,
       global = null,

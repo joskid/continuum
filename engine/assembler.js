@@ -220,7 +220,7 @@ var assembler = (function(exports){
 
 
     this.transfers = [];
-    this.ScopeType = scope || SCOPE.GLOBAL;
+    this.ScopeType = scope;
     this.Type = type || FUNCTYPE.NORMAL;
     this.VarDeclaredNames = [];
     this.NeedsSuperBinding = ReferencesSuper(this.body);
@@ -413,7 +413,7 @@ var assembler = (function(exports){
             this.code.inherit(lastCode);
           }
           recurse(this.code.body);
-          if (isGlobalOrEval()){
+          if (this.code.ScopeType === SCOPE.GLOBAL || this.code.ScopeType === SCOPE.EVAL){
             COMPLETE();
           } else {
             if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
@@ -489,7 +489,7 @@ var assembler = (function(exports){
     ImportSpecifier    : 'id',
     VariableDeclarator : 'id',
     ModuleDeclaration  : 'id',
-    FunctionDeclaration: 'id',
+    FunctionDeclaration: ['id', 'name'],
     ClassDeclaration   : 'id'
   });
 
@@ -530,8 +530,12 @@ var assembler = (function(exports){
   });
 
 
-  var collectExports = collector({ ExportDeclaration: true }),
-      collectImports = collector({ ImportDeclaration: true });
+  var collectExports = collector({
+    Program          : 'body',
+    BlockStatement   : 'body',
+    ExportDeclaration: true
+  });
+      //collectImports = collector({ ImportDeclaration: true });
 
   var findExportedDeclarations = collector({
     ClassDeclaration   : true,
