@@ -539,7 +539,7 @@ var thunk = (function(exports){
         error = 'invalid native reference';
         return unwind;
       }
-      stack[sp++] = context.realm.natives.reference(code.lookup(ops[ip][0]), false);
+      stack[sp++] = context.Realm.natives.reference(code.lookup(ops[ip][0]), false);
       return cmds[++ip];
     }
 
@@ -602,7 +602,7 @@ var thunk = (function(exports){
       if (code.generator) {
         context.currentGenerator.ExecutionContext = context;
         context.currentGenerator.State = 'closed';
-        error = new AbruptCompletion('throw', context.realm.intrinsics.StopIteration);
+        error = new AbruptCompletion('throw', context.Realm.intrinsics.StopIteration);
         unwind();
       }
       return false;
@@ -859,7 +859,7 @@ var thunk = (function(exports){
     function instrumentedExecute(){
       var f = cmds[ip],
           ips = 0,
-          realm = context.realm;
+          realm = context.Realm;
 
       history = [];
 
@@ -902,7 +902,7 @@ var thunk = (function(exports){
 
     function run(ctx){
       context = ctx;
-      if (context.realm.quiet) {
+      if (context.Realm.quiet) {
         execute = normalExecute;
       } else {
         execute = instrumentedExecute;

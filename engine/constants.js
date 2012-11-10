@@ -51,24 +51,25 @@ var constants = (function(exports){
 
 
   exports.BRANDS = {
+    BooleanWrapper    : new NativeBrand('Boolean'),
     GlobalObject      : new NativeBrand('global'),
     NativeArguments   : new NativeBrand('Arguments'),
     NativeArray       : new NativeBrand('Array'),
     NativeDate        : new NativeBrand('Date'),
+    NativeError       : new NativeBrand('Error'),
     NativeFunction    : new NativeBrand('Function'),
+    NativeJSON        : new NativeBrand('JSON'),
     NativeMap         : new NativeBrand('Map'),
+    NativeMath        : new NativeBrand('Math'),
+    NativeModule      : new NativeBrand('Module'),
     NativeObject      : new NativeBrand('Object'),
     NativePrivateName : new NativeBrand('PrivateName'),
     NativeRegExp      : new NativeBrand('RegExp'),
     NativeSet         : new NativeBrand('Set'),
     NativeWeakMap     : new NativeBrand('WeakMap'),
-    BooleanWrapper    : new NativeBrand('Boolean'),
     NumberWrapper     : new NativeBrand('Number'),
-    StringWrapper     : new NativeBrand('String'),
-    NativeError       : new NativeBrand('Error'),
-    NativeMath        : new NativeBrand('Math'),
-    NativeJSON        : new NativeBrand('JSON'),
-    StopIteration     : new NativeBrand('StopIteration')
+    StopIteration     : new NativeBrand('StopIteration'),
+    StringWrapper     : new NativeBrand('String')
   };
 
 

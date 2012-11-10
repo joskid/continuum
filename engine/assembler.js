@@ -218,12 +218,16 @@ var assembler = (function(exports){
       }
     }
 
+
     this.transfers = [];
     this.ScopeType = scope || SCOPE.GLOBAL;
     this.Type = type || FUNCTYPE.NORMAL;
     this.VarDeclaredNames = [];
     this.NeedsSuperBinding = ReferencesSuper(this.body);
     this.Strict = strict || isStrict(this.body);
+    if (scope === SCOPE.MODULE) {
+      this.ExportedNames = Exports(this.body);
+    }
     this.params = new Params(node.params, node, node.rest);
     this.ops = [];
   }
@@ -257,7 +261,7 @@ var assembler = (function(exports){
     this.methods = [];
 
     for (var i=0, method; method = node.body.body[i]; i++) {
-      var code = new Code(method.value, context.source, FUNCTYPE.METHOD, SCOPE.FUNCTION, context.code.strict);
+      var code = new Code(method.value, context.source, FUNCTYPE.METHOD, SCOPE.CLASS, context.code.Strict);
       if (this.name) {
         code.name = this.name + '#' + method.key.name;
       } else {
@@ -345,8 +349,7 @@ var assembler = (function(exports){
   }
 
   AssemblerOptions.prototype = {
-    eval: false,
-    normal: true,
+    scope: SCOPE.GLOBAL,
     natives: false,
     filename: null
   };
@@ -382,23 +385,17 @@ var assembler = (function(exports){
         this.labels = null;
         this.source = source;
 
-        if (this.options.normal) {
+        if (this.options.scope === SCOPE.FUNCTION) {
           node = node.body[0].expression;
-          var scope = SCOPE.FUNCTION;
-        } else if (this.options.eval) {
-          var scope = SCOPE.EVAL;
-        } else {
-          var scope = SCOPE.GLOBAL;
         }
 
-        var code = new Code(node, source, FUNCTYPE.NORMAL, scope);
+        var code = new Code(node, source, FUNCTYPE.NORMAL, this.options.scope);
         define(code, {
           strings: this.strings,
           hash: this.hash
         });
 
         code.topLevel = true;
-        //code.exports = Exports(node);
 
         if (this.options.natives) {
           code.natives = true;
@@ -499,23 +496,15 @@ var assembler = (function(exports){
 
   function BoundNames(node){
     var names = [];
-    if (node.type === 'FunctionDeclaration'
-     || node.type === 'FunctionExpression'
-     || node.type === 'ArrowFunctionExpression'
-     || node.type === 'ClassDeclaration') {
+    if (isFunction(node) || node.type === 'ClassDeclaration') {
       names = names.concat(boundNamesCollector(node.params));
+      if (node.rest) {
+        names = names.concat(boundNamesCollector(node.rest));
+      }
       node = node.body;
     }
 
     return names.concat(boundNamesCollector(node));
-
-    if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') {
-      return names.slice(1);
-    } else if (node.type === 'FunctionExpression') {
-      return node.id ? names.slice(1) : names;
-    } else {
-      return names;
-    }
   }
 
   var LexicalDeclarations = (function(lexical){
@@ -541,7 +530,37 @@ var assembler = (function(exports){
   });
 
 
+  var collectExports = collector({ ExportDeclaration: true }),
+      collectImports = collector({ ImportDeclaration: true });
 
+  var findExportedDeclarations = collector({
+    ClassDeclaration   : true,
+    ExportDeclaration  : visit.RECURSE,
+    ExportSpecifier    : true,
+    ExportSpecifierSet : visit.RECURSE,
+    FunctionDeclaration: true,
+    ModuleDeclaration  : true,
+    VariableDeclaration: visit.RECURSE,
+    VariableDeclarator : true
+  });
+
+
+  var exportedNames = collector({
+    ArrayPattern       : 'elements',
+    ObjectPattern      : 'properties',
+    Property           : 'value',
+    ClassDeclaration   : 'id',
+    ExportSpecifier    : 'id',
+    FunctionDeclaration: 'id',
+    ModuleDeclaration  : 'id',
+    VariableDeclarator : 'id',
+    Glob               : true,
+    Identifier         : ['name'],
+  });
+
+  function Exports(node){
+    return exportedNames(findExportedDeclarations(collectExports(node)));
+  }
 
   function isSuperReference(node) {
     return !!node && node.type === 'Identifier' && node.name === 'super';
@@ -820,7 +839,7 @@ var assembler = (function(exports){
   function ArrayPattern(node){}
 
   function ArrowFunctionExpression(node){
-    var code = new Code(node, context.code.source, FUNCTYPE.ARROW, SCOPE.FUNCTION, context.code.strict);
+    var code = new Code(node, context.code.source, FUNCTYPE.ARROW, SCOPE.FUNCTION, context.code.Strict);
     context.queue(code);
     FUNCTION(null, code);
   }
@@ -1083,12 +1102,12 @@ var assembler = (function(exports){
   }
 
   function FunctionDeclaration(node){
-    node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.strict);
+    node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.Strict);
     context.queue(node.Code);
   }
 
   function FunctionExpression(node, methodName){
-    var code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.strict);
+    var code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.Strict);
     if (methodName) {
       code.name = methodName;
     }
@@ -1180,7 +1199,7 @@ var assembler = (function(exports){
       recurse(node.from);
       IMPORT();
     } else {
-      node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.MODULE, context.code.strict);
+      node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.MODULE, context.code.Strict);
       context.queue(node.Code);
     }
   }
@@ -1220,7 +1239,7 @@ var assembler = (function(exports){
       GET();
       PROPERTY(key);
     } else {
-      var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.strict);
+      var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.Strict);
       context.queue(code);
       METHOD(node.kind, code, intern(node.key.name));
     }
@@ -1459,7 +1478,7 @@ var assembler = (function(exports){
 
 
   function assemble(options){
-    var assembler = new Assembler(assign({ normal: false }, options));
+    var assembler = new Assembler(options);
     return assembler.assemble(options.ast, options.source);
   }
 

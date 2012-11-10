@@ -1505,9 +1505,12 @@ var runtime = (function(GLOBAL, exports, undefined){
     if (proto === null) {
       this.properties.setProperty(['__proto__', null, 6, Proto]);
     }
+
+    this.Realm = realm;
     hide(this, 'hiddens');
     hide(this, 'storage');
     hide(this, 'Prototype');
+    hide(this, 'Realm');
   }
 
   void function(counter){
@@ -2692,6 +2695,29 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
+  function ModuleGetter(sandbox, name){
+    var accessor = this.Get = {
+      Call: function(){
+        var value = getDirect(sandbox, name);
+        accessor.Get = function(){ return value };
+        sandbox = accessor = null;
+        return value;
+      }
+    };
+  }
+
+  function $Module(sandbox, exported){
+    var self = this;
+    $Object.call(this, null);
+    each(exported, function(name){
+      defineDirect(self, name, new ModuleGetter(sandbox, name), E_A);
+    });
+  }
+
+  inherit($Module, $Object, {
+    NativeBrand: BRANDS.NativeModule
+  });
+
 
   function ArgAccessor(name, env){
     this.name = name;
@@ -2924,7 +2950,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function ExecutionContext(caller, local, realm, code, func, isConstruct){
     this.caller = caller;
-    this.realm = realm;
+    this.Realm = realm;
     this.Code = code;
     this.LexicalEnvironment = local;
     this.VariableEnvironment = local;
@@ -2937,7 +2963,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     define(ExecutionContext, [
       function push(newContext){
         context = newContext;
-        context.realm.active || activate(context.realm);
+        context.Realm.active || activate(context.Realm);
       },
       function pop(){
         if (context) {
@@ -3219,7 +3245,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function Intrinsics(realm){
     DeclarativeEnvironmentRecord.call(this, null);
-    this.realm = realm;
+    this.Realm = realm;
     var bindings = this.bindings;
     bindings.ObjectProto = new $Object(null);
 
@@ -3271,9 +3297,9 @@ var runtime = (function(GLOBAL, exports, undefined){
           options.length = options.call.length;
         }
 
-        if (realm !== this.realm) {
+        if (realm !== this.Realm) {
           var activeRealm = realm;
-          activate(this.realm);
+          activate(this.Realm);
         }
 
         this.bindings[options.name] = new $NativeFunction(options);
@@ -3412,6 +3438,15 @@ var runtime = (function(GLOBAL, exports, undefined){
     GetNativeBrand: function(object){
       return object.NativeBrand.name;
     },
+    SetNativeBrand: function(object, name){
+      var brand = BRANDS[name];
+      if (brand) {
+        object.NativeBrand = brand;
+      } else {
+        return new AbruptException('throw', new $Error('ReferenceError', undefined, 'Unknown NativeBrand "'+name+'"'));
+      }
+      return object.NativeBrand.name;
+    },
     GetBrand: function(object){
       return object.Brand || object.NativeBrand.name;
     },
@@ -3485,15 +3520,57 @@ var runtime = (function(GLOBAL, exports, undefined){
     wrapRegExpMethods: function(target){
       wrapNatives(RegExp.prototype, target);
     },
-    // FUNCTION
+
+
+    CallFunction: function(func, receiver, args){
+      return func.Call(receiver, toInternalArray(args));
+    },
+
+    EvaluateModule: function(src, global, name){
+      var script = new Script({
+        name: name,
+        natives: true,
+        source: code,
+        scope: SCOPE.MODULE
+      });
+
+      if (script.error) {
+        return script.error;
+      }
+
+      var oldContext = context,
+          sandboxRealm = create(global.Realm);
+
+      activate(sandboxRealm);
+
+      var bindings = new $Object(global),
+          sandbox = new GlobalEnvironmentRecord(bindings),
+          module = new $Module(sandbox, script.bytecode.ExportedNames),
+          sandboxContext = new ExecutionContext(null, sandbox, sandboxRealm, script.bytecode);
+
+      bindings.NativeBrand = BRANDS.GlobalObject;
+
+      context = sandboxContext;
+
+      var status = TopLevelDeclarationInstantiation(script.bytecode);
+      if (status && status.Abrupt) {
+        return status;
+      }
+
+      run(sandboxRealm, script.thunk);
+      context = oldContext;
+
+      deactivate(sandboxRealm);
+      return module;
+    },
     eval: function(code){
       if (typeof code !== 'string') {
         return code;
       }
       var script = new Script({
+        scope: SCOPE.EVAL,
         natives: false,
-        source: code,
-        eval: true
+        source: code
       });
       if (script.error) {
         return script.error;
@@ -3501,24 +3578,11 @@ var runtime = (function(GLOBAL, exports, undefined){
         return script.thunk.run(context);
       }
     },
-    CallFunction: function(func, receiver, args){
-      return func.Call(receiver, toInternalArray(args));
-    },
-
-    BoundFunctionCreate: function(func, receiver, args){
-      return new $BoundFunction(func, receiver, toInternalArray(args));
-    },
-    BooleanCreate: function(boolean){
-      return new $Boolean(boolean);
-    },
-    DateCreate: function(args){
-      return utility.applyNew(Date, args);
-    },
     FunctionCreate: function(args){
       args = toInternalArray(args);
       var body = args.pop();
       var script = new Script({
-        normal: true,
+        scope: SCOPE.GLOBAL,
         natives: false,
         source: '(function anonymous('+args.join(', ')+') {\n'+body+'\n})'
       });
@@ -3530,6 +3594,15 @@ var runtime = (function(GLOBAL, exports, undefined){
       var func = script.thunk.run(ctx);
       ExecutionContext.pop();
       return func;
+    },
+    BoundFunctionCreate: function(func, receiver, args){
+      return new $BoundFunction(func, receiver, toInternalArray(args));
+    },
+    BooleanCreate: function(boolean){
+      return new $Boolean(boolean);
+    },
+    DateCreate: function(args){
+      return utility.applyNew(Date, args);
     },
     NumberCreate: function(number){
       return new $Number(number);
@@ -3912,17 +3985,20 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.type = 'recompiled function';
       if (!utility.fname(options)) {
         options = {
+          scope: SCOPE.FUNCTION,
           filename: 'unnamed',
           source: '('+options+')()'
         }
       } else {
         options = {
+          scope: SCOPE.FUNCTION,
           filename: utility.fname(options),
           source: options+''
         };
       }
     } else if (typeof options === STRING) {
       options = {
+        scope: SCOPE.GLOBAL,
         source: options
       };
     }
@@ -3931,10 +4007,11 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.natives = true;
       this.type = 'native';
     }
-    if (options.eval) {
+    if (options.eval || options.scope === SCOPE.EVAL) {
       this.eval = true;
       this.type = 'eval';
     }
+    this.scope = options.scope;
 
     if (!isObject(options.ast) && typeof options.source === STRING) {
       this.source = options.source;
@@ -3955,6 +4032,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function NativeScript(source, location){
     Script.call(this, {
+      scope: SCOPE.GLOBAL,
       source: '(function(global, undefined){\n'+source+'\n})(this)',
       filename: location +'.js',
       natives: true
@@ -4092,18 +4170,17 @@ var runtime = (function(GLOBAL, exports, undefined){
     this.active = false;
     this.scripts = [];
     this.templates = {};
+    activate(this);
     this.natives = new Intrinsics(this);
-    this.intrinsics = this.natives.bindings;
-    this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
+    intrinsics = this.intrinsics = this.natives.bindings;
+    global = this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
     this.global.NativeBrand = BRANDS.GlobalObject;
-    this.globalEnv = new GlobalEnvironmentRecord(this.global);
+    globalEnv = this.globalEnv = new GlobalEnvironmentRecord(this.global);
 
-    this.intrinsics.FunctionProto.Realm = this;
     this.intrinsics.FunctionProto.Scope = this.globalEnv;
+    this.intrinsics.FunctionProto.Realm = true;
     this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
-    hide(this.intrinsics.FunctionProto, 'Realm');
     hide(this.intrinsics.FunctionProto, 'Scope');
-    hide(this.natives, 'realm');
 
     for (var k in atoms) {
       defineDirect(this.global, k, atoms[k], ___);
@@ -4114,6 +4191,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
 
+    deactivate(this);
     this.state = 'idle';
     listener && this.on('*', listener);
 
