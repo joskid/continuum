@@ -9,15 +9,6 @@ $__defineProps(this, {
     id = $__ToInteger(id);
     $__ClearTimer(id);
   },
-  console: {
-    log(...values){
-      var text = '';
-      for (var i=0; i < values.length; i++) {
-        text += $__ToString(values[i]);
-      }
-      $__Signal('write', [text + '\n', '#fff']);
-    }
-  },
   decodeURI: $__decodeURI,
   decodeURIComponent: $__decodeURIComponent,
   encodeURI: $__encodeURI,
