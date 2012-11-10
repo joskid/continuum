@@ -2025,7 +2025,7 @@ var Preview = (function(){
   inherit(Preview, Branch, [
     function createPreview(){
       utility.iterate(this.mirror.list(false), function(key){
-        this.append(new PreviewProperty(this.mirror, key));
+        //this.append(new PreviewProperty(this.mirror, key));
       }, this);
     },
     function refresh(){
@@ -2095,6 +2095,7 @@ var renderer = new debug.Renderer({
   JSON: Branch.create,
   Map: Branch.create,
   Math: Branch.create,
+  Module: Branch.create,
   Object: Branch.create,
   Number: Branch.create,
   RegExp: Branch.create,
@@ -2122,6 +2123,7 @@ var previewRenderer = new debug.Renderer({
   JSON: Preview.create,
   Map: Preview.create,
   Math: Preview.create,
+  Module: Preview.create,
   Object: Preview.create,
   Number: Preview.create,
   RegExp: Preview.create,

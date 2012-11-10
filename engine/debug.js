@@ -105,17 +105,40 @@ var debug = (function(exports){
     this.key = key;
     realm().enterMutationContext();
     this.subject = accessor.Get.Call(holder, key);
-    this.introspected = introspect(this.subject);
+    if (this.subject.__introspected) {
+      this.introspected = this.subject.__introspected;
+    } else {
+      this.introspected = introspect(this.subject);
+    }
     this.kind = this.introspected.kind;
     this.type = this.introspected.type;
     realm().exitMutationContext();
   }
 
-  inherit(MirrorAccessor, Mirror, {
-    label: function(){
-      return this.introspected.label();
-    },
-  });
+  void function(){
+    inherit(MirrorAccessor, Mirror, {
+      accessor: true
+    }, [
+      function label(){
+        return this.introspected.label();
+      },
+      function getName(){
+        return this.subject.properties.get('name');
+      },
+      function getParams(){
+        var params = this.subject.FormalParameters;
+        if (params && params.ArgNames) {
+          var names = params.ArgNames.slice();
+          if (params.Rest) {
+            names.rest = true;
+          }
+          return names;
+        } else {
+          return [];
+        }
+      }
+    ]);
+  }();
 
   var proto = Math.random().toString(36).slice(2);
 
@@ -431,7 +454,7 @@ var debug = (function(exports){
     MirrorError.call(this, subject);
   }
 
-    void function(){
+  void function(){
     inherit(MirrorThrown, MirrorError, {
       kind: 'Thrown'
     }, [
@@ -537,6 +560,38 @@ var debug = (function(exports){
   inherit(MirrorMath, MirrorObject, {
     kind: 'Math'
   }, []);
+
+  function MirrorModule(subject){
+    MirrorObject.call(this, subject);
+  }
+
+  void function(){
+    inherit(MirrorModule, MirrorObject, {
+      kind: 'Module'
+    }, [
+      function get(key){
+        if (this.isPropAccessor(key)) {
+          if (!this.accessors[key]) {
+            var prop = this.getProperty(key),
+                accessor = prop[1] || prop[3];
+
+            realm().enterMutationContext();
+            this.accessors[key] = introspect(accessor.Get.Call(this.subject, []));
+            realm().exitMutationContext();
+          }
+
+          return this.accessors[key];
+        } else {
+          var prop = this.props.getProperty(key);
+          if (prop) {
+            return introspect(prop[1]);
+          } else {
+            return this.getPrototype().get(key);
+          }
+        }
+      },
+    ]);
+  }();
 
   function MirrorNumber(subject){
     MirrorObject.call(this, subject);
@@ -752,7 +807,7 @@ var debug = (function(exports){
     JSON     : MirrorJSON,
     Map      : MirrorMap,
     Math     : MirrorMath,
-    Map      : MirrorMap,
+    Module   : MirrorModule,
     Number   : MirrorNumber,
     RegExp   : MirrorRegExp,
     Set      : MirrorSet,
@@ -884,6 +939,7 @@ var debug = (function(exports){
     JSON: label,
     Map: label,
     Math: label,
+    Module: label,
     Object: label,
     Number: label,
     RegExp: label,
