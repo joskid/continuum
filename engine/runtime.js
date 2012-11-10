@@ -810,6 +810,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       return status;
     }
 
+    run(sandboxRealm, script.thunk);
     ExecutionContext.pop();
     return new $Module(sandbox, script.bytecode);
   }

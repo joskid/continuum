@@ -512,6 +512,7 @@ var assembler = (function(exports){
     return collector({
       ClassDeclaration: lexical(false),
       FunctionDeclaration: lexical(false),
+      ExportDeclaration: visit.RECURSE,
       SwitchCase: visit.RECURSE,
       Program: visit.RECURSE,
       VariableDeclaration: lexical(function(node){
@@ -530,7 +531,6 @@ var assembler = (function(exports){
       return node;
     };
   });
-
 
   var collectExports = collector({
     Program          : 'body',
