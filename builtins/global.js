@@ -58,6 +58,15 @@ $__defineProps(this, {
     backspace(count){
       $__Signal('backspace', $_ToInteger(count));
     }
+  },
+  require(request){
+    var src;
+    $__Fetch(request, result => src = result);
+    if (typeof src === 'string') {
+      return $__EvaluateModule(src, global, request);
+    } else {
+      return src;
+    }
   }
 });
 
