@@ -1,11 +1,7 @@
-// function constructor(...args){
-//   super(...args);
-// }
-
-// $__EmptyClass = constructor;
 
 
 class Storage {
+  constructor(){}
   set(props){
     for (var k in props) {
       this[k] = props[k];
@@ -22,7 +18,7 @@ $__DefineOwnProperty(Storage.prototype, 'set', { enumerable: false, configurable
 $__DefineOwnProperty(Storage.prototype, 'empty', { enumerable: false, configurable: false, writable: false });
 
 
-var _ = function(object){
+let _ = function(object){
   var internals = $__GetHidden(object, 'loader-internals');
   if (!internals) $__SetHidden(object, 'loader-internals', internals = new Storage);
   return internals;
@@ -50,7 +46,11 @@ class Request {
       translated = '"use strict";'+translated;
     }
 
-    var module = $__EvaluateModule(translated, _loader.global, _this.resolved);
+    var module = $__EvaluateModule(translated, _loader.global, _this.resolved),
+        _module = _(module);
+    _module.loader = _this.loader;
+    $__SetInternal(_module, 'resolved', _this.resolved);
+    $__SetInternal(_module, 'mrl', _this.mrl);
     _loader.modules[_this.resolved] = module;
     (_this.callback)(module);
     _this.empty();
@@ -115,7 +115,8 @@ export class Loader {
 
   eval(src){
     var _this = _(this);
-    return $__EvaluateModule(src, _this.global, _this.baseURL);
+    var module = $__EvaluateModule(src, _this.global, _this.baseURL);
+    return module;
   }
 
   evalAsync(src, callback, errback){
@@ -158,7 +159,16 @@ export class Loader {
   }
 }
 
-export var System = new Loader(null, {
+export let Module = function Module(object){
+  if ($__GetNativeBrand(object) === 'Module') {
+    return object;
+  }
+  return $__ToModule($__ToObject(object));
+}
+
+$__deleteDirect(Module, 'prototype');
+
+$__System = new Loader(null, {
   global: this,
   baseURL: '',
   strict: false,
@@ -178,3 +188,5 @@ export var System = new Loader(null, {
     return src;
   }
 });
+
+

@@ -17,11 +17,12 @@ var runtime = (function(GLOBAL, exports, undefined){
       isObject         = utility.isObject,
       nextTick         = utility.nextTick,
       enumerate        = utility.enumerate,
-      ownKeys          = utility.ownKeys,
+      ownKeys          = utility.keys,
       define           = utility.define,
       copy             = utility.copy,
       inherit          = utility.inherit,
       each             = utility.each,
+      iterate          = utility.iterate,
       unique           = utility.unique;
 
 
@@ -798,10 +799,11 @@ var runtime = (function(GLOBAL, exports, undefined){
       return script.error;
     }
 
-    var sandbox = new GlobalEnvironmentRecord(new $Object(global)),
-        sandboxRealm = create(realm);
+    var sandbox = new GlobalEnvironmentRecord(new $Object),
+        sandboxRealm = create(global.Realm);
 
     sandbox.bindings.NativeBrand = BRANDS.GlobalObject;
+    sandbox.outer = global.env;
     sandboxRealm.globalEnv = sandbox;
     ExecutionContext.push(new ExecutionContext(context, sandbox, sandboxRealm, script.bytecode));
 
@@ -810,9 +812,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       return status;
     }
 
-    run(sandboxRealm, script.thunk);
+    run(sandboxRealm, script.thunk, script.bytecode);
     ExecutionContext.pop();
-    return new $Module(sandbox, script.bytecode);
+    return new $Module(sandbox.bindings, script.bytecode.ExportedNames);
   }
 
   // ## IdentifierResolution
@@ -1302,6 +1304,13 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   StringIndice.prototype = new DataDescriptor(undefined, E__);
 
+
+  function Value(value){
+    this.Value = value;
+  }
+
+
+
   function Accessor(get, set){
     this.Get = get;
     this.Set = set;
@@ -1312,9 +1321,35 @@ var runtime = (function(GLOBAL, exports, undefined){
     Set: undefined
   });
 
-  function Value(value){
-    this.Value = value;
+
+
+  function ModuleGetter(ref){
+    var getter = this.Get = {
+      Call: function(){
+        var value = GetValue(ref);
+        ref = null;
+        getter.Call = function(){ return value };
+        return value;
+      }
+    };
   }
+
+  inherit(ModuleGetter, Accessor);
+
+
+
+  function ArgAccessor(name, env){
+    this.name = name;
+    define(this, { env: env  });
+  }
+
+  inherit(ArgAccessor, Accessor, {
+    Get: { Call: function(){ return this.env.GetBindingValue(this.name) } },
+    Set: { Call: function(v){ this.env.SetMutableBinding(this.name, v) } }
+  });
+
+
+
 
 
   // #########################
@@ -1330,11 +1365,14 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   define(EnvironmentRecord.prototype, {
     bindings: null,
-    withBase: undefined
+    withBase: undefined,
+    type: 'Environment',
+    Environment: true
   });
 
   void function(){
     define(EnvironmentRecord.prototype, [
+      function EnumerateBindings(){},
       function HasBinding(name){},
       function GetBindingValue(name, strict){},
       function SetMutableBinding(name, value, strict){},
@@ -1364,7 +1402,12 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
   void function(){
-    inherit(DeclarativeEnvironmentRecord, EnvironmentRecord, [
+    inherit(DeclarativeEnvironmentRecord, EnvironmentRecord, {
+      type: 'Declarative Env'
+    }, [
+      function EnumerateBindings(){
+        return ownKeys(this.bindings);
+      },
       function HasBinding(name){
         return name in this.bindings;
       },
@@ -1425,7 +1468,12 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
   void function(){
-    inherit(ObjectEnvironmentRecord, EnvironmentRecord, [
+    inherit(ObjectEnvironmentRecord, EnvironmentRecord, {
+      type: 'Object Env'
+    }, [
+      function EnumerateBindings(){
+        return this.bindings.Enumerate(false, false);
+      },
       function HasBinding(name){
         return this.bindings.HasProperty(name);
       },
@@ -1464,6 +1512,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       HomeObject: undefined,
       MethodName: undefined,
       thisValue: undefined,
+      type: 'Function Env'
     }, [
       function HasThisBinding(){
         return true;
@@ -1487,11 +1536,13 @@ var runtime = (function(GLOBAL, exports, undefined){
   function GlobalEnvironmentRecord(global){
     ObjectEnvironmentRecord.call(this, global);
     this.thisValue = this.bindings;
+    this.bindings.env = this;
   }
 
   void function(){
     inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
-      outer: null
+      outer: null,
+      type: 'Global Environment'
     }, [
       function GetThisBinding(){
         return this.bindings;
@@ -2727,44 +2778,26 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  function ModuleGetter(ref){
-    var getter = this.Get = {
-      Call: function(){
-        var value = GetValue(ref);
-        ref = null;
-        getter.Call = function(){ return value };
-        return value;
-      }
-    };
-  }
+  function $Module(object, names){
+    if (object instanceof $Module) {
+      return object;
+    }
 
-  inherit(ModuleGetter, Accessor);
-
-  function $Module(sandbox, bytecode){
-    var self = this;
     $Object.call(this, null);
-    this.Code = bytecode;
-    this.Scope = sandbox;
-    this.Realm = sandbox.bindings.Realm;
-    each(bytecode.ExportedNames, function(name){
-      defineDirect(self, name, new ModuleGetter(new Reference(sandbox.bindings, name)), E_A);
+    this.properties.remove('__proto__');
+    var self = this;
+
+    each(names, function(name){
+      defineDirect(self, name, new ModuleGetter(new Reference(object, name)), E_A);
     });
   }
 
   inherit($Module, $Object, {
-    NativeBrand: BRANDS.NativeModule
+    NativeBrand: BRANDS.NativeModule,
+    Extensible: false
   });
 
 
-  function ArgAccessor(name, env){
-    this.name = name;
-    define(this, { env: env  });
-  }
-
-  define(ArgAccessor.prototype, {
-    Get: { Call: function(){ return this.env.GetBindingValue(this.name) } },
-    Set: { Call: function(v){ this.env.SetMutableBinding(this.name, v) } }
-  });
 
 
 
@@ -3469,6 +3502,12 @@ var runtime = (function(GLOBAL, exports, undefined){
     ToInt32: ToInt32,
     ToUint32: ToUint32,
     ToUint16: ToUint16,
+    ToModule: function(obj){
+      if (obj.NativeBrand === BRANDS.NativeModule) {
+        return obj;
+      }
+      return new $Module(obj, obj.Enumerate(false, false));
+    },
     IsConstructCall: function(){
       return context.isConstruct;
     },
@@ -4065,23 +4104,41 @@ var runtime = (function(GLOBAL, exports, undefined){
     realm.initialized = true;
     realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, new NativeScript('void 0', 'mutation scope').bytecode);
 
-    for (var k in builtins) {
-      var script = new NativeScript(builtins[k], k);
-      if (script.error) {
-        realm.emit(script.error.type, script.error);
-      } else {
-        realm.evaluate(script, false);
-      }
-    }
+    realm.evaluate(new NativeScript('$__EmptyClass = function constructor(...args){ super(...args) }', ''), true);
+    var system = require('../modules')['@system'];
+    ModuleEvaluation(system, realm.global, '@system');
+
+
+
+    // for (var k in builtins) {
+    //   var script = new NativeScript(builtins[k], k);
+    //   if (script.error) {
+    //     realm.emit(script.error.type, script.error);
+    //   } else {
+    //     realm.evaluate(script, false);
+    //   }
+    // }
 
     deactivate(realm);
     realm.state = 'idle';
     return realm;
   }
 
-  function prepareToRun(realm, bytecode){
+  function extendGlobalScope(realm){
+    var scope = new GlobalEnvironmentRecord(new $Object);
+    scope.bindings.NativeBrand = BRANDS.GlobalObject;
+    scope.outer = realm.globalEnv;
+    scope.Realm = create(realm);
+    scope.Realm.globalEnv = scope;
+    return scope;
+  }
+
+  function prepareToRun(realm, bytecode, scope){
     initializeRealm(realm);
-    ExecutionContext.push(new ExecutionContext(null, realm.globalEnv, realm, bytecode));
+    if (!scope) {
+      scope = extendGlobalScope(realm);
+    }
+    ExecutionContext.push(new ExecutionContext(null, scope, scope.Realm || realm, bytecode));
     var status = TopLevelDeclarationInstantiation(bytecode);
     if (status && status.Abrupt) {
       realm.emit(status.type, status);
@@ -4089,7 +4146,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
-  function run(realm, thunk){
+
+
+  function run(realm, thunk, bytecode){
     activate(realm);
     realm.executing = thunk;
     realm.state = 'executing';
@@ -4102,13 +4161,16 @@ var runtime = (function(GLOBAL, exports, undefined){
         resume = function(){};
         delete realm.resume;
         realm.emit('resume');
-        return run(realm, thunk);
+        return run(realm, thunk, bytecode);
       };
 
       realm.resume = function(){ return resume() };
       realm.state = 'paused';
       realm.emit('pause');
     } else {
+      if (bytecode.ExportedNames && bytecode.ExportedNames.length) {
+        var module = new $Module(global, bytecode.ExportedNames);
+      }
       realm.executing = null;
       realm.state = 'idle';
       if (result && result.Abrupt) {
@@ -4157,6 +4219,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       realm.mutating = toggle;
       if (toggle) {
         activate(realm);
+        realm.mutationScope || (realm.mutationScope = extendGlobalScope(realm));
         ExecutionContext.push(realm.mutationScope);
       } else {
         ExecutionContext.pop();
@@ -4164,6 +4227,37 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
     return toggle;
   }
+
+  function resolveImports(code, done){
+    var modules = create(null);
+    if (code.imports) {
+      var load = intrinsics.System.Get('load'),
+          count = code.imports.length;
+
+      var callback = {
+        Call: function(receiver, args){
+          var result = args[0],
+              internals = result.hiddens['loader-internals'];
+
+          if (result instanceof $Module) {
+            modules[internals.mrl] = result;
+          } else {}
+
+          if (!--count) {
+            done(modules);
+          }
+        }
+      };
+
+      each(code.imports, function(imported){
+        load.Call(intrinsics.System, [imported.origin, callback, callback]);
+      });
+    } else {
+      done(modules);
+    }
+  }
+
+
 
   var realms = [],
       realmStack = [],
@@ -4184,6 +4278,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     global = this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
     this.global.NativeBrand = BRANDS.GlobalObject;
     globalEnv = this.globalEnv = new GlobalEnvironmentRecord(this.global);
+    this.globalEnv.Realm = this;
 
     this.intrinsics.FunctionProto.Scope = this.globalEnv;
     this.intrinsics.FunctionProto.Realm = this;
@@ -4216,6 +4311,50 @@ var runtime = (function(GLOBAL, exports, undefined){
       function exitMutationContext(){
         mutationContext(this, false);
       },
+      function subscope(){
+        return extendGlobalScope(this);
+      },
+      function evaluateAsync(subject, callback, scope){
+        if (!scope) {
+          scope = this.globalEnv;
+        }
+
+        var realm = scope.Realm;
+        activate(realm);
+
+        var script = new Script(subject);
+
+        if (script.error) {
+          this.emit(script.error.type, script.error);
+          return callback(script.error);
+        }
+
+        this.scripts.push(script);
+
+        initializeRealm(realm);
+
+
+        if (!script.bytecode.imports || !script.bytecode.imports.length) {
+          return callback(prepareToRun(realm, script.bytecode, scope) || run(realm, script.thunk, script.bytecode));
+        }
+
+        resolveImports(script.bytecode, function(modules, result){
+          if (result = prepareToRun(realm, script.bytecode, scope)) {
+            return callback(result);
+          }
+          each(script.bytecode.imports, function(imported){
+            var module = modules[imported.origin];
+            iterate(imported.specifiers, function(path, name){
+              var obj = module;
+              each(path, function(part){
+                obj = obj.Get(part);
+              });
+              globalEnv.SetMutableBinding(name, obj);
+            });
+          });
+          callback(run(realm, script.thunk, script.bytecode));
+        });
+      },
       function evaluate(subject, quiet){
         activate(this);
         var script = new Script(subject);
@@ -4227,7 +4366,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         realm.quiet = !!quiet;
         this.scripts.push(script);
-        return prepareToRun(this, script.bytecode) || run(this, script.thunk);
+        return prepareToRun(this, script.bytecode) || run(this, script.thunk, script.bytecode);
       }
     ]);
   }();
