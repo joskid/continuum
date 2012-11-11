@@ -1602,7 +1602,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   void function(){
     inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
       outer: null,
-      type: 'Global Environment'
+      type: 'Global Env'
     }, [
       function GetThisBinding(){
         return this.bindings;
