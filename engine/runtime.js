@@ -787,7 +787,37 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  function ModuleEvaluation(source, global, name){
+  function resolveImports(code, done){
+    var modules = create(null);
+    if (code.imports) {
+      var load = intrinsics.System.Get('load'),
+          count = code.imports.length;
+
+      var callback = {
+        Call: function(receiver, args){
+          var result = args[0],
+              internals = result.hiddens['loader-internals'];
+
+          if (result instanceof $Module) {
+            modules[internals.mrl] = result;
+          } else {}
+
+          if (!--count) {
+            done(modules);
+          }
+        }
+      };
+
+      each(code.imports, function(imported){
+        load.Call(intrinsics.System, [imported.origin, callback, callback]);
+      });
+    } else {
+      done(modules);
+    }
+  }
+
+
+  function moduleEvaluation(source, global, name, callback){
     var script = new Script({
       name: name,
       natives: true,
@@ -796,25 +826,55 @@ var runtime = (function(GLOBAL, exports, undefined){
     });
 
     if (script.error) {
-      return script.error;
+      return callback(script.error);
     }
 
-    var sandbox = new GlobalEnvironmentRecord(new $Object),
-        sandboxRealm = create(global.Realm);
+    var realm = global.Realm || global.Prototype.Realm,
+        sandbox = new GlobalEnvironmentRecord(new $Object),
+        sandboxRealm = create(realm);
 
     sandbox.bindings.NativeBrand = BRANDS.GlobalObject;
     sandbox.outer = global.env;
     sandboxRealm.globalEnv = sandbox;
-    ExecutionContext.push(new ExecutionContext(context, sandbox, sandboxRealm, script.bytecode));
 
+    ExecutionContext.push(new ExecutionContext(context, sandbox, sandboxRealm, script.bytecode));
     var status = TopLevelDeclarationInstantiation(script.bytecode);
+
     if (status && status.Abrupt) {
-      return status;
+      return callback(result);
     }
 
-    run(sandboxRealm, script.thunk, script.bytecode);
-    ExecutionContext.pop();
-    return new $Module(sandbox.bindings, script.bytecode.ExportedNames);
+    if (!script.bytecode.imports || !script.bytecode.imports.length) {
+      if (!prepareToRun(sandboxRealm, script.bytecode, sandbox)) {
+        run(sandboxRealm, script.thunk, script.bytecode)
+        callback(new $Module(sandbox.bindings, script.bytecode.ExportedNames));
+      }
+    }
+
+    resolveImports(script.bytecode, function(modules, result){
+      if (result = prepareToRun(sandboxRealm, script.bytecode, sandbox)) {
+        return callback(result);
+      }
+      each(script.bytecode.imports, function(imported){
+        var module = modules[imported.origin];
+        iterate(imported.specifiers, function(path, name){
+          if (name === '*') {
+            module.properties.forEach(function(prop){
+              sandbox.SetMutableBinding(prop[0], module.Get(prop[0]));
+            });
+          } else {
+            var obj = module;
+            each(path, function(part){
+              obj = obj.Get(part);
+            });
+            sandbox.SetMutableBinding(name, obj);
+          }
+        });
+      });
+
+      run(sandboxRealm, script.thunk, script.bytecode);
+      callback(new $Module(sandbox.bindings, script.bytecode.ExportedNames));
+    });
   }
 
   // ## IdentifierResolution
@@ -3066,7 +3126,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       },
       function initializeBindings(pattern, value, lexical){
-        return BindingInitialization(pattern, value, lexical ? this.LexicalEnvironment : undefined);
+        return BindingInitialization(pattern, value, this.LexicalEnvironment);
       },
       function popBlock(){
         var block = this.LexicalEnvironment;
@@ -3537,29 +3597,43 @@ var runtime = (function(GLOBAL, exports, undefined){
       hide(object, key);
     },
     GetInternal: function(object, key){
-      return object[key];
+      if (object) {
+        return object[key];
+      }
     },
     HasInternal: function(object, key){
-      return key in object;
+      if (object) {
+        return key in object;
+      }
     },
     SetHidden: function(object, key, value){
-      object.hiddens[key] = value;
+      if (object) {
+        object.hiddens[key] = value;
+      }
     },
     GetHidden: function(object, key){
-      return object.hiddens[key];
+      if (object) {
+        return object.hiddens[key];
+      }
     },
     DeleteHidden: function(object, key){
-      if (key in object.hiddens) {
-        delete object.hiddens[key];
-        return true;
+      if (object) {
+        if (key in object.hiddens) {
+          delete object.hiddens[key];
+          return true;
+        }
+        return false;
       }
-      return false;
     },
     HasHidden: function(object, key){
-      return key in object.hiddens;
+      if (object) {
+        return key in object.hiddens;
+      }
     },
     EnumerateHidden: function(object){
-      return ownKeys(object.hiddens);
+      if (object) {
+        return ownKeys(object.hiddens);
+      }
     },
     Type: function(o){
       if (o === null) {
@@ -3610,7 +3684,11 @@ var runtime = (function(GLOBAL, exports, undefined){
       callback.Call(undefined, [result]);
     },
 
-    EvaluateModule: ModuleEvaluation,
+    EvaluateModule: function(source, global, name, callback){
+      moduleEvaluation(source, global, name, function(result){
+        callback.Call(undefined, [result]);
+      });
+    },
     eval: function(code){
       if (typeof code !== 'string') {
         return code;
@@ -4091,37 +4169,35 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
+  var moduleInitScript = new Script({
+    scope: SCOPE.GLOBAL,
+    natives: true,
+    filename: 'module-init.js',
+    source: 'import * from "@std";\n'+
+            'for (let k in this) {\n'+
+            '  Object.defineProperty(this, k, { enumerable: false });\n'+
+            '}'
+  });
 
+  var mutationScopeScript = new NativeScript('void 0', 'mutation scope');
+  var emptyClassScript = new NativeScript('$__EmptyClass = function constructor(...args){ super(...args) }', '');
 
-  function initializeRealm(realm){
-    if (realm.initialized) {
-      return realm;
-    }
+  function initializeRealm(realm, callback){
+    if (realm.initialized) callback();
 
-    var builtins = require('../builtins');
     activate(realm);
     realm.state = 'initializing';
     realm.initialized = true;
-    realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, new NativeScript('void 0', 'mutation scope').bytecode);
+    realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, mutationScopeScript.bytecode);
+    realm.evaluate(emptyClassScript, true);
 
-    realm.evaluate(new NativeScript('$__EmptyClass = function constructor(...args){ super(...args) }', ''), true);
-    var system = require('../modules')['@system'];
-    ModuleEvaluation(system, realm.global, '@system');
-
-
-
-    // for (var k in builtins) {
-    //   var script = new NativeScript(builtins[k], k);
-    //   if (script.error) {
-    //     realm.emit(script.error.type, script.error);
-    //   } else {
-    //     realm.evaluate(script, false);
-    //   }
-    // }
-
-    deactivate(realm);
-    realm.state = 'idle';
-    return realm;
+    moduleEvaluation(require('../modules')['@system'], realm.global, '@system', function(){
+      realm.evaluateAsync(moduleInitScript, function(){
+        deactivate(realm);
+        realm.state = 'idle';
+        callback();
+      });
+    });
   }
 
   function extendGlobalScope(realm){
@@ -4134,7 +4210,6 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
   function prepareToRun(realm, bytecode, scope){
-    initializeRealm(realm);
     if (!scope) {
       scope = extendGlobalScope(realm);
     }
@@ -4145,7 +4220,6 @@ var runtime = (function(GLOBAL, exports, undefined){
       return status;
     }
   }
-
 
 
   function run(realm, thunk, bytecode){
@@ -4179,7 +4253,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         realm.emit('complete', result);
       }
 
-      deactivate(realm);
+      realm === global.Realm && deactivate(realm);
       return result;
     }
   }
@@ -4228,35 +4302,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     return toggle;
   }
 
-  function resolveImports(code, done){
-    var modules = create(null);
-    if (code.imports) {
-      var load = intrinsics.System.Get('load'),
-          count = code.imports.length;
-
-      var callback = {
-        Call: function(receiver, args){
-          var result = args[0],
-              internals = result.hiddens['loader-internals'];
-
-          if (result instanceof $Module) {
-            modules[internals.mrl] = result;
-          } else {}
-
-          if (!--count) {
-            done(modules);
-          }
-        }
-      };
-
-      each(code.imports, function(imported){
-        load.Call(intrinsics.System, [imported.origin, callback, callback]);
-      });
-    } else {
-      done(modules);
-    }
-  }
-
 
 
   var realms = [],
@@ -4266,16 +4311,20 @@ var runtime = (function(GLOBAL, exports, undefined){
       context = null,
       intrinsics = null;
 
-  function Realm(listener){
+  function Realm(callback){
+    var self = this;
+
     Emitter.call(this);
     realms.push(this);
     this.active = false;
     this.scripts = [];
     this.templates = {};
+    this.state = 'bootstrapping';
+
     activate(this);
     this.natives = new Intrinsics(this);
     intrinsics = this.intrinsics = this.natives.bindings;
-    global = this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
+    intrinsics.global = global = this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
     this.global.NativeBrand = BRANDS.GlobalObject;
     globalEnv = this.globalEnv = new GlobalEnvironmentRecord(this.global);
     this.globalEnv.Realm = this;
@@ -4293,14 +4342,13 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.natives.binding({ name: k, call: natives[k] });
     }
 
+    this.state = 'initializing';
 
-    deactivate(this);
-    this.state = 'idle';
-    listener && this.on('*', listener);
-
-    if (!realm) {
-      activate(this);
-    }
+    initializeRealm(this, function(){
+      self.state = 'idle';
+      callback && callback(self);
+      self.emit('ready');
+    });
   }
 
   void function(){
@@ -4331,8 +4379,6 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         this.scripts.push(script);
 
-        initializeRealm(realm);
-
 
         if (!script.bytecode.imports || !script.bytecode.imports.length) {
           return callback(prepareToRun(realm, script.bytecode, scope) || run(realm, script.thunk, script.bytecode));
@@ -4345,11 +4391,17 @@ var runtime = (function(GLOBAL, exports, undefined){
           each(script.bytecode.imports, function(imported){
             var module = modules[imported.origin];
             iterate(imported.specifiers, function(path, name){
-              var obj = module;
-              each(path, function(part){
-                obj = obj.Get(part);
-              });
-              globalEnv.SetMutableBinding(name, obj);
+              if (name === '*') {
+                module.properties.forEach(function(prop){
+                  globalEnv.SetMutableBinding(prop[0], module.Get(prop[0]));
+                });
+              } else {
+                var obj = module;
+                each(path, function(part){
+                  obj = obj.Get(part);
+                });
+                globalEnv.SetMutableBinding(name, obj);
+              }
             });
           });
           callback(run(realm, script.thunk, script.bytecode));
