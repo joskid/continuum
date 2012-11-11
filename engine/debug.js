@@ -4,6 +4,7 @@ var debug = (function(exports){
       isObject = utility.isObject,
       inherit = utility.inherit,
       create = utility.create,
+      each = utility.each,
       define = utility.define;
 
   var constants = require('./constants'),
@@ -39,6 +40,9 @@ var debug = (function(exports){
     get: function(){
       return _Undefined;
     },
+    getValue: function(){
+      return _Undefined;
+    },
     kind: 'Unknown',
     label: always(''),
     hasOwn: always(null),
@@ -47,14 +51,14 @@ var debug = (function(exports){
     inheritedAttrs: alwaysCall(create, [null]),
     ownAttrs: alwaysCall(create, [null]),
     getterAttrs: alwaysCall(create, [null]),
-    isExtensible: always(null),
-    isEnumerable: always(null),
-    isConfigurable: always(null),
+    isPropExtensible: always(null),
+    isPropEnumerable: always(null),
+    isPropConfigurable: always(null),
     getOwnDescriptor: always(null),
     getDescriptor: always(null),
     getProperty: always(null),
-    isAccessor: always(null),
-    isWritable: always(null),
+    isPropAccessor: always(null),
+    isPropWritable: always(null),
     propAttributes: always(null)
   });
 
@@ -154,6 +158,7 @@ var debug = (function(exports){
     inherit(MirrorObject, Mirror, {
       kind: 'Object',
       type: 'object',
+      parentLabel: '[[proto]]',
       attrs: null,
       props: null
     }, [
@@ -522,18 +527,26 @@ var debug = (function(exports){
         } else {
           return false;
         }
+      },
+      function getScope(){
+        return introspect(this.subject.Scope);
       }
     ]);
   }();
-
 
   function MirrorGlobal(subject){
     MirrorObject.call(this, subject);
   }
 
-  inherit(MirrorGlobal, MirrorObject, {
-    kind: 'Global'
-  }, []);
+  void function(){
+    inherit(MirrorGlobal, MirrorObject, {
+      kind: 'Global'
+    }, [
+      function getEnvironment(){
+        return introspect(this.subject.env);
+      }
+    ]);
+  }();
 
 
 
@@ -796,6 +809,96 @@ var debug = (function(exports){
   }();
 
 
+  function MirrorScope(subject){
+    subject.__introspected = this;
+    this.subject = subject;
+  }
+
+  void function(){
+    inherit(MirrorScope, Mirror, {
+      kind: 'Scope',
+      type: 'scope',
+      parentLabel: '[[outer]]',
+      isExtensible: always(true),
+      isPropEnumerable: always(true),
+      isPropAccessor: always(false)
+    }, [
+      function getPrototype(){
+        return introspect(this.subject.outer);
+      },
+      function getValue(key){
+        return this.subject.GetBindingValue(key);
+      },
+      function get(key){
+        return introspect(this.subject.GetBindingValue(key));
+      },
+      function getOwn(key){
+        if (this.hasOwn(key)) {
+          return introspect(this.subject.GetBindingValue(key));
+        }
+      },
+      function label(){
+        return this.subject.type;
+      },
+      function hasOwn(key){
+        return this.subject.HasBinding(key);
+      },
+      function has(key){
+        return this.subject.HasBinding(key) || this.getPrototype().has(key);
+      },
+      function inheritedAttrs(){
+        return this.ownAttrs(this.getPrototype().inheritedAttrs());
+      },
+      function ownAttrs(props){
+        props || (props = create(null));
+
+        each(this.subject.EnumerateBindings(), function(key){
+          key = key === '__proto__' ? proto : key;
+          props[key] = key
+        });
+
+        return props;
+      },
+      function list(hidden, own){
+        own = true;
+        var props = own ? this.ownAttrs() : this.inheritedAttrs(),
+            keys = [];
+
+        for (var k in props) {
+          keys.push(k === proto ? '__proto__' : k);
+        }
+
+        return keys.sort();
+      },
+      function isPropConfigurable(key){
+        return !(this.subject.deletables && key in this.subject.deletables);
+      },
+      function isPropWritable(key){
+        return !(this.subject.consts && key in this.subject.consts);
+      },
+      function getOwnDescriptor(key){
+        if (this.hasOwn(key)) {
+          return { configurable: this.isPropConfigurable(key),
+                   enumerable: true,
+                   writable: this.isPropWritable(key),
+                   value: this.get(key)   };
+        }
+      },
+      function getDescriptor(key){
+        return this.getOwnDescriptor(key) || this.getPrototype().getDescriptor(key);
+      },
+      function getProperty(key){
+        return [this.subject.GetBindingValue(key), value, this.propAttributes(key)];
+      },
+      function propAttributes(key){
+        return 1 | (this.isPropConfigurable(key) << 1) | (this.isPropWritable(key) << 2);
+      },
+    ]);
+  }();
+
+
+
+
   var brands = {
     Arguments: MirrorArguments,
     Array    : MirrorArray,
@@ -867,29 +970,25 @@ var debug = (function(exports){
       case 'object':
         if (subject == null) {
           return _Null;
-        }
-        if (subject instanceof Mirror) {
+        } else if (subject instanceof Mirror) {
           return subject;
-        }
-        if (subject.__introspected) {
+        } else if (subject.__introspected) {
           return subject.__introspected;
-        }
-        if (subject.Completion) {
+        } else if (subject.Environment) {
+          return new MirrorScope(subject);
+        } else if (subject.Completion) {
           return new MirrorThrown(subject.value);
         } else if (subject.NativeBrand) {
-          if (!subject.isProxy) {
-            var Ctor = subject.NativeBrand.name in brands
-                      ? brands[subject.NativeBrand.name]
-                      : 'Call' in subject
-                        ? MirrorFunction
-                        : MirrorObject;
-
-            return new Ctor(subject);
-          } else {
+          if (subject.isProxy) {
             return new MirrorProxy(subject);
+          } else if ('Call' in subject) {
+            return new MirrorFunction(subject);
+          } else if (subject.NativeBrand.name in brands) {
+            return new brands[subject.NativeBrand.name](subject);
+          } else {
+            return new MirrorObject(subject);
           }
         } else {
-          console.log(subject);
           return _Undefined
         }
     }
@@ -943,6 +1042,7 @@ var debug = (function(exports){
     Object: label,
     Number: label,
     RegExp: label,
+    Scope: label,
     Set: label,
     String: label,
     WeakMap: label

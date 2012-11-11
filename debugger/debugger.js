@@ -1620,35 +1620,40 @@ var Property = (function(){
   return Property;
 })();
 
-var Proto = (function(){
-  function Proto(mirror){
+
+function createSpecialProperty(label, classname, callback){
+  var SpecialProperty = function(mirror){
     Component.call(this, 'li');
     this.mirror = mirror;
     this.addClass('property');
-    this.key = new Key('[[proto]]');
-    this.key.addClass('Proto');
+    this.key = new Key(label);
+    this.key.addClass(classname);
     this.append(this.key);
-    this.prop = mirror.getPrototype();
+    this.prop = callback(mirror);
     this.property = renderer.render(this.prop);
     this.append(this.property);
     this.append(_('div'));
     this.append(this.property.createTree());
   }
 
-  inherit(Proto, Property, [
+  inherit(SpecialProperty, Property, [
     function refresh(){
-      var proto = this.mirror.getPrototype();
-      if (this.prop !== proto) {
-        this.prop = proto;
+      var prop = callback(this.mirror);
+      if (this.prop !== prop) {
+        this.prop = prop;
         this.element.removeChild(this.element.lastElementChild);
         this.append(renderer.render(this.property));
       }
     }
   ]);
 
-  return Proto;
-})();
+  return SpecialProperty;
+}
 
+var Scope = createSpecialProperty('[[scope]]', 'FunctionScope', function(mirror){ return mirror.getScope() });
+var Proto = createSpecialProperty('[[proto]]', 'Proto', function(mirror){ return mirror.getPrototype() });
+var Env = createSpecialProperty('[[env]]', 'Env', function(mirror){ return mirror.getEnvironment() });
+var Outer = createSpecialProperty('[[outer]]', 'Outer', function(mirror){ return mirror.getPrototype() });
 
 var PreviewProperty = (function(){
   function PreviewProperty(mirror, key){
@@ -1774,13 +1779,22 @@ var Result = (function(){
     var tree = result.createTree();
     if (tree) {
       this.append(_('div'));
-      this.append(tree);
+      this.tree = this.append(tree);
     }
   }
 
   inherit(Result, Component, [
     function refresh(){
       this.result.refresh();
+    },
+    function expand(){
+      this.result.expand();
+    },
+    function contract(){
+      this.result.contract();
+    },
+    function toggle(){
+      this.result.toggle();
     }
   ]);
 
@@ -1966,11 +1980,62 @@ var FunctionBranch = (function(){
       this.preview && this.preview.refresh();
       this.tree && this.tree.refresh();
       return this;
+    },
+    function initTree(){
+      Branch.prototype.initTree.call(this);
+      this.tree.append(new Scope(this.mirror));
     }
   ]);
 
   return FunctionBranch;
 })();
+
+
+
+var GlobalBranch = (function(){
+  function GlobalBranch(mirror){
+    Branch.call(this, mirror);
+  }
+
+  creator(GlobalBranch);
+  inherit(GlobalBranch, Branch, [
+    function initTree(){
+      Branch.prototype.initTree.call(this);
+      if (this.mirror.subject.env.outer) {
+        this.tree.append(new Env(this.mirror));
+      }
+    }
+  ]);
+
+  return GlobalBranch;
+})();
+
+
+var ScopeBranch = (function(){
+  function ScopeBranch(mirror){
+    Branch.call(this, mirror);
+  }
+
+  creator(ScopeBranch);
+  inherit(ScopeBranch, Branch, [
+    function initTree(){
+      if (!this.tree.initialized) {
+        this.tree.initialized = true;
+        this.keys = this.mirror.list(true);
+        utility.iterate(this.keys, function(key){
+          this.tree.append(new Property(this.mirror, key));
+        }, this);
+        if (this.mirror.subject.outer) {
+          this.tree.append(new Outer(this.mirror));
+        }
+      }
+      return this;
+    }
+  ]);
+
+  return ScopeBranch;
+})();
+
 
 
 var ThrownBranch = (function(){
@@ -2025,7 +2090,7 @@ var Preview = (function(){
   inherit(Preview, Branch, [
     function createPreview(){
       utility.iterate(this.mirror.list(false), function(key){
-        //this.append(new PreviewProperty(this.mirror, key));
+        this.append(new PreviewProperty(this.mirror, key));
       }, this);
     },
     function refresh(){
@@ -2084,7 +2149,7 @@ var renderer = new debug.Renderer({
   UndefinedValue: Leaf.create,
   NullValue: Leaf.create,
   Accessor: Leaf.create,
-  Global: Branch.create,
+  Global: GlobalBranch.create,
   Thrown: ThrownBranch.create,
   Arguments: Branch.create,
   Array: Branch.create,
@@ -2099,6 +2164,7 @@ var renderer = new debug.Renderer({
   Object: Branch.create,
   Number: Branch.create,
   RegExp: Branch.create,
+  Scope: ScopeBranch.create,
   Set: Branch.create,
   String: Branch.create,
   WeakMap: Branch.create
@@ -2127,6 +2193,7 @@ var previewRenderer = new debug.Renderer({
   Object: Preview.create,
   Number: Preview.create,
   RegExp: Preview.create,
+  Scope: Preview.create,
   Set: Preview.create,
   String: Preview.create,
   WeakMap: Preview.create
@@ -2200,11 +2267,14 @@ void function(){
 
   function createRealm(){
     function run(code){
-      var result = renderer.render(realm.evaluate(code));
-      inspector.append(new Result(result));
+      realm.evaluateAsync(code, inspect);
+    }
+
+    function inspect(o){
+      var tree = inspector.append(new Result(renderer.render(o)));
       inspector.element.scrollTop = inspector.element.scrollHeight;
       inspector.refresh();
-      return result;
+      return tree;
     }
 
     var ops = new utility.Feeder(function(op){
@@ -2220,7 +2290,6 @@ void function(){
       inspector.refresh();
     });
 
-    run('this');
 
     realm.on('write', function(args){
       stdout.write.apply(stdout, args);
@@ -2258,6 +2327,11 @@ void function(){
         ops.push(op);
       });
     }, 100);
+
+    realm.evaluateAsync('this', function(result){
+      var item = inspect(result);
+      setTimeout(function(){ item.expand() }, 50);
+    });
   }
   setTimeout(createRealm, 1);
 }();
