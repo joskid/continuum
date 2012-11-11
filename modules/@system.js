@@ -191,7 +191,7 @@ export class Loader {
       resolve  : options.resolve || parent.resolve,
       fetch    : options.fetch || parent.fetch,
       strict   : options.strict === true,
-      global   : options.global || new Function('return this')(),
+      global   : options.global || $__global,
       baseURL  : options.baseURL || parent ? parent.baseURL : '',
       modules  : $__ObjectCreate(null)
     });
