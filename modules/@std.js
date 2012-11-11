@@ -36,29 +36,6 @@ export var SyntaxError             = $__SyntaxError;
 export var TypeError               = $__TypeError;
 export var URIError                = $__URIError;
 
-// standard prototypes
-export var ArrayPrototype          = $__ArrayProto;
-export var BooleanPrototype        = $__BooleanProto;
-export var DatePrototype           = $__DateProto;
-export var FunctionPrototype       = $__FunctionProto;
-export var MapPrototype            = $__MapProto;
-export var NumberPrototype         = $__NumberProto;
-export var ObjectPrototype         = $__ObjectProto;
-export var ProxyPrototype          = $__ProxyProto;
-export var RegExpPrototype         = $__RegExpProto;
-export var SetPrototype            = $__SetProto;
-export var StringPrototype         = $__StringProto;
-export var WeakMapPrototype        = $__WeakMapProto;
-
-// standard error prototypes
-export var ErrorPrototype          = $__ErrorProto;
-export var EvalErrorPrototype      = $__EvalErrorProto;
-export var RangeErrorPrototype     = $__RangeErrorProto;
-export var ReferenceErrorPrototype = $__ReferenceErrorProto;
-export var SyntaxErrorPrototype    = $__SyntaxErrorProto;
-export var TypeErrorPrototype      = $__TypeErrorProto;
-export var URIErrorPrototype       = $__URIErrorProto;
-
 // standard pseudo-modules
 export module JSON                 = '@json';
 export module Math                 = '@math';
