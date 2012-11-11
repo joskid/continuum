@@ -5,38 +5,54 @@ export function Function(...args){
 $__setupConstructor(Function, $__FunctionProto);
 $__defineDirect(Function.prototype, 'name', 'Empty', 0);
 
-{
-  $__defineProps(Function.prototype, {
-    apply(receiver, args){
-      ensureFunction(this, 'apply');
-      if (args == null || typeof args !== 'object', typeof args.length !== 'number') {
-        throw $__Exception('apply_wrong_args', []);
-      }
 
-      if ($__GetNativeBrand(args) !== 'Array') {
-        args = [...args];
-      }
+export function apply(func, receiver, args){
+  ensureFunction(func, '@Function.apply');
+  return $__CallFunction(func, receiver, ensureArgs(args));
+}
 
-      return $__CallFunction(this, receiver, args);
-    },
-    bind(receiver, ...args){
-      ensureFunction(this, 'bind');
-      return $__BoundFunctionCreate(this, receiver, args);
-    },
-    call(receiver, ...args){
-      ensureFunction(this, 'call');
-      return $__CallFunction(this, receiver, args);
-    },
-    toString(){
-      ensureFunction(this, 'toString');
-      return $__FunctionToString(this);
-    }
-  });
+export function bind(func, receiver, ...args){
+  ensureFunction(func, '@Function.bind');
+  return $__BoundFunctionCreate(func, receiver, args);
+}
+
+export function call(func, receiver, ...args){
+  ensureFunction(func, '@Function.call');
+  return $__CallFunction(func, receiver, args);
+}
 
 
-  function ensureFunction(o, name){
-    if (typeof o !== 'function') {
-      throw $__Exception('called_on_non_object', ['Function.prototype.'+name]);
-    }
+$__defineProps(Function.prototype, {
+  apply(receiver, args){
+    ensureFunction(this, 'Function.prototype.apply');
+    return $__CallFunction(this, receiver, ensureArgs(args));
+  },
+  bind(receiver, ...args){
+    ensureFunction(this, 'Function.prototype.bind');
+    return $__BoundFunctionCreate(this, receiver, args);
+  },
+  call(receiver, ...args){
+    ensureFunction(this, 'Function.prototype.call');
+    return $__CallFunction(this, receiver, args);
+  },
+  toString(){
+    ensureFunction(this, 'Function.prototype.toString');
+    return $__FunctionToString(this);
+  }
+});
+
+
+function ensureArgs(o, name){
+  if (o == null || typeof o !== 'object' || typeof o.length !== 'number') {
+    throw $__Exception('apply_wrong_args', []);
+  }
+
+  var brand = $__GetNativeBrand(o);
+  return brand === 'Array' || brand === 'Arguments' ? o : [...o];
+}
+
+function ensureFunction(o, name){
+  if (typeof o !== 'function') {
+    throw $__Exception('called_on_non_function', [name]);
   }
 }
