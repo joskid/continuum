@@ -1,4 +1,4 @@
-function Date(...values){
+export function Date(...values){
   return $__DateCreate(values);
 }
 
@@ -22,3 +22,6 @@ $__defineProps(Date.prototype, {
 });
 
 $__wrapDateMethods(Date.prototype);
+
+
+export let now = Date.now;

@@ -11,7 +11,7 @@ export function dir(object){
 
 }
 
-var timers = $__ObjectCreate(null);
+let timers = $__ObjectCreate(null);
 
 export function time(name){
   timers[name] = Date.now();
@@ -23,3 +23,16 @@ export function timeEnd(name){
     log(name + ': ' + duration + 'ms');
   }
 }
+
+
+export let stdout = {
+  write(text, color){
+    $__Signal('write', [text, color]);
+  },
+  clear(){
+    $__Signal('clear');
+  },
+  backspace(count){
+    $__Signal('backspace', $_ToInteger(count));
+  }
+};

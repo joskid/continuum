@@ -1,4 +1,4 @@
-var ___ = 0b0000,
+let ___ = 0b0000,
     E__ = 0b0001,
     _C_ = 0b0010,
     EC_ = 0b0011,
@@ -20,7 +20,7 @@ function makeDefiner(desc){
   };
 }
 
-var defineNormal = makeDefiner(ECW);
+let defineNormal = makeDefiner(ECW);
 
 export class Handler {
   getOwnPropertyDescriptor(target, name){

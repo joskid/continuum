@@ -1,4 +1,4 @@
-function RegExp(pattern, flags){
+export function RegExp(pattern, flags){
   if ($__IsConstructCall()) {
     if (pattern === undefined) {
       pattern = '';

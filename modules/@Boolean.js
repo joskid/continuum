@@ -1,4 +1,4 @@
-function Boolean(value){
+export function Boolean(value){
   value = $__ToBoolean(value);
   if ($__IsConstructCall()) {
     return $__BooleanCreate(value);

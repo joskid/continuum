@@ -1,4 +1,4 @@
-function Number(value){
+export function Number(value){
   value = $__ToNumber(value);
   if ($__IsConstructCall()) {
     return $__NumberCreate(value);
@@ -41,7 +41,20 @@ $__defineProps(Number, {
   }
 });
 
-var isFinite = Number.isFinite;
+
+export let EPSILON           = Number.EPSILON;
+export let MAX_INTEGER       = Number.MAX_INTEGER;
+export let MAX_VALUE         = Number.MAX_VALUE;
+export let MIN_VALUE         = Number.MIN_VALUE;
+export let NaN               = Number.NaN;
+export let NEGATIVE_INFINITY = Number.NEGATIVE_INFINITY;
+export let POSITIVE_INFINITY = Number.POSITIVE_INFINITY;
+export let isNaN             = Number.isNaN;
+export let isFinite          = Number.isFinite;
+export let isInteger         = Number.isInteger;
+export let toInteger         = Number.toInteger;
+
+
 
 $__defineProps(Number.prototype, {
   toString(radix){
