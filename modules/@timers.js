@@ -24,4 +24,9 @@ let setTimeout = function setTimeout(callback, milliseconds){
   return $__SetTimer(callback, milliseconds, false);
 }
 
+$__setupFunction(clearInterval);
+$__setupFunction(clearTimeout);
+$__setupFunction(setInterval);
+$__setupFunction(setTimeout);
+
 export clearInterval, clearTimeout, setInterval, setTimeout;

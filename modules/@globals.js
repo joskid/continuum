@@ -18,5 +18,9 @@ let isNaN = function isNaN(number){
 }
 
 
+$__setupFunction(isFinite);
+$__setupFunction(isNaN);
+
+
 export decodeURI, decodeURIComponent, encodeURI, encodeURIComponent,
        escape, eval, parseInt, parseFloat, isFinite, isNaN;

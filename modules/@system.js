@@ -41,6 +41,14 @@
     return obj;
   };
 
+  $__setupFunction = function setupFunction(func, name){
+    $__SetInternal(func, 'Native', true);
+    if (name !== undefined) {
+      $__defineDirect(func, 'name', name, ___);
+    }
+    $__deleteDirect(func, 'prototype');
+  };
+
   $__defineConstants = function defineConstants(obj, props){
     var keys = $__Enumerate(props, false, false);
     for (var i=0; i < keys.length; i++) {
