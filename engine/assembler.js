@@ -194,8 +194,14 @@ var assembler = (function(exports){
       code: this
     });
 
-    this.topLevel = node.type === 'Program';
-    var body = this.topLevel ? node : node.body;
+    if (node.type === 'Program') {
+      this.topLevel = true;
+      body = node;
+      this.imports = Imports(node);
+    } else {
+      this.topLevel = false;
+      body = node.body;
+    }
 
     define(this, {
       body: body,
@@ -537,7 +543,12 @@ var assembler = (function(exports){
     BlockStatement   : 'body',
     ExportDeclaration: true
   });
-      //collectImports = collector({ ImportDeclaration: true });
+
+  var collectImports = collector({
+    Program          : 'body',
+    BlockStatement   : 'body',
+    ImportDeclaration: true
+  });
 
 
   var findExportedDeclarations = collector({
@@ -778,6 +789,56 @@ var assembler = (function(exports){
         PUT();
       }
     }
+  }
+
+  function Import(origin, specifiers){
+    this.origin = origin;
+    this.specifiers = specifiers;
+  }
+
+  var importSpecifiers = {
+    Glob: function(){
+      return ['*', '*'];
+    },
+    Path: function(node){
+      return map(node.body, function(subpath){
+        return importSpecifiers[subpath.type](subpath);
+      });
+    },
+    ImportSpecifier: function(node){
+      var name = importSpecifiers[node.id.type](node.id);
+      var from = node.from === null ? name : importSpecifiers[node.from.type](node.from);
+      return [name, from];
+    },
+    Identifier: function(node){
+      return node.name;
+    },
+    Literal: function(node){
+      return node.value;
+    }
+  };
+
+  function Imports(node){
+    var decls = collectImports(node),
+        imported = [];
+
+    each(decls, function(decl, i){
+      var origin = importSpecifiers[decl.from.type](decl.from),
+          specifiers = create(null);
+
+      each(decl.specifiers, function(specifier){
+        var result = importSpecifiers[specifier.type](specifier);
+        result = typeof result === 'string' ? [result, result] : result;
+        if (!(result[1] instanceof Array)) {
+          result[1] = [result[1]];
+        }
+        specifiers[result[0]] = result[1];
+      });
+
+      imported.push(new Import(origin, specifiers));
+    });
+
+    return imported;
   }
 
   function args(node){
