@@ -1262,11 +1262,8 @@ var assembler = (function(exports){
   function MethodDefinition(node){}
 
   function ModuleDeclaration(node){
-    recurse(node.id);
-    if (node.from) {
-      recurse(node.from);
-      IMPORT();
-    } else {
+    if (!node.from) {
+      recurse(node.id);
       node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.MODULE, context.code.Strict);
       context.queue(node.Code);
     }
