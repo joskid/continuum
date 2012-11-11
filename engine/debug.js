@@ -499,8 +499,8 @@ var debug = (function(exports){
       },
       function getParams(){
         var params = this.subject.FormalParameters;
-        if (params && params.ArgNames) {
-          var names = params.ArgNames.slice();
+        if (params && params.BoundNames) {
+          var names = params.BoundNames.slice();
           if (params.Rest) {
             names.rest = true;
           }

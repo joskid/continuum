@@ -174,14 +174,13 @@ var assembler = (function(exports){
     this.length = 0;
     if (params) {
       push.apply(this, params)
-      this.ArgNames = BoundNames(params);
+      this.BoundNames = BoundNames(params);
     } else {
-      this.ArgNames = [];
+      this.BoundNames = [];
     }
     this.Rest = rest;
-    this.BoundNames = BoundNames(node);//.map(intern);
-    this.ExpectedArgumentCount = this.ArgNames.length;
-    if (rest) this.ArgNames.push(rest.name);
+    this.ExpectedArgumentCount = this.BoundNames.length;
+    if (rest) this.BoundNames.push(rest.name);
   }
 
 
@@ -502,16 +501,10 @@ var assembler = (function(exports){
 
 
   function BoundNames(node){
-    var names = [];
     if (isFunction(node) || node.type === 'ClassDeclaration') {
-      names = names.concat(boundNamesCollector(node.params));
-      if (node.rest) {
-        names = names.concat(boundNamesCollector(node.rest));
-      }
       node = node.body;
     }
-
-    return names.concat(boundNamesCollector(node));
+    return boundNamesCollector(node);
   }
 
   var LexicalDeclarations = (function(lexical){

@@ -817,7 +817,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
 
-  function moduleEvaluation(source, global, name, callback){
+  function ModuleEvaluation(source, global, name, callback){
     var script = new Script({
       name: name,
       natives: true,
@@ -829,32 +829,27 @@ var runtime = (function(GLOBAL, exports, undefined){
       return callback(script.error);
     }
 
-    var realm = global.Realm || global.Prototype.Realm,
-        sandbox = new GlobalEnvironmentRecord(new $Object),
-        sandboxRealm = create(realm);
+    var sandboxRealm = create(global.Realm || global.Prototype.Realm),
+        sandbox = sandboxRealm.subscope(),
+        ctx = new ExecutionContext(context, sandbox, sandboxRealm, script.bytecode);
 
-    sandbox.bindings.NativeBrand = BRANDS.GlobalObject;
-    sandbox.outer = global.env;
-    sandboxRealm.globalEnv = sandbox;
+    ExecutionContext.push(ctx);
 
-    ExecutionContext.push(new ExecutionContext(context, sandbox, sandboxRealm, script.bytecode));
     var status = TopLevelDeclarationInstantiation(script.bytecode);
-
     if (status && status.Abrupt) {
-      return callback(result);
+      sandboxRealm.emit(status.type, status);
+      context === ctx && ExecutionContext.pop();
+      return callback(status);
     }
 
     if (!script.bytecode.imports || !script.bytecode.imports.length) {
-      if (!prepareToRun(sandboxRealm, script.bytecode, sandbox)) {
-        run(sandboxRealm, script.thunk, script.bytecode)
-        callback(new $Module(sandbox.bindings, script.bytecode.ExportedNames));
-      }
+      run(sandboxRealm, script.thunk, script.bytecode);
+      context === ctx && ExecutionContext.pop();
+      return callback(new $Module(sandbox.bindings, script.bytecode.ExportedNames));
     }
 
+    context === ctx && ExecutionContext.pop();
     resolveImports(script.bytecode, function(modules, result){
-      if (result = prepareToRun(sandboxRealm, script.bytecode, sandbox)) {
-        return callback(result);
-      }
       each(script.bytecode.imports, function(imported){
         var module = modules[imported.origin];
         iterate(imported.specifiers, function(path, name){
@@ -872,7 +867,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         });
       });
 
+      ExecutionContext.push(ctx);
       run(sandboxRealm, script.thunk, script.bytecode);
+      context === ctx && ExecutionContext.pop();
       callback(new $Module(sandbox.bindings, script.bytecode.ExportedNames));
     });
   }
@@ -1990,7 +1987,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     this.ThisMode = kind === ARROW ? 'lexical' : strict ? 'strict' : 'global';
     this.Strict = !!strict;
     this.Realm = realm;
-    this.Scope = new DeclarativeEnvironmentRecord(scope);
+    this.Scope = scope;
     this.Code = code;
     if (holder !== undefined) {
       this.Home = holder;
@@ -3685,7 +3682,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     },
 
     EvaluateModule: function(source, global, name, callback){
-      moduleEvaluation(source, global, name, function(result){
+      ModuleEvaluation(source, global, name, function(result){
         callback.Call(undefined, [result]);
       });
     },
@@ -4175,7 +4172,8 @@ var runtime = (function(GLOBAL, exports, undefined){
     filename: 'module-init.js',
     source: 'import * from "@std";\n'+
             'for (let k in this) {\n'+
-            '  Object.defineProperty(this, k, { enumerable: false });\n'+
+            '  let isConstant = typeof this[k] !== "function" && typeof this[k] !== "object";\n'+
+            '  Object.defineProperty(this, k, { enumerable: false, configurable: !isConstant, writable: !isConstant });\n'+
             '}'
   });
 
@@ -4191,7 +4189,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, mutationScopeScript.bytecode);
     realm.evaluate(emptyClassScript, true);
 
-    moduleEvaluation(require('../modules')['@system'], realm.global, '@system', function(){
+    ModuleEvaluation(require('../modules')['@system'], realm.global, '@system', function(){
       realm.evaluateAsync(moduleInitScript, function(){
         deactivate(realm);
         realm.state = 'idle';
@@ -4333,10 +4331,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     this.intrinsics.FunctionProto.Realm = this;
     this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
     hide(this.intrinsics.FunctionProto, 'Scope');
-
-    for (var k in atoms) {
-      defineDirect(this.global, k, atoms[k], ___);
-    }
 
     for (var k in natives) {
       this.natives.binding({ name: k, call: natives[k] });
