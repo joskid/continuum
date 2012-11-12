@@ -1658,7 +1658,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     function FunctionEnvironmentRecord(receiver, method){
       DeclarativeEnvironmentRecord.call(this, method.Scope);
       this.thisValue = receiver;
-      this.HomeObject = method.Home;
+      this.HomeObject = method.HomeObject;
       this.MethodName = method.MethodName;
     }
 
@@ -2077,7 +2077,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.Scope = scope;
       this.Code = code;
       if (holder !== undefined) {
-        this.Home = holder;
+        this.HomeObject = holder;
       }
       if (method) {
         this.MethodName = name;
