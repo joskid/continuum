@@ -13,13 +13,14 @@ function J(value){
     throw $__Exception('circular_structure', []);
   }
 
-  var stepback = indent;
+  var stepback = indent,
+      partial = [];
+
   indent += gap;
   stack.add(value);
 
   if ($__GetNativeBrand(value) === 'Array') {
-    var brackets = ['[', ']'],
-        partial = [];
+    var brackets = ['[', ']'];
 
     for (var i=0, len = value.length; i < len; i++) {
       var prop = Str(i, value);
@@ -27,7 +28,6 @@ function J(value){
     }
   } else {
     var brackets = ['{', '}'],
-        partial = [],
         keys = PropertyList || $__Enumerate(value, false, true),
         colon = gap ? ': ' : ':';
 

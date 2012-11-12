@@ -20,7 +20,7 @@ export function Map(iterable){
 
 
 $__setupConstructor(Map, $__MapProto);
-
+{
 $__defineProps(Map.prototype, {
   clear(){
     ensureMap(this, 'clear');
@@ -132,4 +132,5 @@ function ensureMap(o, name){
   if (!o || typeof o !== 'object' || !$__HasInternal(o, 'MapData')) {
     throw Exception('called_on_incompatible_object', ['Map.prototype.'+name]);
   }
+}
 }

@@ -19,7 +19,7 @@ export function WeakMap(iterable){
 }
 
 $__setupConstructor(WeakMap, $__WeakMapProto);
-
+{
 $__defineProps(WeakMap.prototype, {
   set(key, value){
     ensureWeakMap(this, key, 'set');
@@ -49,4 +49,5 @@ function ensureWeakMap(o, p, name){
   if (typeof p === 'object' ? p === null : typeof p !== 'function') {
     throw $__Exception('invalid_weakmap_key', []);
   }
+}
 }

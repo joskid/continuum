@@ -26,7 +26,7 @@ export function Set(iterable){
 
 
 $__setupConstructor(Set, $__SetProto);
-
+{
 $__defineProps(Set.prototype, {
   clear(){
     return $__MapClear(ensureSet(this));
@@ -125,3 +125,4 @@ $__defineProps(SetIterator.prototype, {
 });
 
 let next = SetIterator.prototype.next;
+}

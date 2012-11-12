@@ -32,7 +32,7 @@ $__defineProps(Array, {
 export { isArray: Array.isArray,
          from: Array.from };
 
-
+{
 $__defineProps(Array.prototype, {
   every(callback, context){
     var array = $__ToObject(this),
@@ -384,3 +384,4 @@ class ArrayIterator {
 $__hideEverything(ArrayIterator);
 
 let next = ArrayIterator.prototype.next;
+}
