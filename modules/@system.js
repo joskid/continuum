@@ -52,7 +52,7 @@
   $__defineConstants = function defineConstants(obj, props){
     var keys = $__Enumerate(props, false, false);
     for (var i=0; i < keys.length; i++) {
-      $__defineDirect(obj, keys[i], props[keys[i]], ___);
+      $__defineDirect(obj, keys[i], props[keys[i]], 0);
     }
   };
 

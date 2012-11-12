@@ -1,5 +1,5 @@
 // standard constants
-const NaN       = +'i';
+const NaN       = +'NaN';
 const Infinity  = 1 / 0;
 const undefined = void 0;
 

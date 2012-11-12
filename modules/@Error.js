@@ -1,28 +1,28 @@
-function Error(message){
+export function Error(message){
   this.message = message;
 }
 
-function EvalError(message){
+export function EvalError(message){
   this.message = message;
 }
 
-function RangeError(message){
+export function RangeError(message){
   this.message = message;
 }
 
-function ReferenceError(message){
+export function ReferenceError(message){
   this.message = message;
 }
 
-function SyntaxError(message){
+export function SyntaxError(message){
   this.message = message;
 }
 
-function TypeError(message){
+export function TypeError(message){
   this.message = message;
 }
 
-function URIError(message){
+export function URIError(message){
   this.message = message;
 }
 
@@ -40,5 +40,3 @@ $__setupConstructor(ReferenceError, $__ReferenceErrorProto);
 $__setupConstructor(SyntaxError, $__SyntaxErrorProto);
 $__setupConstructor(TypeError, $__TypeErrorProto);
 $__setupConstructor(URIError, $__URIErrorProto);
-
-export Error, EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError;

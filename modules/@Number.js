@@ -9,14 +9,23 @@ export function Number(value){
 
 $__setupConstructor(Number, $__NumberProto);
 
+export let
+  EPSILON           = 2.220446049250313e-16,
+  MAX_INTEGER       = 9007199254740992,
+  MAX_VALUE         = 1.7976931348623157e+308,
+  MIN_VALUE         = 5e-324,
+  NaN               = +'NaN',
+  NEGATIVE_INFINITY = 1 / 0,
+  POSITIVE_INFINITY = 1 / -0;
+
 $__defineConstants(Number, {
-  EPSILON: 2.220446049250313e-16,
-  MAX_INTEGER: 9007199254740992,
-  MAX_VALUE: 1.7976931348623157e+308,
-  MIN_VALUE: 5e-324,
-  NaN: NaN,
-  NEGATIVE_INFINITY: -Infinity,
-  POSITIVE_INFINITY: Infinity
+  EPSILON          : EPSILON,
+  MAX_INTEGER      : MAX_INTEGER,
+  MAX_VALUE        : MAX_VALUE,
+  MIN_VALUE        : MIN_VALUE,
+  NaN              : NaN,
+  NEGATIVE_INFINITY: NEGATIVE_INFINITY,
+  POSITIVE_INFINITY: POSITIVE_INFINITY
 });
 
 $__defineProps(Number, {
@@ -41,20 +50,7 @@ $__defineProps(Number, {
   }
 });
 
-
-export let EPSILON           = Number.EPSILON,
-           MAX_INTEGER       = Number.MAX_INTEGER,
-           MAX_VALUE         = Number.MAX_VALUE,
-           MIN_VALUE         = Number.MIN_VALUE,
-           NaN               = Number.NaN,
-           NEGATIVE_INFINITY = Number.NEGATIVE_INFINITY,
-           POSITIVE_INFINITY = Number.POSITIVE_INFINITY,
-           isNaN             = Number.isNaN,
-           isFinite          = Number.isFinite,
-           isInteger         = Number.isInteger,
-           toInteger         = Number.toInteger;
-
-
+let isFinite = Number.isFinite;
 
 $__defineProps(Number.prototype, {
   toString(radix){

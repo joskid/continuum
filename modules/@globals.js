@@ -7,12 +7,12 @@ let decodeURI          = $__decodeURI,
     parseInt           = $__parseInt,
     parseFloat         = $__parseFloat;
 
-let isFinite = function isFinite(number){
+function isFinite(number){
   number = $__ToNumber(number);
   return number === number && number !== Infinity && number !== -Infinity;
 }
 
-let isNaN = function isNaN(number){
+function isNaN(number){
   number = $__ToNumber(number);
   return number !== number;
 }

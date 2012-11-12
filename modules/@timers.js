@@ -1,14 +1,14 @@
-let clearInterval = function clearInterval(id){
+export function clearInterval(id){
   id = $__ToInteger(id);
   $__ClearTimer(id);
 }
 
-let clearTimeout = function clearTimeout(id){
+export function clearTimeout(id){
   id = $__ToInteger(id);
   $__ClearTimer(id);
 }
 
-let setInterval = function setInterval(callback, milliseconds){
+export function setInterval(callback, milliseconds){
   milliseconds = $__ToInteger(milliseconds);
   if (typeof callback !== 'function') {
     callback = $__ToString(callback);
@@ -16,7 +16,7 @@ let setInterval = function setInterval(callback, milliseconds){
   return $__SetTimer(callback, milliseconds, true);
 }
 
-let setTimeout = function setTimeout(callback, milliseconds){
+export function setTimeout(callback, milliseconds){
   milliseconds = $__ToInteger(milliseconds);
   if (typeof callback !== 'function') {
     callback = $__ToString(callback);
@@ -28,5 +28,3 @@ $__setupFunction(clearInterval);
 $__setupFunction(clearTimeout);
 $__setupFunction(setInterval);
 $__setupFunction(setTimeout);
-
-export clearInterval, clearTimeout, setInterval, setTimeout;
