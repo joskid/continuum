@@ -2281,13 +2281,6 @@ void function(){
       instructions.addInstruction(op);
     });
 
-    realm.on('throw', function(err){
-      console.log(err);
-      inspector.append(new Result(renderer.render(err)));
-      inspector.element.scrollTop = inspector.element.scrollHeight;
-      inspector.refresh();
-    });
-
     realm.on('write', function(args){
       stdout.write.apply(stdout, args);
     });

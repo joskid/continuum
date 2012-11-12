@@ -482,20 +482,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
 
-
-  function PropertyDefinitionEvaluation(kind, obj, key, code) {
-    if (kind === 'get') {
-      return DefineGetter(obj, key, code);
-    } else if (kind === 'set') {
-      return DefineSetter(obj, key, code);
-    } else if (kind === 'method') {
-      return DefineMethod(obj, key, code);
-    }
-  }
-
-  var DefineMethod, DefineGetter, DefineSetter;
-
-  void function(){
+  var PropertyDefinitionEvaluation = (function(){
     function makeDefiner(constructs, field, desc){
       return function(obj, key, code) {
 
@@ -514,25 +501,35 @@ var runtime = (function(GLOBAL, exports, undefined){
       };
     }
 
-    DefineMethod = makeDefiner(false, VALUE, {
+    var DefineMethod = makeDefiner(false, VALUE, {
       Value: undefined,
       Writable: true,
       Enumerable: true,
       Configurable: true
     });
 
-    DefineGetter = makeDefiner(true, GET, {
+    var DefineGetter = makeDefiner(true, GET, {
       Get: undefined,
       Enumerable: true,
       Configurable: true
     });
 
-    DefineSetter = makeDefiner(true, SET, {
+    var DefineSetter = makeDefiner(true, SET, {
       Set: undefined,
       Enumerable: true,
       Configurable: true
     });
-  }();
+
+    return function PropertyDefinitionEvaluation(kind, obj, key, code) {
+      if (kind === 'get') {
+        return DefineGetter(obj, key, code);
+      } else if (kind === 'set') {
+        return DefineSetter(obj, key, code);
+      } else if (kind === 'method') {
+        return DefineMethod(obj, key, code);
+      }
+    };
+  })();
 
 
 
@@ -787,96 +784,9 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  function resolveImports(code, done){
-    var modules = create(null);
-    if (code.imports) {
-      var load = intrinsics.System.Get('load'),
-          count = code.imports.length;
-
-      var callback = {
-        Call: function(receiver, args){
-          var result = args[0],
-              internals = result.hiddens['loader-internals'];
-
-          if (result instanceof $Module) {
-            modules[internals.mrl] = result;
-          } else {}
-
-          if (!--count) {
-            done(modules);
-          }
-        }
-      };
-
-      each(code.imports, function(imported){
-        load.Call(intrinsics.System, [imported.origin, callback, callback]);
-      });
-    } else {
-      done(modules);
-    }
-  }
-
-
-  function ModuleEvaluation(source, global, name, callback){
-    var script = new Script({
-      name: name,
-      natives: true,
-      source: source,
-      scope: SCOPE.MODULE
-    });
-
-    if (script.error) {
-      return callback(script.error);
-    }
-
-    var sandboxRealm = create(global.Realm || global.Prototype.Realm),
-        sandbox = sandboxRealm.subscope(),
-        ctx = new ExecutionContext(context, sandbox, sandboxRealm, script.bytecode);
-
-    ExecutionContext.push(ctx);
-
-    var status = TopLevelDeclarationInstantiation(script.bytecode);
-    if (status && status.Abrupt) {
-      sandboxRealm.emit(status.type, status);
-      context === ctx && ExecutionContext.pop();
-      return callback(status);
-    }
-
-    if (!script.bytecode.imports || !script.bytecode.imports.length) {
-      run(sandboxRealm, script.thunk, script.bytecode);
-      context === ctx && ExecutionContext.pop();
-      return callback(new $Module(sandbox.bindings, script.bytecode.ExportedNames));
-    }
-
-    context === ctx && ExecutionContext.pop();
-    resolveImports(script.bytecode, function(modules, result){
-      each(script.bytecode.imports, function(imported){
-        var module = modules[imported.origin];
-        iterate(imported.specifiers, function(path, name){
-          if (name === '*') {
-            module.properties.forEach(function(prop){
-              sandbox.SetMutableBinding(prop[0], module.Get(prop[0]));
-            });
-          } else {
-            var obj = module;
-            each(path, function(part){
-              obj = obj.Get(part);
-            });
-            sandbox.SetMutableBinding(name, obj);
-          }
-        });
-      });
-
-      ExecutionContext.push(ctx);
-      run(sandboxRealm, script.thunk, script.bytecode);
-      context === ctx && ExecutionContext.pop();
-      callback(new $Module(sandbox.bindings, script.bytecode.ExportedNames));
-    });
-  }
-
   // ## IdentifierResolution
 
-  function IdentifierResolution(name) {
+  function IdentifierResolution(context, name) {
     return GetIdentifierReference(context.LexicalEnvironment, name, context.strict);
   }
 
@@ -887,7 +797,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (env) {
         env.InitializeBinding(pattern.name, value);
       } else {
-        return PutValue(IdentifierResolution(pattern.name), value);
+        return PutValue(IdentifierResolution(context, pattern.name), value);
       }
     } else if (pattern.type === 'ArrayPattern') {
       return IndexedBindingInitialization(pattern, value, 0, env);
@@ -930,7 +840,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   function IndexedBindingInitialization(pattern, array, i, env){
     for (var element; element = pattern.elements[i]; i++) {
       if (element.type === 'SpreadElement') {
-        var value = context.SpreadDestructuring(array, i);
+        var value = context.destructureSpread(array, i);
         if (value.Abrupt) {
           return value;
         }
@@ -1045,16 +955,14 @@ var runtime = (function(GLOBAL, exports, undefined){
   }
 
 
-  var MapInitialization = CollectionInitializer(MapData, 'Map');
+  var MapData = (function(){
+    function LinkedItem(key, next){
+      this.key = key;
+      this.next = next;
+      this.previous = next.previous;
+      next.previous = next.previous.next = this;
+    }
 
-  function LinkedItem(key, next){
-    this.key = key;
-    this.next = next;
-    this.previous = next.previous;
-    next.previous = next.previous.next = this;
-  }
-
-  void function(){
     define(LinkedItem.prototype, [
       function setNext(item){
         this.next = item;
@@ -1071,24 +979,22 @@ var runtime = (function(GLOBAL, exports, undefined){
         return this.data;
       }
     ]);
-  }();
 
 
-  function MapData(){
-    this.id = uid++ + '';
-    this.size = 0;
-    this.strings = create(null);
-    this.numbers = create(null);
-    this.others = create(null);
-    this.guard = create(LinkedItem.prototype);
-    this.guard.next = this.guard.previous = this.guard;
-    this.guard.key = {};
-    this.lastLookup = this.guard;
-  }
+    function MapData(){
+      this.id = uid++ + '';
+      this.size = 0;
+      this.strings = create(null);
+      this.numbers = create(null);
+      this.others = create(null);
+      this.guard = create(LinkedItem.prototype);
+      this.guard.next = this.guard.previous = this.guard;
+      this.guard.key = {};
+      this.lastLookup = this.guard;
+    }
 
-  MapData.sigil = create(null);
+    MapData.sigil = create(null);
 
-  void function(){
     define(MapData.prototype, [
       function add(key){
         this.size++;
@@ -1172,18 +1078,16 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
     ]);
-  }();
+
+    return MapData;
+  })();
 
 
+  var WeakMapData = (function(){
+    function WeakMapData(){
+      this.id = uid++ + '';
+    }
 
-
-  var WeakMapInitialization = CollectionInitializer(WeakMapData, 'WeakMap');
-
-  function WeakMapData(){
-    this.id = uid++ + '';
-  }
-
-  void function(){
     define(WeakMapData.prototype, [
       function set(key, value){
         if (value === undefined) {
@@ -1209,7 +1113,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         return false;
       }
     ]);
-  }();
+
+    return WeakMapData;
+  })();
 
 
 
@@ -1282,6 +1188,209 @@ var runtime = (function(GLOBAL, exports, undefined){
       return desc;
     }
   }
+
+
+  function Element(context, prop, base){
+    var result = CheckObjectCoercible(base);
+    if (result.Abrupt) {
+      return result;
+    }
+
+    var name = ToPropertyName(prop);
+    if (name && name.Completion) {
+      if (name.Abrupt) {
+        return name;
+      } else {
+        name = name.value;
+      }
+    }
+
+    return new Reference(base, name, context.Strict);
+  }
+
+  function SuperReference(context, prop){
+    var env = context.getThisEnvironment();
+    if (!env.HasSuperBinding()) {
+      return ThrowException('invalid_super_binding');
+    } else if (prop === null) {
+      return env;
+    }
+
+    var baseValue = env.GetSuperBase(),
+        status = CheckObjectCoercible(baseValue);
+
+    if (status.Abrupt) {
+      return status;
+    }
+
+    if (prop === false) {
+      var key = env.GetMethodName();
+    } else {
+      var key = ToPropertyName(prop);
+      if (key && key.Completion) {
+        if (key.Abrupt) {
+          return key;
+        } else {
+          return key.value;
+        }
+      }
+    }
+
+    var ref = new Reference(baseValue, key, context.Strict);
+    ref.thisValue = env.GetThisBinding();
+    return ref;
+  }
+
+  function GetThisEnvironment(context){
+    var env = context.LexicalEnvironment;
+    while (env) {
+      if (env.HasThisBinding())
+        return env;
+      env = env.outer;
+    }
+  }
+
+  function ThisResolution(context){
+    return GetThisEnvironment(context).GetThisBinding();
+  }
+
+  function EvaluateConstruct(func, args) {
+    if (typeof func !== OBJECT) {
+      return ThrowException('not_constructor', func);
+    }
+
+    if ('Construct' in func) {
+      return func.Construct(args);
+    } else {
+      return ThrowException('not_constructor', func);
+    }
+  }
+
+  function EvaluateCall(ref, func, args){
+    if (typeof func !== OBJECT || !IsCallable(func)) {
+      return ThrowException('called_non_callable', [ref && ref.name]);
+    }
+
+    if (ref instanceof Reference) {
+      var receiver = IsPropertyReference(ref) ? GetThisValue(ref) : ref.base.WithBaseObject();
+    }
+
+    return func.Call(receiver, args);
+  }
+
+  function SpreadArguments(precedingArgs, spread){
+    if (typeof spread !== 'object') {
+      return ThrowException('spread_non_object');
+    }
+
+    var offset = precedingArgs.length,
+        len = ToUint32(spread.Get('length'));
+
+    if (len && len.Completion) {
+      if (len.Abrupt) {
+        return len;
+      } else {
+        return len.value;
+      }
+    }
+
+    for (var i=0; i < len; i++) {
+      var value = spread.Get(i);
+      if (value && value.Completion) {
+        if (value.Abrupt) {
+          return value;
+        } else {
+          value = value.value;
+        }
+      }
+
+      precedingArgs[i + offset] = value;
+    }
+  }
+
+  function SpreadInitialization(array, offset, spread){
+    if (typeof spread !== 'object') {
+      return ThrowException('spread_non_object');
+    }
+
+    var value, iterator = spread.Iterate();
+
+    while (!(value = Invoke('next', iterator, [])) && !IsStopIteration(value)) {
+      if (value && value.Completion) {
+        if (value.Abrupt) {
+          return value;
+        } else {
+          value = value.value;
+        }
+      }
+      defineDirect(array, offset++, value, ECW);
+    }
+
+    defineDirect(array, 'length', offset, _CW);
+    return offset;
+  }
+
+  function GetTemplateCallSite(context, template){
+    if (!('id' in template)) {
+      GetTemplateCallSite.count = (GetTemplateCallSite.count || 0) + 1;
+      template.id = GetTemplateCallSite.count;
+    }
+    if (template.id in realm.templates) {
+      return context.Realm.templates[template.id];
+    }
+
+    var count = template.length,
+        site = context.createArray(count),
+        raw = context.createArray(count);
+
+    for (var i=0; i < count; i++) {
+      defineDirect(site, i+'', template[i].cooked, E__);
+      defineDirect(raw, i+'', template[i].raw, E__);
+    }
+    defineDirect(site, 'length', count, ___);
+    defineDirect(raw, 'length', count, ___);
+    defineDirect(site, 'raw', raw, ___);
+    site.SetExtensible(false);
+    raw.SetExtensible(false);
+    realm.templates[template.id] = site;
+    return site;
+  }
+
+  function SpreadDestructuring(context, target, index){
+    var array = context.createArray(0);
+    if (target == null) {
+      return array;
+    }
+    if (typeof target !== 'object') {
+      return ThrowException('spread_non_object', typeof target);
+    }
+
+    var len = ToUint32(target.Get('length'));
+    if (len && len.Completion) {
+      if (len.Abrupt) {
+        return len;
+      } else {
+        len = len.value;
+      }
+    }
+
+    var count = len - index;
+    for (var i=0; i < count; i++) {
+      var value = target.Get(index + i);
+      if (value && value.Completion) {
+        if (value.Abrupt) {
+          return value;
+        } else {
+          value = value.value;
+        }
+      }
+      defineDirect(array, i, value, ECW);
+    }
+
+    defineDirect(array, 'length', i, _CW);
+    return array;
+  }
+
 
   // ###########################
   // ###########################
@@ -1380,20 +1489,6 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  function ModuleGetter(ref){
-    var getter = this.Get = {
-      Call: function(){
-        var value = GetValue(ref);
-        ref = null;
-        getter.Call = function(){ return value };
-        return value;
-      }
-    };
-  }
-
-  inherit(ModuleGetter, Accessor);
-
-
 
   function ArgAccessor(name, env){
     this.name = name;
@@ -1407,27 +1502,23 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
-
-
   // #########################
   // ### EnvironmentRecord ###
   // #########################
 
-  function EnvironmentRecord(bindings, outer){
-    this.bindings = bindings;
-    this.outer = outer;
-  }
+  var EnvironmentRecord = (function(){
+    function EnvironmentRecord(bindings, outer){
+      this.bindings = bindings;
+      this.outer = outer;
+    }
 
+    define(EnvironmentRecord.prototype, {
+      bindings: null,
+      withBase: undefined,
+      type: 'Environment',
+      Environment: true
+    });
 
-
-  define(EnvironmentRecord.prototype, {
-    bindings: null,
-    withBase: undefined,
-    type: 'Environment',
-    Environment: true
-  });
-
-  void function(){
     define(EnvironmentRecord.prototype, [
       function EnumerateBindings(){},
       function HasBinding(name){},
@@ -1449,16 +1540,17 @@ var runtime = (function(GLOBAL, exports, undefined){
         return new Reference(this, name, strict);
       }
     ]);
-  }();
 
+    return EnvironmentRecord;
+  })();
 
-  function DeclarativeEnvironmentRecord(outer){
-    EnvironmentRecord.call(this, new Hash, outer);
-    this.consts = new Hash;
-    this.deletables = new Hash;
-  }
+  var DeclarativeEnvironmentRecord = (function(){
+    function DeclarativeEnvironmentRecord(outer){
+      EnvironmentRecord.call(this, new Hash, outer);
+      this.consts = new Hash;
+      this.deletables = new Hash;
+    }
 
-  void function(){
     inherit(DeclarativeEnvironmentRecord, EnvironmentRecord, {
       type: 'Declarative Env'
     }, [
@@ -1517,14 +1609,16 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
     ]);
-  }();
+
+    return DeclarativeEnvironmentRecord;
+  })();
 
 
-  function ObjectEnvironmentRecord(object, outer){
-    EnvironmentRecord.call(this, object, outer);
-  }
+  var ObjectEnvironmentRecord = (function(){
+    function ObjectEnvironmentRecord(object, outer){
+      EnvironmentRecord.call(this, object, outer);
+    }
 
-  void function(){
     inherit(ObjectEnvironmentRecord, EnvironmentRecord, {
       type: 'Object Env'
     }, [
@@ -1554,17 +1648,20 @@ var runtime = (function(GLOBAL, exports, undefined){
        return this.bindings.Delete(name, false);
       }
     ]);
-  }();
+
+    return ObjectEnvironmentRecord;
+  })();
 
 
-  function FunctionEnvironmentRecord(receiver, method){
-    DeclarativeEnvironmentRecord.call(this, method.Scope);
-    this.thisValue = receiver;
-    this.HomeObject = method.Home;
-    this.MethodName = method.MethodName;
-  }
 
-  void function(){
+  var FunctionEnvironmentRecord = (function(){
+    function FunctionEnvironmentRecord(receiver, method){
+      DeclarativeEnvironmentRecord.call(this, method.Scope);
+      this.thisValue = receiver;
+      this.HomeObject = method.Home;
+      this.MethodName = method.MethodName;
+    }
+
     inherit(FunctionEnvironmentRecord, DeclarativeEnvironmentRecord, {
       HomeObject: undefined,
       MethodName: undefined,
@@ -1587,16 +1684,19 @@ var runtime = (function(GLOBAL, exports, undefined){
         return this.MethodName;
       }
     ]);
-  }();
+
+    return FunctionEnvironmentRecord;
+  })();
 
 
-  function GlobalEnvironmentRecord(global){
-    ObjectEnvironmentRecord.call(this, global);
-    this.thisValue = this.bindings;
-    this.bindings.env = this;
-  }
 
-  void function(){
+  var GlobalEnvironmentRecord = (function(){
+    function GlobalEnvironmentRecord(global){
+      ObjectEnvironmentRecord.call(this, global);
+      this.thisValue = this.bindings;
+      this.bindings.env = this;
+    }
+
     inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
       outer: null,
       type: 'Global Env'
@@ -1611,65 +1711,56 @@ var runtime = (function(GLOBAL, exports, undefined){
         return '[GlobalEnvironmentRecord]';
       }
     ]);
-  }();
+
+    return GlobalEnvironmentRecord;
+  })();
 
 
-
-  var Proto = {
-    Get: {
-      Call: function(receiver){
-        return receiver.GetPrototype();
-      }
-    },
-    Set: {
-      Call: function(receiver, args){
-        return receiver.SetPrototype(args[0]);
-      }
-    }
-  };
 
 
   // ###############
   // ### $Object ###
   // ###############
 
-  function $Object(proto){
-    if (proto === undefined) {
-      proto = intrinsics.ObjectProto;
-    }
-    this.Prototype = proto;
-    this.properties = new PropertyList;
-    this.hiddens = create(null);
-    this.storage = create(null);
-    $Object.tag(this);
-    if (proto === null) {
-      this.properties.setProperty(['__proto__', null, 6, Proto]);
-    }
+  var $Object = (function(){
+    var Proto = {
+      Get: { Call: function(receiver){ return receiver.GetPrototype() } },
+      Set: { Call: function(receiver, args){ return receiver.SetPrototype(args[0]) } }
+    };
 
-    this.Realm = realm;
-    hide(this, 'hiddens');
-    hide(this, 'storage');
-    hide(this, 'Prototype');
-    hide(this, 'Realm');
-  }
-
-  void function(counter){
-    define($Object, [
-      function tag(object){
-        if (object.id === undefined) {
-          object.id = counter++;
-          hide(object, 'id');
-        }
+    function $Object(proto){
+      if (proto === undefined) {
+        proto = intrinsics.ObjectProto;
       }
-    ]);
-  }(0)
+      this.Prototype = proto;
+      this.properties = new PropertyList;
+      this.hiddens = create(null);
+      this.storage = create(null);
+      $Object.tag(this);
+      if (proto === null) {
+        this.properties.setProperty(['__proto__', null, 6, Proto]);
+      }
 
-  define($Object.prototype, {
-    Extensible: true,
-    NativeBrand: BRANDS.NativeObject
-  });
+      this.Realm = realm;
+      hide(this, 'hiddens');
+      hide(this, 'storage');
+      hide(this, 'Prototype');
+      hide(this, 'Realm');
+    }
 
-  void function(){
+    var counter = 0;
+    define($Object, function tag(object){
+      if (object.id === undefined) {
+        object.id = counter++;
+        hide(object, 'id');
+      }
+    });
+
+    define($Object.prototype, {
+      Extensible: true,
+      NativeBrand: BRANDS.NativeObject
+    });
+
     define($Object.prototype, [
       function GetPrototype(){
         return this.Prototype;
@@ -1954,21 +2045,16 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         return ThrowException('cannot_convert_to_primitive', []);
       },
-    ]);
-  }();
+      function getWrapper(){
+        if (this.wrapper) {
+          return this.wrapper;
+        }
 
-  function PrivateName(name){
-    this.name = name;
-    this.key = Math.random().toString(36).slice(2);
-  }
-
-  void function(){
-    define(PrivateName.prototype, [
-      function toString(){
-        return this.key;
       }
     ]);
-  }();
+
+    return $Object;
+  })();
 
 
 
@@ -1978,52 +2064,52 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ### $Function ###
   // #################
 
-  function $Function(kind, name, params, code, scope, strict, proto, holder, method){
-    if (proto === undefined)
-      proto = intrinsics.FunctionProto;
+  var $Function = (function(){
+    function $Function(kind, name, params, code, scope, strict, proto, holder, method){
+      if (proto === undefined)
+        proto = intrinsics.FunctionProto;
 
-    $Object.call(this, proto);
-    this.FormalParameters = params;
-    this.ThisMode = kind === ARROW ? 'lexical' : strict ? 'strict' : 'global';
-    this.Strict = !!strict;
-    this.Realm = realm;
-    this.Scope = scope;
-    this.Code = code;
-    if (holder !== undefined) {
-      this.Home = holder;
-    }
-    if (method) {
-      this.MethodName = name;
-    }
-
-    if (strict) {
-      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-    } else {
-      defineDirect(this, 'arguments', null, ___);
-      defineDirect(this, 'caller', null, ___);
-    }
-
-    defineDirect(this, 'length', params ? params.ExpectedArgumentCount : 0, ___);
-
-    if (kind !== ARROW) {
-      if (!name && code.name) {
-        name = code.name;
+      $Object.call(this, proto);
+      this.FormalParameters = params;
+      this.ThisMode = kind === ARROW ? 'lexical' : strict ? 'strict' : 'global';
+      this.Strict = !!strict;
+      this.Realm = realm;
+      this.Scope = scope;
+      this.Code = code;
+      if (holder !== undefined) {
+        this.Home = holder;
       }
-      if (typeof name === 'string') {
-        defineDirect(this, 'name', name, ___);
+      if (method) {
+        this.MethodName = name;
       }
+
+      if (strict) {
+        defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
+        defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
+      } else {
+        defineDirect(this, 'arguments', null, ___);
+        defineDirect(this, 'caller', null, ___);
+      }
+
+      defineDirect(this, 'length', params ? params.ExpectedArgumentCount : 0, ___);
+
+      if (kind !== ARROW) {
+        if (!name && code.name) {
+          name = code.name;
+        }
+        if (typeof name === 'string') {
+          defineDirect(this, 'name', name, ___);
+        }
+      }
+
+      hide(this, 'Realm');
+      hide(this, 'Code');
+      hide(this, 'Scope');
+      hide(this, 'FormalParameters');
+      hide(this, 'Strict');
+      hide(this, 'ThisMode');
     }
 
-    hide(this, 'Realm');
-    hide(this, 'Code');
-    hide(this, 'Scope');
-    hide(this, 'FormalParameters');
-    hide(this, 'Strict');
-    hide(this, 'ThisMode');
-  }
-
-  void function(){
     inherit($Function, $Object, {
       NativeBrand: BRANDS.NativeFunction,
       FormalParameters: null,
@@ -2143,37 +2229,37 @@ var runtime = (function(GLOBAL, exports, undefined){
         return false;
       }
     ]);
-  }();
+
+    return $Function;
+  })();
 
 
-  function $NativeFunction(options){
-    if (options.proto === undefined)
-      options.proto = intrinsics.FunctionProto;
-    $Object.call(this, options.proto);
-    defineDirect(this, 'arguments', null, ___);
-    defineDirect(this, 'caller', null, ___);
-    defineDirect(this, 'length', options.length, ___);
-    defineDirect(this, 'name', options.name, ___);
-    this.call = options.call;
-    if (options.construct) {
-      this.construct = options.construct;
+  var $NativeFunction = (function(){
+    function $NativeFunction(options){
+      if (options.proto === undefined)
+        options.proto = intrinsics.FunctionProto;
+      $Object.call(this, options.proto);
+      defineDirect(this, 'arguments', null, ___);
+      defineDirect(this, 'caller', null, ___);
+      defineDirect(this, 'length', options.length, ___);
+      defineDirect(this, 'name', options.name, ___);
+      this.call = options.call;
+      if (options.construct) {
+        this.construct = options.construct;
+      }
+      this.Realm = realm;
+      hide(this, 'Realm');
+      hide(this, 'call');
     }
-    this.Realm = realm;
-    hide(this, 'Realm');
-    hide(this, 'call');
-  }
 
-  void function(){
     inherit($NativeFunction, $Function, {
       Native: true,
     }, [
       function Call(receiver, args){
-        "use strict";
         var result = this.call.apply(receiver, [].concat(args));
         return result && result.type === Return ? result.value : result;
       },
       function Construct(args){
-        "use strict";
         if (this.construct) {
           if (hasDirect(this, 'prototype')) {
             var instance = new $Object(getDirect(this, 'prototype'));
@@ -2188,19 +2274,21 @@ var runtime = (function(GLOBAL, exports, undefined){
         return result && result.type === Return ? result.value : result;
       }
     ]);
-  }();
 
-  function $BoundFunction(target, boundThis, boundArgs){
-    $Object.call(this, intrinsics.FunctionProto);
-    this.TargetFunction = target;
-    this.BoundThis = boundThis;
-    this.BoundArgs = boundArgs;
-    defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-    defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-    defineDirect(this, 'length', getDirect(target, 'length'), ___);
-  }
+    return $NativeFunction;
+  })();
 
-  void function(){
+  var $BoundFunction = (function(){
+    function $BoundFunction(target, boundThis, boundArgs){
+      $Object.call(this, intrinsics.FunctionProto);
+      this.TargetFunction = target;
+      this.BoundThis = boundThis;
+      this.BoundArgs = boundArgs;
+      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
+      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
+      defineDirect(this, 'length', getDirect(target, 'length'), ___);
+    }
+
     inherit($BoundFunction, $Function, {
       TargetFunction: null,
       BoundThis: null,
@@ -2222,13 +2310,15 @@ var runtime = (function(GLOBAL, exports, undefined){
         return This.TargetFunction.HasInstance(arg);
       }
     ]);
-  }();
 
-  function $GeneratorFunction(){
-    $Function.apply(this, arguments);
-  }
+    return $BoundFunction;
+  })();
 
-  void function(){
+  var $GeneratorFunction = (function(){
+    function $GeneratorFunction(){
+      $Function.apply(this, arguments);
+    }
+
     inherit($GeneratorFunction, $Function, [
       function Call(receiver, args){
         if (realm !== this.Realm) {
@@ -2273,39 +2363,41 @@ var runtime = (function(GLOBAL, exports, undefined){
         return result;
       }
     ]);
-  }();
 
-  function setFunction(obj, name, func){
-    setDirect(obj, name, new $NativeFunction({
-      name: name,
-      length: func.length,
-      call: func
-    }));
-  }
+    return $GeneratorFunction;
+  })();
 
 
-  function $Generator(realm, scope, ctx, thunk){
-    $Object.call(this);
-    this.Realm = realm;
-    this.Scope = scope;
-    this.Code = thunk.code;
-    this.ExecutionContext = ctx;
-    this.State = 'newborn';
-    this.thunk = thunk;
+  var $Generator = (function(){
+    function setFunction(obj, name, func){
+      setDirect(obj, name, new $NativeFunction({
+        name: name,
+        length: func.length,
+        call: func
+      }));
+    }
 
-    var self = this;
-    setFunction(this, 'iterator', function(){ return self });
-    setFunction(this, 'next',     function(){ return self.Send() });
-    setFunction(this, 'close',    function(){ return self.Close() });
-    setFunction(this, 'send',     function(v){ return self.Send(v) });
-    setFunction(this, 'throw',    function(v){ return self.Throw(v) });
+    function $Generator(realm, scope, ctx, thunk){
+      $Object.call(this);
+      this.Realm = realm;
+      this.Scope = scope;
+      this.Code = thunk.code;
+      this.ExecutionContext = ctx;
+      this.State = 'newborn';
+      this.thunk = thunk;
 
-    hide(this, 'thunk');
-    hide(this, 'Realm');
-    hide(this, 'Code');
-  }
+      var self = this;
+      setFunction(this, 'iterator', function(){ return self });
+      setFunction(this, 'next',     function(){ return self.Send() });
+      setFunction(this, 'close',    function(){ return self.Close() });
+      setFunction(this, 'send',     function(v){ return self.Send(v) });
+      setFunction(this, 'throw',    function(v){ return self.Throw(v) });
 
-  void function(){
+      hide(this, 'thunk');
+      hide(this, 'Realm');
+      hide(this, 'Code');
+    }
+
     inherit($Generator, $Object, {
       Code: null,
       ExecutionContext: null,
@@ -2366,16 +2458,18 @@ var runtime = (function(GLOBAL, exports, undefined){
         return result;
       }
     ]);
-  }();
 
 
-  function Resume(ctx, completionType, value){
-    ExecutionContext.push(ctx);
-    if (completionType !== 'normal') {
-      value = new AbruptCompletion(completionType, value);
+    function Resume(ctx, completionType, value){
+      ExecutionContext.push(ctx);
+      if (completionType !== 'normal') {
+        value = new AbruptCompletion(completionType, value);
+      }
+      return ctx.currentGenerator.thunk.send(ctx, value);
     }
-    return ctx.currentGenerator.thunk.send(ctx, value);
-  }
+
+    return $Generator;
+  })();
 
 
 
@@ -2385,26 +2479,32 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ### $Date ###
   // #############
 
-  function $Date(value){
-    $Object.call(this, intrinsics.DateProto);
-    this.PrimitiveValue = value;
-  }
+  var $Date = (function(){
+    function $Date(value){
+      $Object.call(this, intrinsics.DateProto);
+      this.PrimitiveValue = value;
+    }
 
-  inherit($Date, $Object, {
-    NativeBrand: BRANDS.NativeDate,
-  });
+    inherit($Date, $Object, {
+      NativeBrand: BRANDS.NativeDate,
+    });
+
+    return $Date;
+  })();
+
+
 
   // ###############
   // ### $String ###
   // ###############
 
-  function $String(value){
-    $Object.call(this, intrinsics.StringProto);
-    this.PrimitiveValue = value;
-    defineDirect(this, 'length', value.length, ___);
-  }
+  var $String = (function(){
+    function $String(value){
+      $Object.call(this, intrinsics.StringProto);
+      this.PrimitiveValue = value;
+      defineDirect(this, 'length', value.length, ___);
+    }
 
-  void function(){
     inherit($String, $Object, {
       NativeBrand: BRANDS.StringWrapper,
       PrimitiveValue: undefined
@@ -2460,37 +2560,47 @@ var runtime = (function(GLOBAL, exports, undefined){
         return unique(numbers(this.PrimitiveValue.length).concat(props));
       }
     ]);
-  }();
+
+    return $String;
+  })();
 
 
   // ###############
   // ### $Number ###
   // ###############
 
-  function $Number(value){
-    $Object.call(this, intrinsics.NumberProto);
-    this.PrimitiveValue = value;
-  }
+  var $Number = (function(){
+    function $Number(value){
+      $Object.call(this, intrinsics.NumberProto);
+      this.PrimitiveValue = value;
+    }
 
-  inherit($Number, $Object, {
-    NativeBrand: BRANDS.NumberWrapper,
-    PrimitiveValue: undefined,
-  });
+    inherit($Number, $Object, {
+      NativeBrand: BRANDS.NumberWrapper,
+      PrimitiveValue: undefined,
+    });
+
+    return $Number;
+  })();
 
 
   // ################
   // ### $Boolean ###
   // ################
 
-  function $Boolean(value){
-    $Object.call(this, intrinsics.BooleanProto);
-    this.PrimitiveValue = value;
-  }
+  var $Boolean = (function(){
+    function $Boolean(value){
+      $Object.call(this, intrinsics.BooleanProto);
+      this.PrimitiveValue = value;
+    }
 
-  inherit($Boolean, $Object, {
-    NativeBrand: BRANDS.BooleanWrapper,
-    PrimitiveValue: undefined,
-  });
+    inherit($Boolean, $Object, {
+      NativeBrand: BRANDS.BooleanWrapper,
+      PrimitiveValue: undefined,
+    });
+
+    return $Boolean;
+  })();
 
 
 
@@ -2498,57 +2608,70 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ### $Map ###
   // ############
 
-  function $Map(){
-    $Object.call(this, intrinsics.MapProto);
-  }
+  var $Map = (function(){
+    function $Map(){
+      $Object.call(this, intrinsics.MapProto);
+    }
 
-  inherit($Map, $Object, {
-    NativeBrand: BRANDS.NativeMap
-  });
+    inherit($Map, $Object, {
+      NativeBrand: BRANDS.NativeMap
+    });
+
+    return $Map;
+  })();
+
 
   // ############
   // ### $Set ###
   // ############
 
-  function $Set(){
-    $Object.call(this, intrinsics.SetProto);
-  }
+  var $Set = (function(){
+    function $Set(){
+      $Object.call(this, intrinsics.SetProto);
+    }
 
-  inherit($Set, $Object, {
-    NativeBrand: BRANDS.NativeSet
-  });
+    inherit($Set, $Object, {
+      NativeBrand: BRANDS.NativeSet
+    });
+
+    return $Set;
+  })();
 
 
   // ################
   // ### $WeakMap ###
   // ################
 
-  function $WeakMap(){
-    $Object.call(this, intrinsics.WeakMapProto);
-  }
+  var $WeakMap = (function(){
+    function $WeakMap(){
+      $Object.call(this, intrinsics.WeakMapProto);
+    }
 
-  inherit($WeakMap, $Object, {
-    NativeBrand: BRANDS.NativeWeakMap,
-  });
+    inherit($WeakMap, $Object, {
+      NativeBrand: BRANDS.NativeWeakMap,
+    });
+
+    return $WeakMap;
+  })();
 
   // ##############
   // ### $Array ###
   // ##############
 
 
-  function $Array(items){
-    $Object.call(this, intrinsics.ArrayProto);
-    if (items instanceof Array) {
-      var len = items.length;
-      for (var i=0; i < len; i++)
-        setDirect(this, i, items[i]);
-    } else {
-      var len = 0;
+  var $Array = (function(){
+    function $Array(items){
+      $Object.call(this, intrinsics.ArrayProto);
+      if (items instanceof Array) {
+        var len = items.length;
+        for (var i=0; i < len; i++)
+          setDirect(this, i, items[i]);
+      } else {
+        var len = 0;
+      }
+      defineDirect(this, 'length', len, _CW);
     }
-    defineDirect(this, 'length', len, _CW);
-  }
 
-  void function(){
     inherit($Array, $Object, {
       NativeBrand: BRANDS.NativeArray
     }, [
@@ -2684,96 +2807,112 @@ var runtime = (function(GLOBAL, exports, undefined){
         return DefineOwn.call(this, key, desc, key);
       }
     ]);
-  }();
+
+    return $Array;
+  })();
 
 
   // ###############
   // ### $RegExp ###
   // ###############
 
-  function $RegExp(primitive){
-    if (!this.properties) {
-      $Object.call(this, intrinsics.RegExpProto);
+  var $RegExp = (function(){
+    function $RegExp(primitive){
+      if (!this.properties) {
+        $Object.call(this, intrinsics.RegExpProto);
+      }
+      this.PrimitiveValue = primitive;
+      defineDirect(this, 'global', primitive.global, ___);
+      defineDirect(this, 'ignoreCase', primitive.ignoreCase, ___);
+      defineDirect(this, 'lastIndex', primitive.lastIndex, __W);
+      defineDirect(this, 'multiline', primitive.multiline, ___);
+      defineDirect(this, 'source', primitive.source, ___);
     }
-    this.PrimitiveValue = primitive;
-    defineDirect(this, 'global', primitive.global, ___);
-    defineDirect(this, 'ignoreCase', primitive.ignoreCase, ___);
-    defineDirect(this, 'lastIndex', primitive.lastIndex, __W);
-    defineDirect(this, 'multiline', primitive.multiline, ___);
-    defineDirect(this, 'source', primitive.source, ___);
-  }
 
-  inherit($RegExp, $Object, {
-    NativeBrand: BRANDS.NativeRegExp,
-    Match: null,
-  });
+    inherit($RegExp, $Object, {
+      NativeBrand: BRANDS.NativeRegExp,
+      Match: null,
+    });
+
+    return $RegExp;
+  })();
 
 
-  // ####################
-  // ### $PrivateName ###
-  // ####################
+  // ###############
+  // ### $Symbol ###
+  // ###############
 
-  function $PrivateName(proto){
-    $Object.call(this, intrinsics.PrivateNameProto);
-  }
+  var $Symbol = (function(){
+    function $Symbol(proto){
+      $Object.call(this, intrinsics.SymbolProto);
+    }
 
-  inherit($PrivateName, $Object, {
-    NativeBrand: BRANDS.NativePrivateName
-  });
+    inherit($Symbol, $Object, {
+      NativeBrand: BRANDS.NativeSymbol
+    });
 
+    return $Symbol;
+  })();
 
 
   // ##################
   // ### $Arguments ###
   // ##################
 
-  function $Arguments(length){
-    $Object.call(this);
-    defineDirect(this, 'length', length, _CW);
-  }
-
-  inherit($Arguments, $Object, {
-    NativeBrand: BRANDS.NativeArguments,
-    ParameterMap: null,
-  });
-
-
-  function $StrictArguments(args){
-    $Arguments.call(this, args.length);
-    for (var i=0; i < args.length; i++) {
-      defineDirect(this, i+'', args[i], ECW);
+  var $Arguments = (function(){
+    function $Arguments(length){
+      $Object.call(this);
+      defineDirect(this, 'length', length, _CW);
     }
 
-    defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-    defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-  }
+    inherit($Arguments, $Object, {
+      NativeBrand: BRANDS.NativeArguments,
+      ParameterMap: null,
+    });
 
-  inherit($StrictArguments, $Arguments);
+    return $Arguments;
+  })();
 
 
-
-
-  function $MappedArguments(names, env, args, func){
-    var mapped = create(null);
-    $Arguments.call(this, args.length);
-
-    this.ParameterMap = new $Object;
-    this.isMapped = false;
-
-    for (var i=0; i < args.length; i++) {
-      defineDirect(this, i+'', args[i], ECW);
-      var name = names[i];
-      if (i < names.length && !(name in mapped)) {
-        this.isMapped = true;
-        mapped[name] = true;
-        defineDirect(this.ParameterMap, name, new ArgAccessor(name, env), _CA);
+  var $StrictArguments = (function(){
+    function $StrictArguments(args){
+      $Arguments.call(this, args.length);
+      for (var i=0; i < args.length; i++) {
+        defineDirect(this, i+'', args[i], ECW);
       }
+
+      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
+      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
     }
 
-    defineDirect(this, 'callee', func, _CW);
-  }
+    inherit($StrictArguments, $Arguments);
 
-  void function(){
+    return $StrictArguments;
+  })();
+
+
+
+  var $MappedArguments = (function(){
+    function $MappedArguments(names, env, args, func){
+      var mapped = create(null);
+      $Arguments.call(this, args.length);
+
+      this.ParameterMap = new $Object;
+      this.isMapped = false;
+
+      for (var i=0; i < args.length; i++) {
+        defineDirect(this, i+'', args[i], ECW);
+        var name = names[i];
+        if (i < names.length && !(name in mapped)) {
+          this.isMapped = true;
+          mapped[name] = true;
+          defineDirect(this.ParameterMap, name, new ArgAccessor(name, env), _CA);
+        }
+      }
+
+      defineDirect(this, 'callee', func, _CW);
+    }
+
     inherit($MappedArguments, $Arguments, {
       ParameterMap: null,
     }, [
@@ -2831,58 +2970,57 @@ var runtime = (function(GLOBAL, exports, undefined){
         return result;
       }
     ]);
-  }();
 
+    return $MappedArguments;
+  })();
 
-
-  function $Module(object, names){
-    if (object instanceof $Module) {
-      return object;
+  var $Module = (function(){
+    function ModuleGetter(ref){
+      var getter = this.Get = {
+        Call: function(){
+          var value = GetValue(ref);
+          //ref = null;
+          getter.Call = function(){ return value };
+          return value;
+        }
+      };
     }
 
-    $Object.call(this, null);
-    this.properties.remove('__proto__');
-    var self = this;
+    inherit(ModuleGetter, Accessor);
 
-    each(names, function(name){
-      defineDirect(self, name, new ModuleGetter(new Reference(object, name)), E_A);
+
+    function $Module(object, names){
+      if (object instanceof $Module) {
+        return object;
+      }
+
+      $Object.call(this, null);
+      this.properties.remove('__proto__');
+      var self = this;
+
+      each(names, function(name){
+        defineDirect(self, name, new ModuleGetter(new Reference(object, name)), E_A);
+      });
+    }
+
+    inherit($Module, $Object, {
+      NativeBrand: BRANDS.NativeModule,
+      Extensible: false
     });
-  }
 
-  inherit($Module, $Object, {
-    NativeBrand: BRANDS.NativeModule,
-    Extensible: false
-  });
+    return $Module;
+  })();
 
 
-
-
-
-  function $Math(){
-    $Object.call(this);
-  }
-
-  inherit($Math, $Object, {
-    NativeBrand: BRANDS.NativeMath
-  });
-
-  function $JSON(){
-    $Object.call(this);
-  }
-
-  inherit($JSON, $Object, {
-    NativeBrand: BRANDS.NativeJSON
-  });
-
-  function $Error(name, type, message){
-    $Object.call(this, intrinsics[name+'Proto']);
-    defineDirect(this, 'message', message, ECW);
-    if (type !== undefined) {
-      defineDirect(this, 'type', type, _CW);
+  var $Error = (function(){
+    function $Error(name, type, message){
+      $Object.call(this, intrinsics[name+'Proto']);
+      defineDirect(this, 'message', message, ECW);
+      if (type !== undefined) {
+        defineDirect(this, 'type', type, _CW);
+      }
     }
-  }
 
-  void function(){
     inherit($Error, $Object, {
       NativeBrand: BRANDS.NativeError
     }, [
@@ -2902,27 +3040,28 @@ var runtime = (function(GLOBAL, exports, undefined){
         setDirect(this, 'code', line + '\n' + pad);
       }
     ]);
-  }();
+
+    return $Error;
+  })();
 
 
-
-  function $Proxy(handler, target){
-    this.Handler = handler;
-    this.Target = target;
-    this.NativeBrand = target.NativeBrand;
-    if ('Call' in target) {
-      this.HasInstance = $Function.prototype.HasInstance;
-      this.Call = ProxyCall;
-      this.Construct = ProxyConstruct;
+  var $Proxy = (function(){
+    function $Proxy(handler, target){
+      this.Handler = handler;
+      this.Target = target;
+      this.NativeBrand = target.NativeBrand;
+      if ('Call' in target) {
+        this.HasInstance = $Function.prototype.HasInstance;
+        this.Call = ProxyCall;
+        this.Construct = ProxyConstruct;
+      }
+      if ('PrimitiveValue' in target) {
+        this.PrimitiveValue = target.PrimitiveValue;
+      }
     }
-    if ('PrimitiveValue' in target) {
-      this.PrimitiveValue = target.PrimitiveValue;
-    }
-  }
 
-  void function(){
     inherit($Proxy, $Object, {
-      isProxy: true
+      Proxy: true
     }, [
       function GetPrototype(){
         var trap = GetTrap(this.Handler, 'getPrototypeOf');
@@ -3016,32 +3155,34 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
     ]);
-  }();
 
-  function ProxyCall(receiver, args){}
-  function ProxyConstruct(args){}
+    function ProxyCall(receiver, args){}
+    function ProxyConstruct(args){}
 
-  function $PrimitiveBase(value){
-    this.PrimitiveValue = value;
-    switch (typeof value) {
-      case STRING:
-        $Object.call(this, intrinsics.StringProto);
-        this.NativeBrand = BRANDS.StringWrapper;
-        break;
-      case NUMBER:
-        $Object.call(this, intrinsics.NumberProto);
-        this.NativeBrand = BRANDS.NumberWrapper;
-        break;
-      case BOOLEAN:
-        $Object.call(this, intrinsics.BooleanProto);
-        this.NativeBrand = BRANDS.BooleanWrapper;
-        break;
+    return $Proxy;
+  })();
+
+  var $PrimitiveBase = (function(){
+    function $PrimitiveBase(value){
+      this.PrimitiveValue = value;
+      switch (typeof value) {
+        case STRING:
+          $Object.call(this, intrinsics.StringProto);
+          this.NativeBrand = BRANDS.StringWrapper;
+          break;
+        case NUMBER:
+          $Object.call(this, intrinsics.NumberProto);
+          this.NativeBrand = BRANDS.NumberWrapper;
+          break;
+        case BOOLEAN:
+          $Object.call(this, intrinsics.BooleanProto);
+          this.NativeBrand = BRANDS.BooleanWrapper;
+          break;
+      }
     }
-  }
 
-  operators.$PrimitiveBase = $PrimitiveBase;
+    operators.$PrimitiveBase = $PrimitiveBase;
 
-  void function(){
     inherit($PrimitiveBase, $Object, [
       function SetP(receiver, key, value, strict){
         var desc = this.GetProperty(key);
@@ -3072,21 +3213,24 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
     ]);
-  }();
+
+    return $PrimitiveBase;
+  })();
 
 
-  function ExecutionContext(caller, local, realm, code, func, isConstruct){
-    this.caller = caller;
-    this.Realm = realm;
-    this.Code = code;
-    this.LexicalEnvironment = local;
-    this.VariableEnvironment = local;
-    this.Strict = code.Strict;
-    this.isConstruct = !!isConstruct;
-    this.callee = func && !func.Native ? func : caller ? caller.callee : null;
-  }
 
-  void function(){
+  var ExecutionContext = (function(){
+    function ExecutionContext(caller, local, realm, code, func, isConstruct){
+      this.caller = caller;
+      this.Realm = realm;
+      this.Code = code;
+      this.LexicalEnvironment = local;
+      this.VariableEnvironment = local;
+      this.Strict = code.Strict;
+      this.isConstruct = !!isConstruct;
+      this.callee = func && !func.Native ? func : caller ? caller.callee : null;
+    }
+
     define(ExecutionContext, [
       function push(newContext){
         context = newContext;
@@ -3107,22 +3251,15 @@ var runtime = (function(GLOBAL, exports, undefined){
         return stack;
       }
     ]);
-  }();
 
-  define(ExecutionContext.prototype, {
-    isGlobal: false,
-    strict: false,
-    isEval: false,
-  });
+    define(ExecutionContext.prototype, {
+      isGlobal: false,
+      strict: false,
+      isEval: false,
+    });
 
-  void function(){
     define(ExecutionContext.prototype, [
-      function pop(){
-        if (context === this) {
-          return context = this.caller;
-        }
-      },
-      function initializeBindings(pattern, value, lexical){
+      function initializeBindings(pattern, value){
         return BindingInitialization(pattern, value, this.LexicalEnvironment);
       },
       function popBlock(){
@@ -3146,18 +3283,21 @@ var runtime = (function(GLOBAL, exports, undefined){
         return PropertyDefinitionEvaluation(kind, obj, key, code);
       },
       function createFunction(name, code){
-        if (name) {
-          var env = new DeclarativeEnvironmentRecord(this.LexicalEnvironment);
-          env.CreateImmutableBinding(name);
-        } else {
-          var env = this.LexicalEnvironment;
-        }
         var $F = code.generator ? $GeneratorFunction : $Function;
+            env = this.LexicalEnvironment;
+
+        if (name) {
+          env = new DeclarativeEnvironmentRecord(env);
+          env.CreateImmutableBinding(name);
+        }
+
         var func = new $F(code.Type, name, code.params, code, env, code.Strict);
+
         if (code.Type !== ARROW) {
           MakeConstructor(func);
           name && env.InitializeBinding(name, func);
         }
+
         return func;
       },
       function createArray(len){
@@ -3169,239 +3309,117 @@ var runtime = (function(GLOBAL, exports, undefined){
       function createRegExp(regex){
         return new $RegExp(regex);
       },
-      function Element(prop, base){
-        var result = CheckObjectCoercible(base);
-        if (result.Abrupt) {
-          return result;
-        }
-
-        var name = ToPropertyName(prop);
-        if (name && name.Completion) {
-          if (name.Abrupt) {
-            return name;
-          } else {
-            name = name.value;
-          }
-        }
-
-        return new Reference(base, name, this.Strict);
+      function constructFunction(func, args){
+        return EvaluateConstruct(func, args);
       },
-      function SuperReference(prop){
-        var env = this.GetThisEnvironment();
-        if (!env.HasSuperBinding()) {
-          return ThrowException('invalid_super_binding');
-        } else if (prop === null) {
-          return env;
-        }
-
-        var baseValue = env.GetSuperBase(),
-            status = CheckObjectCoercible(baseValue);
-
-        if (status.Abrupt) {
-          return status;
-        }
-
-        if (prop === false) {
-          var key = env.GetMethodName();
-        } else {
-          var key = ToPropertyName(prop);
-          if (key && key.Completion) {
-            if (key.Abrupt) {
-              return key;
-            } else {
-              return key.value;
-            }
-          }
-        }
-
-        var ref = new Reference(baseValue, key, this.Strict);
-        ref.thisValue = env.GetThisBinding();
-        return ref;
+      function callFunction(thisRef, func, args){
+        return EvaluateCall(thisRef, func, args);
       },
-      function GetThisEnvironment(){
-        var env = this.LexicalEnvironment;
-        while (env) {
-          if (env.HasThisBinding())
-            return env;
-          env = env.outer;
-        }
+      function getPropertyReference(name, obj){
+        return Element(this, name, obj);
       },
-      function IdentifierResolution(name){
-        return GetIdentifierReference(this.LexicalEnvironment, name, this.Strict);
+      function getReference(name){
+        return IdentifierResolution(this, name);
       },
-      function ThisResolution(){
-        return this.GetThisEnvironment().GetThisBinding();
+      function getSuperReference(name){
+        return SuperReference(this, name);
       },
-      function EvaluateConstruct(func, args) {
-        if (typeof func !== OBJECT) {
-          return ThrowException('not_constructor', func);
-        }
-
-        if ('Construct' in func) {
-          return func.Construct(args);
-        } else {
-          return ThrowException('not_constructor', func);
-        }
+      function getThisEnvironment(){
+        return GetThisEnvironment(this);
       },
-      function EvaluateCall(ref, func, args){
-        if (typeof func !== OBJECT || !IsCallable(func)) {
-          return ThrowException('called_non_callable', [ref && ref.name]);
-        }
-
-        if (ref instanceof Reference) {
-          var receiver = IsPropertyReference(ref) ? GetThisValue(ref) : ref.base.WithBaseObject();
-        }
-
-        return func.Call(receiver, args);
+      function getThis(){
+        return ThisResolution(this);
       },
-      function SpreadArguments(precedingArgs, spread){
-        if (typeof spread !== 'object') {
-          return ThrowException('spread_non_object');
-        }
-
-        var offset = precedingArgs.length,
-            len = ToUint32(spread.Get('length'));
-
-        if (len && len.Completion) {
-          if (len.Abrupt) {
-            return len;
-          } else {
-            return len.value;
-          }
-        }
-
-        for (var i=0; i < len; i++) {
-          var value = spread.Get(i);
-          if (value && value.Completion) {
-            if (value.Abrupt) {
-              return value;
-            } else {
-              value = value.value;
-            }
-          }
-
-          precedingArgs[i + offset] = value;
-        }
+      function spreadArguments(precedingArgs, obj){
+        return SpreadArguments(precedingArgs, obj);
       },
-      function SpreadInitialization(array, offset, spread){
-        if (typeof spread !== 'object') {
-          return ThrowException('spread_non_object');
-        }
-
-        var value, iterator = spread.Iterate();
-
-        while (!(value = Invoke('next', iterator, [])) && !IsStopIteration(value)) {
-          if (value && value.Completion) {
-            if (value.Abrupt) {
-              return value;
-            } else {
-              value = value.value;
-            }
-          }
-          defineDirect(array, offset++, value, ECW);
-        }
-
-        defineDirect(array, 'length', offset, _CW);
-        return offset;
+      function spreadArray(array, offset, obj){
+        return SpreadInitialization(array, offset, obj);
       },
-      function GetTemplateCallSite(template){
-        if (!('id' in template)) {
-          GetTemplateCallSite.count = (GetTemplateCallSite.count || 0) + 1;
-          template.id = GetTemplateCallSite.count;
-        }
-        if (template.id in realm.templates) {
-          return realm.templates[template.id];
-        }
-
-        var count = template.length,
-            site = new $Array(count),
-            raw = new $Array(count);
-
-        for (var i=0; i < count; i++) {
-          defineDirect(site, i+'', template[i].cooked, E__);
-          defineDirect(raw, i+'', template[i].raw, E__);
-        }
-        defineDirect(site, 'length', count, ___);
-        defineDirect(raw, 'length', count, ___);
-        defineDirect(site, 'raw', raw, ___);
-        site.SetExtensible(false);
-        raw.SetExtensible(false);
-        realm.templates[template.id] = site;
-        return site;
+      function destructureSpread(target, index){
+        return SpreadDestructuring(this, target, index);
       },
-      function SpreadDestructuring(target, index){
-        var array = new $Array(0);
-        if (target == null) {
-          return array;
-        }
-        if (typeof target !== 'object') {
-          return ThrowException('spread_non_object', typeof target);
-        }
-
-        var len = ToUint32(target.Get('length'));
-        if (len && len.Completion) {
-          if (len.Abrupt) {
-            return len;
-          } else {
-            len = len.value;
-          }
-        }
-
-        var count = len - index;
-        for (var i=0; i < count; i++) {
-          var value = target.Get(index + i);
-          if (value && value.Completion) {
-            if (value.Abrupt) {
-              return value;
-            } else {
-              value = value.value;
-            }
-          }
-          defineDirect(array, i, value, ECW);
-        }
-
-        defineDirect(array, 'length', i, _CW);
-        return array;
+      function getTemplateCallSite(template){
+        return GetTemplateCallSite(this, template);
       }
     ]);
-  }();
+
+    return ExecutionContext;
+  })();
 
 
-  var $errors = ['EvalError',  'RangeError',  'ReferenceError',  'SyntaxError',  'TypeError',  'URIError'];
 
+  var Intrinsics = (function(){
+    var $errors = ['EvalError',  'RangeError',  'ReferenceError',  'SyntaxError',  'TypeError',  'URIError'];
 
-  function Intrinsics(realm){
-    DeclarativeEnvironmentRecord.call(this, null);
-    this.Realm = realm;
-    var bindings = this.bindings;
-    bindings.ObjectProto = new $Object(null);
+    var $builtins = {
+      Array   : $Array,
+      Boolean : $Boolean,
+      Date    : $Date,
+      Error   : $Error,
+      Function: $Function,
+      Map     : $Map,
+      Number  : $Number,
+      //Proxy   : $Proxy,
+      RegExp  : $RegExp,
+      Set     : $Set,
+      String  : $String,
+      WeakMap : $WeakMap
+    };
 
-    for (var k in $builtins) {
-      var prototype = bindings[k + 'Proto'] = create($builtins[k].prototype);
-      $Object.call(prototype, bindings.ObjectProto);
-      if (k in primitives)
-        prototype.PrimitiveValue = primitives[k];
+    exports.builtins = {
+      $Array   : $Array,
+      $Boolean : $Boolean,
+      $Date    : $Date,
+      $Error   : $Error,
+      $Function: $Function,
+      $Map     : $Map,
+      $Number  : $Number,
+      $Object  : $Object,
+      $RegExp  : $RegExp,
+      $Set     : $Set,
+      $String  : $String,
+      $WeakMap : $WeakMap
+    };
+
+    var primitives = {
+      Date   : Date.prototype,
+      RegExp : RegExp.prototype,
+      String : '',
+      Number : 0,
+      Boolean: false
+    };
+
+    function Intrinsics(realm){
+      DeclarativeEnvironmentRecord.call(this, null);
+      this.Realm = realm;
+      var bindings = this.bindings;
+      bindings.ObjectProto = new $Object(null);
+
+      for (var k in $builtins) {
+        var prototype = bindings[k + 'Proto'] = create($builtins[k].prototype);
+        $Object.call(prototype, bindings.ObjectProto);
+        if (k in primitives)
+          prototype.PrimitiveValue = primitives[k];
+      }
+
+      bindings.StopIteration = new $Object(bindings.ObjectProto);
+      bindings.StopIteration.NativeBrand = StopIteration;
+
+      for (var i=0; i < 6; i++) {
+        var prototype = bindings[$errors[i] + 'Proto'] = create($Error.prototype);
+        $Object.call(prototype, bindings.ErrorProto);
+        defineDirect(prototype, 'name', $errors[i], _CW);
+        defineDirect(prototype, 'type', undefined, _CW);
+        defineDirect(prototype, 'arguments', undefined, _CW);
+      }
+
+      bindings.FunctionProto.FormalParameters = [];
+      defineDirect(bindings.ArrayProto, 'length', 0, __W);
+      defineDirect(bindings.ErrorProto, 'name', 'Error', _CW);
+      defineDirect(bindings.ErrorProto, 'message', '', _CW);
     }
 
-    bindings.StopIteration = new $Object(bindings.ObjectProto);
-    bindings.StopIteration.NativeBrand = StopIteration;
-
-    for (var i=0; i < 6; i++) {
-      var prototype = bindings[$errors[i] + 'Proto'] = create($Error.prototype);
-      $Object.call(prototype, bindings.ErrorProto);
-      defineDirect(prototype, 'name', $errors[i], _CW);
-      defineDirect(prototype, 'type', undefined, _CW);
-      defineDirect(prototype, 'arguments', undefined, _CW);
-    }
-
-    bindings.FunctionProto.FormalParameters = [];
-    defineDirect(bindings.ArrayProto, 'length', 0, __W);
-    defineDirect(bindings.ErrorProto, 'name', 'Error', _CW);
-    defineDirect(bindings.ErrorProto, 'message', '', _CW);
-
-  }
-
-  void function(){
     inherit(Intrinsics, DeclarativeEnvironmentRecord, [
       function binding(options){
         if (typeof options === 'function') {
@@ -3436,8 +3454,50 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       }
     ]);
-  }();
 
+    return Intrinsics;
+  })();
+
+  function wrapForInside(o){
+    if (o === null) return o;
+
+    var type = typeof o;
+    if (type === FUNCTION) {
+      return new $NativeFunction({
+        length: o._length || o.length,
+        name: o._name || o.name,
+        call: o
+      });
+    }
+
+    if (type === OBJECT) {
+      switch (o.NativeBrand) {
+        case BRANDS.NativeFunction:
+          var func = function(){
+            return o.Call(this, arguments);
+          };
+          func._wraps = o;
+          return func;
+        case BRANDS.NativeObject:
+
+      }
+    }
+    return o;
+  }
+
+
+  function wrapFunction(f){
+    if (f._wrapper) {
+      return f._wrapper;
+    }
+    return f._wrapper = function(){
+      var receiver = this;
+      if (isObject(receiver) && !(receiver instanceof $Object)) {
+        receiver = undefined
+      }
+      return f.Call(receiver, arguments);
+    };
+  }
 
   function fromInternalArray(array){
     var $array = new $Array,
@@ -3460,801 +3520,85 @@ var runtime = (function(GLOBAL, exports, undefined){
     return array;
   }
 
-  var $builtins = {
-    Array   : $Array,
-    Boolean : $Boolean,
-    Date    : $Date,
-    Error   : $Error,
-    Function: $Function,
-    Map     : $Map,
-    Number  : $Number,
-    //Proxy   : $Proxy,
-    RegExp  : $RegExp,
-    Set     : $Set,
-    String  : $String,
-    WeakMap : $WeakMap
-  };
+  var Script = (function(){
+    var parseOptions = {
+      loc    : true,
+      range  : true,
+      raw    : false,
+      tokens : false,
+      comment: false
+    }
 
-  var primitives = {
-    Date: Date.prototype,
-    RegExp: RegExp.prototype,
-    String: '',
-    Number: 0,
-    Boolean: false
-  };
-
-  var atoms = {
-    NaN: NaN,
-    Infinity: Infinity,
-    undefined: undefined
-  };
-
-  function wrapNatives(source, target){
-    if (!Object.getOwnPropertyNames) return;
-    Object.getOwnPropertyNames(source).forEach(function(key){
-      if (typeof source[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
-        var func = new $NativeFunction({
-          name: key,
-          length: source[key].length,
-          call: function(a, b, c, d){
-            var v = this;
-            if (v == null) {
-              try { v = source.constructor(v) }
-              catch (e) { v = new source.constructor }
-            }
-            if (v instanceof source.constructor || typeof v !== 'object') {
-              var result =  v[key](a, b, c, d);
-            } else if (v.PrimitiveValue) {
-              var result = v.PrimitiveValue[key](a, b, c, d);
-            }
-            if (!isObject(result)) {
-              return result;
-            }
-            if (result instanceof Array) {
-              return fromInternalArray(result);
-            }
-          }
-        });
-        defineDirect(target, key, func, 6);
-      }
-    });
-  }
-
-  function wrapMapFunction(name){
-    return function(map, key, val){
-      return map.MapData[name](key, val);
-    };
-  }
-
-  function wrapWeakMapFunction(name){
-    return function(map, key, val){
-      return map.WeakMapData[name](key, val);
-    };
-  }
-
-  var timers = {};
-
-  var nativeCode = ['function ', '() { [native code] }'];
-
-  var natives = {
-    defineDirect: defineDirect,
-    deleteDirect: deleteDirect,
-    hasOwnDirect: hasOwnDirect,
-    hasDirect: hasDirect,
-    setDirect: setDirect,
-    updateAttrDirect: function(obj, key, attr){
-      var prop = obj.properties.getProperty(key);
-      if (prop) {
-        prop[2] &= attr;
-        return true;
-      }
-      return false;
-    },
-    ToObject: ToObject,
-    ToString: ToString,
-    ToNumber: ToNumber,
-    ToBoolean: ToBoolean,
-    ToPropertyName: ToPropertyName,
-    ToInteger: ToInteger,
-    ToInt32: ToInt32,
-    ToUint32: ToUint32,
-    ToUint16: ToUint16,
-    ToModule: function(obj){
-      if (obj.NativeBrand === BRANDS.NativeModule) {
-        return obj;
-      }
-      return new $Module(obj, obj.Enumerate(false, false));
-    },
-    IsConstructCall: function(){
-      return context.isConstruct;
-    },
-    GetNativeBrand: function(object){
-      return object.NativeBrand.name;
-    },
-    SetNativeBrand: function(object, name){
-      var brand = BRANDS[name];
-      if (brand) {
-        object.NativeBrand = brand;
-      } else {
-        return new AbruptException('throw', new $Error('ReferenceError', undefined, 'Unknown NativeBrand "'+name+'"'));
-      }
-      return object.NativeBrand.name;
-    },
-    GetBrand: function(object){
-      return object.Brand || object.NativeBrand.name;
-    },
-    GetPrimitiveValue: function(object){
-      return object ? object.PrimitiveValue : undefined;
-    },
-    IsObject: function(object){
-      return object instanceof $Object;
-    },
-    SetInternal: function(object, key, value){
-      object[key] = value;
-      hide(object, key);
-    },
-    GetInternal: function(object, key){
-      if (object) {
-        return object[key];
-      }
-    },
-    HasInternal: function(object, key){
-      if (object) {
-        return key in object;
-      }
-    },
-    SetHidden: function(object, key, value){
-      if (object) {
-        object.hiddens[key] = value;
-      }
-    },
-    GetHidden: function(object, key){
-      if (object) {
-        return object.hiddens[key];
-      }
-    },
-    DeleteHidden: function(object, key){
-      if (object) {
-        if (key in object.hiddens) {
-          delete object.hiddens[key];
-          return true;
-        }
-        return false;
-      }
-    },
-    HasHidden: function(object, key){
-      if (object) {
-        return key in object.hiddens;
-      }
-    },
-    EnumerateHidden: function(object){
-      if (object) {
-        return ownKeys(object.hiddens);
-      }
-    },
-    Type: function(o){
-      if (o === null) {
-        return 'Null';
-      } else {
-        switch (typeof o) {
-          case UNDEFINED: return 'Undefined';
-          case NUMBER:    return 'Number';
-          case STRING:    return 'String';
-          case BOOLEAN:   return 'Boolean';
-          case OBJECT:    return 'Object';
-        }
-      }
-    },
-    Exception: function(type, args){
-      return MakeException(type, toInternalArray(args));
-    },
-    Signal: function(name, value){
-      if (isObject(value)) {
-        if (value instanceof $Array) {
-          value = toInternalArray(value);
-        } else {
-          throw new Error('NYI');
-        }
-      }
-      realm.emit(name, value);
-    },
-    wrapDateMethods: function(target){
-      wrapNatives(Date.prototype, target);
-    },
-    wrapStringMethods: function(target){
-      wrapNatives(String.prototype, target);
-    },
-    wrapRegExpMethods: function(target){
-      wrapNatives(RegExp.prototype, target);
-    },
-
-
-    CallFunction: function(func, receiver, args){
-      return func.Call(receiver, toInternalArray(args));
-    },
-
-    Fetch: function(name, callback){
-      var result = require('../modules')[name];
-      if (!result) {
-        result = new $Error('Error', undefined, 'Unable to locate module "'+name+'"');
-      }
-      callback.Call(undefined, [result]);
-    },
-
-    EvaluateModule: function(source, global, name, callback){
-      ModuleEvaluation(source, global, name, function(result){
-        callback.Call(undefined, [result]);
-      });
-    },
-    eval: function(code){
-      if (typeof code !== 'string') {
-        return code;
-      }
-      var script = new Script({
-        scope: SCOPE.EVAL,
-        natives: false,
-        source: code
-      });
-      if (script.error) {
-        return script.error;
-      } else if (script.thunk) {
-        return script.thunk.run(context);
-      }
-    },
-    FunctionCreate: function(args){
-      args = toInternalArray(args);
-      var body = args.pop();
-      var script = new Script({
-        scope: SCOPE.GLOBAL,
-        natives: false,
-        source: '(function anonymous('+args.join(', ')+') {\n'+body+'\n})'
-      });
-      if (script.error) {
-        return script.error;
-      }
-      var ctx = new ExecutionContext(context, new DeclarativeEnvironmentRecord(realm.globalEnv), realm, script.bytecode);
-      ExecutionContext.push(ctx);
-      var func = script.thunk.run(ctx);
-      ExecutionContext.pop();
-      return func;
-    },
-    BoundFunctionCreate: function(func, receiver, args){
-      return new $BoundFunction(func, receiver, toInternalArray(args));
-    },
-    BooleanCreate: function(boolean){
-      return new $Boolean(boolean);
-    },
-    DateCreate: function(args){
-      return utility.applyNew(Date, args);
-    },
-    NumberCreate: function(number){
-      return new $Number(number);
-    },
-    ObjectCreate: function(proto){
-      return new $Object(proto);
-    },
-    RegExpCreate: function(pattern, flags){
-      if (typeof pattern === 'object') {
-        pattern = pattern.PrimitiveValue;
-      }
+    function parse(src, origin, type, options){
       try {
-        var result = new RegExp(pattern, flags);
+        return esprima.parse(src, options || parseOptions);
       } catch (e) {
-        return ThrowException('invalid_regexp', [pattern+'']);
+        var err = new $Error('SyntaxError', undefined, e.message);
+        err.setCode({ start: { line: e.lineNumber, column: e.column } }, src);
+        err.setOrigin(origin, type);
+        return new AbruptCompletion('throw', err);
       }
-      return new $RegExp(result);
-    },
-    StringCreate: function(string){
-      return new $String(string);
-    },
+    }
 
-    DateToNumber: function(object){
-      return +object.PrimitiveValue;
-    },
-    DateToString: function(object){
-      return ''+object.PrimitiveValue;
-    },
-    FunctionToString: function(func){
-      var code = func.Code;
-      if (func.Native || !code) {
-        return nativeCode[0] + func.properties.get('name') + nativeCode[1];
-      } else {
-        return code.source.slice(code.range[0], code.range[1]);
-      }
-    },
-    NumberToString: function(object, radix){
-      return object.PrimitiveValue.toString(radix);
-    },
-    RegExpToString: function(object, radix){
-      return object.PrimitiveValue.toString(radix);
-    },
 
-    CodeUnit: function(char){
-      return char.charCodeAt(0);
-    },
-    StringSlice: function(string, start, end){
-      return string.slice(start, end);
-    },
-    StringReplace: function(string, search, replace){
-      if (typeof search !== 'string') {
-        search = search.PrimitiveValue;
-      }
-      return string.replace(search, replace);
-    },
-    FromCharCode: String.fromCharCode,
-    GetExtensible: function(obj){
-      return obj.GetExtensible();
-    },
-    SetExtensible: function(obj, value){
-      obj.SetExtensible(value);
-    },
-    GetPrototype: function(obj){
-      return obj.GetPrototype();
-    },
-    DefineOwnProperty: function(obj, key, desc){
-      obj.DefineOwnProperty(key, ToPropertyDescriptor(desc), false);
-    },
-    Enumerate: function(obj, includePrototype, onlyEnumerable){
-      return fromInternalArray(obj.Enumerate(includePrototype, onlyEnumerable));
-    },
-    GetProperty: function(obj, key){
-      var desc = obj.GetProperty(key);
-      if (desc) {
-        return FromPropertyDescriptor(desc);
-      }
-    },
-    GetOwnProperty: function(obj, key){
-      var desc = obj.GetOwnProperty(key);
-      if (desc) {
-        return FromPropertyDescriptor(desc);
-      }
-    },
-    GetPropertyAttributes: function(obj, key){
-      return obj.properties.getAttribute(key);
-    },
-    HasOwnProperty: function(obj, key){
-      return obj.HasOwnProperty(key);
-    },
+    function Script(options){
+      if (options instanceof Script)
+        return options;
 
-    parseInt: function(value, radix){
-      return parseInt(ToPrimitive(value), ToNumber(radix));
-    },
-    parseFloat: function(value){
-      return parseFloat(ToPrimitive(value));
-    },
-    decodeURI: function(value){
-      return decodeURI(ToString(value));
-    },
-    decodeURIComponent: function(value){
-      return decodeURIComponent(ToString(value));
-    },
-    encodeURI: function(value){
-      return encodeURI(ToString(value));
-    },
-    encodeURIComponent: function(value){
-      return encodeURIComponent(ToString(value));
-    },
-    escape: function(value){
-      return escape(ToString(value));
-    },
-    SetTimer: function(f, time, repeating){
-      if (typeof f === 'string') {
-        f = natives.FunctionCreate(f);
-      }
-      var id = Math.random() * 1000000 << 10;
-      timers[id] = setTimeout(function trigger(){
-        if (timers[id]) {
-          f.Call(global, []);
-          if (repeating) {
-            timers[id] = setTimeout(trigger, time);
-          } else {
-            timers[id] = f = null;
+      this.type = 'script';
+
+      if (typeof options === FUNCTION) {
+        this.type = 'recompiled function';
+        if (!utility.fname(options)) {
+          options = {
+            scope: SCOPE.FUNCTION,
+            filename: 'unnamed',
+            source: '('+options+')()'
           }
         } else {
-          f = null;
-        }
-      }, time);
-      return id;
-    },
-    ClearTimer: function(id){
-      if (timers[id]) {
-        timers[id] = null;
-      }
-    },
-    Quote: (function(){
-      var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-          escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-          meta = { '\b': '\\b', '\t': '\\t', '\n': '\\n', '\f': '\\f', '\r': '\\r', '"' : '\\"', '\\': '\\\\' };
-
-      function escaper(a) {
-        var c = meta[a];
-        return typeof c === 'string' ? c : '\\u'+('0000' + a.charCodeAt(0).toString(16)).slice(-4);
-      }
-
-      return function(string){
-        escapable.lastIndex = 0;
-        return '"'+string.replace(escapable, escaper)+'"';
-      };
-    })(),
-    JSONCreate: function(){
-      return new $JSON;
-    },
-    MathCreate: (function(Math){
-      var consts = ['E', 'LN2', 'LN10', 'LOG2E', 'LOG10E', 'PI', 'SQRT1_2', 'SQRT2'],
-          sqrt = Math.sqrt,
-          log = Math.log,
-          pow = Math.pow,
-          exp = Math.exp,
-          LN2 = Math.LN2,
-          LN10 = Math.LN10;
-
-
-      function wrapMathFunction(fn, args){
-        if (args === 0) {
-          return fn;
-        }
-        if (args === 1) {
-          return function(x){
-            x = ToNumber(x);
-            if (x && x.Completion) {
-              if (x.Abrupt) {
-                return x;
-              } else {
-                x = x.value;
-              }
-            }
-            return fn(x);
-          }
-        } else if (args === 2) {
-          return function(x, y){
-            x = ToNumber(x);
-            if (x && x.Completion) {
-              if (x.Abrupt) {
-                return x;
-              } else {
-                x = x.value;
-              }
-            }
-            y = ToNumber(y);
-            if (y && y.Completion) {
-              if (y.Abrupt) {
-                return y;
-              } else {
-                y = y.value;
-              }
-            }
-            return fn(x, y);
-          }
-        } else {
-          return function(){
-            var values = [];
-            for (var k in arguments) {
-              var x = arguments[k]
-              if (x && x.Completion) {
-                if (x.Abrupt) {
-                  return x;
-                } else {
-                  x = x.value;
-                }
-              }
-              values.push(x);
-            }
-            return fn.apply(null, values);
+          options = {
+            scope: SCOPE.FUNCTION,
+            filename: utility.fname(options),
+            source: options+''
           };
         }
-      }
-
-      var funcs = {
-        abs: wrapMathFunction(Math.abs, 1),
-        acos: wrapMathFunction(Math.acos, 1),
-        acosh: wrapMathFunction(function(x){
-          return Math.log(x + Math.sqrt(x * x - 1));
-        }, 1),
-        asinh: wrapMathFunction(function(x){
-          return Math.log(x + Math.sqrt(x * x + 1));
-        }, 1),
-        asin: wrapMathFunction(Math.asin, 1),
-        atan: wrapMathFunction(Math.atan, 1),
-        atanh: wrapMathFunction(function(x) {
-          return .5 * log((1 + x) / (1 - x));
-        }, 1),
-        atan2: wrapMathFunction(Math.atan2, 2),
-        ceil: wrapMathFunction(Math.ceil, 1),
-        cos: wrapMathFunction(Math.acos, 1),
-        cosh: wrapMathFunction(function(x) {
-          if (x < 0) {
-            x = -x;
-          }
-          if (x > 21) {
-            return exp(x) / 2;
-          } else {
-            return (exp(x) + exp(-x)) / 2;
-          }
-        }, 1),
-        exp: wrapMathFunction(Math.exp, 1),
-        expm1: wrapMathFunction(function(x) {
-          function factorial(x){
-            for (var i = 2, o = 1; i <= x; i++) {
-              o *= i;
-            }
-            return o;
-          }
-
-          var o = 0, n = 50;
-          for (var i = 1; i < n; i++) {
-            o += pow(x, i) / factorial(i);
-          }
-          return o;
-        }, 1),
-        floor: wrapMathFunction(Math.floor, 1),
-        hypot: wrapMathFunction(function(x, y) {
-          return sqrt(x * x + y * y) || 0;
-        }, 2),
-        log: wrapMathFunction(Math.log, 1),
-        log2: wrapMathFunction(function(x){
-          return log(x) * (1 / LN2);
-        }, 1),
-        log10: wrapMathFunction(function(x){
-          return log(x) * (1 / LN10);
-        }, 1),
-        log1p: wrapMathFunction(function(x){
-          var o = 0,
-              n = 50;
-
-          if (x <= -1) {
-            return -Infinity;
-          } else if (x < 0 || value > 1) {
-            return log(1 + x);
-          } else {
-            for (var i = 1; i < n; i++) {
-              if ((i % 2) === 0) {
-                o -= pow(x, i) / i;
-              } else {
-                o += pow(x, i) / i;
-              }
-            }
-            return o;
-          }
-        }, 1),
-        max: wrapMathFunction(Math.max),
-        min: wrapMathFunction(Math.min),
-        pow: wrapMathFunction(Math.pow, 2),
-        random: wrapMathFunction(Math.random, 0),
-        round: wrapMathFunction(Math.round, 1),
-        sign: wrapMathFunction(function(x){
-          x = +x;
-          return x === 0 || x !== x ? x : x < 0 ? -1 : 1;
-        }, 1),
-        sinh: wrapMathFunction(function(x){
-          return (exp(x) - exp(-x)) / 2;
-        }, 1),
-        sin: wrapMathFunction(Math.sin, 1),
-        sqrt: wrapMathFunction(Math.sqrt, 1),
-        tan: wrapMathFunction(Math.tan, 1),
-        tanh: wrapMathFunction(function(x) {
-          return (exp(x) - exp(-x)) / (exp(x) + exp(-x));
-        }, 1),
-        trunc: wrapMathFunction(function(x){
-          return ~~x;
-        }, 1)
-      };
-
-      return function(){
-        var math = new $Math;
-        for (var i=0; i < consts.length; i++) {
-          defineDirect(math, consts[i], Math[consts[i]], ___);
-        }
-        for (var k in funcs) {
-          defineDirect(math, k, new $NativeFunction({
-            call: funcs[k],
-            name: k,
-            length: funcs[k].length
-          }), _CW);
-        }
-        return math;
-      };
-    })(Math),
-
-    MapInitialization: MapInitialization,
-    MapSigil: function(){
-      return MapData.sigil;
-    },
-    MapSize: function(map){
-      return map.MapData.size;
-    },
-    MapClear: wrapMapFunction('clear'),
-    MapSet: wrapMapFunction('set'),
-    MapDelete: wrapMapFunction('remove'),
-    MapGet: wrapMapFunction('get'),
-    MapHas: wrapMapFunction('has'),
-    MapNext: function(map, key){
-      var result = map.MapData.after(key);
-      return result instanceof Array ? fromInternalArray(result) : result;
-    },
-
-    WeakMapInitialization: WeakMapInitialization,
-    WeakMapSet: wrapWeakMapFunction('set'),
-    WeakMapDelete: wrapWeakMapFunction('remove'),
-    WeakMapGet: wrapWeakMapFunction('get'),
-    WeakMapHas: wrapWeakMapFunction('has')
-  };
-
-  function parse(src, origin, type, options){
-    try {
-      return esprima.parse(src, options || parse.options);
-    } catch (e) {
-      var err = new $Error('SyntaxError', undefined, e.message);
-      err.setCode({ start: { line: e.lineNumber, column: e.column } }, src);
-      err.setOrigin(origin, type);
-      return new AbruptCompletion('throw', err);
-    }
-  }
-
-  parse.options = {
-    loc    : true,
-    range  : true,
-    raw    : false,
-    tokens : false,
-    comment: false
-  }
-
-  function Script(options){
-    if (options instanceof Script)
-      return options;
-
-    this.type = 'script';
-
-    if (typeof options === FUNCTION) {
-      this.type = 'recompiled function';
-      if (!utility.fname(options)) {
+      } else if (typeof options === STRING) {
         options = {
-          scope: SCOPE.FUNCTION,
-          filename: 'unnamed',
-          source: '('+options+')()'
-        }
-      } else {
-        options = {
-          scope: SCOPE.FUNCTION,
-          filename: utility.fname(options),
-          source: options+''
+          scope: SCOPE.GLOBAL,
+          source: options
         };
       }
-    } else if (typeof options === STRING) {
-      options = {
-        scope: SCOPE.GLOBAL,
-        source: options
-      };
-    }
 
-    if (options.natives) {
-      this.natives = true;
-      this.type = 'native';
-    }
-    if (options.eval || options.scope === SCOPE.EVAL) {
-      this.eval = true;
-      this.type = 'eval';
-    }
-    this.scope = options.scope;
-
-    if (!isObject(options.ast) && typeof options.source === STRING) {
-      this.source = options.source;
-      this.ast = parse(options.source, options.filename, this.type);
-      if (this.ast.Abrupt) {
-        this.error = this.ast;
-        this.ast = null;
+      if (options.natives) {
+        this.natives = true;
+        this.type = 'native';
       }
-    }
-
-    this.filename = options.filename || '';
-    if (this.ast) {
-      this.bytecode = assemble(this);
-      this.thunk = new Thunk(this.bytecode);
-    }
-    return this;
-  }
-
-  function NativeScript(source, location){
-    Script.call(this, {
-      scope: SCOPE.GLOBAL,
-      source: '(function(global, undefined){\n'+source+'\n})(this)',
-      filename: location +'.js',
-      natives: true
-    });
-  }
-
-  inherit(NativeScript, Script);
-
-
-
-  var moduleInitScript = new Script({
-    scope: SCOPE.GLOBAL,
-    natives: true,
-    filename: 'module-init.js',
-    source: 'import * from "@std";\n'+
-            'for (let k in this) {\n'+
-            '  let isConstant = typeof this[k] !== "function" && typeof this[k] !== "object";\n'+
-            '  Object.defineProperty(this, k, { enumerable: false, configurable: !isConstant, writable: !isConstant });\n'+
-            '}'
-  });
-
-  var mutationScopeScript = new NativeScript('void 0', 'mutation scope');
-  var emptyClassScript = new NativeScript('$__EmptyClass = function constructor(...args){ super(...args) }', '');
-
-  function initializeRealm(realm, callback){
-    if (realm.initialized) callback();
-
-    activate(realm);
-    realm.state = 'initializing';
-    realm.initialized = true;
-    realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, mutationScopeScript.bytecode);
-    realm.evaluate(emptyClassScript, true);
-
-    ModuleEvaluation(require('../modules')['@system'], realm.global, '@system', function(){
-      realm.evaluateAsync(moduleInitScript, function(){
-        deactivate(realm);
-        realm.state = 'idle';
-        callback();
-      });
-    });
-  }
-
-  function extendGlobalScope(realm){
-    var scope = new GlobalEnvironmentRecord(new $Object);
-    scope.bindings.NativeBrand = BRANDS.GlobalObject;
-    scope.outer = realm.globalEnv;
-    scope.Realm = create(realm);
-    scope.Realm.globalEnv = scope;
-    return scope;
-  }
-
-  function prepareToRun(realm, bytecode, scope){
-    if (!scope) {
-      scope = extendGlobalScope(realm);
-    }
-    ExecutionContext.push(new ExecutionContext(null, scope, scope.Realm || realm, bytecode));
-    var status = TopLevelDeclarationInstantiation(bytecode);
-    if (status && status.Abrupt) {
-      realm.emit(status.type, status);
-      return status;
-    }
-  }
-
-
-  function run(realm, thunk, bytecode){
-    activate(realm);
-    realm.executing = thunk;
-    realm.state = 'executing';
-    realm.emit('executing', thunk);
-
-    var result = thunk.run(context);
-
-    if (result === Pause) {
-      var resume = function(){
-        resume = function(){};
-        delete realm.resume;
-        realm.emit('resume');
-        return run(realm, thunk, bytecode);
-      };
-
-      realm.resume = function(){ return resume() };
-      realm.state = 'paused';
-      realm.emit('pause');
-    } else {
-      if (bytecode.ExportedNames && bytecode.ExportedNames.length) {
-        var module = new $Module(global, bytecode.ExportedNames);
+      if (options.eval || options.scope === SCOPE.EVAL) {
+        this.eval = true;
+        this.type = 'eval';
       }
-      realm.executing = null;
-      realm.state = 'idle';
-      if (result && result.Abrupt) {
-        realm.emit(result.type, result);
-      } else {
-        realm.emit('complete', result);
+      this.scope = options.scope;
+
+      if (!isObject(options.ast) && typeof options.source === STRING) {
+        this.source = options.source;
+        this.ast = parse(options.source, options.filename, this.type);
+        if (this.ast.Abrupt) {
+          this.error = this.ast;
+          this.ast = null;
+        }
       }
 
-      realm === global.Realm && deactivate(realm);
-      return result;
+      this.filename = options.filename || '';
+      if (this.ast) {
+        this.bytecode = assemble(this);
+        this.thunk = new Thunk(this.bytecode);
+      }
+      return this;
     }
-  }
+
+    return Script;
+  })();
+
 
 
   function activate(target){
@@ -4280,72 +3624,858 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
-  function mutationContext(realm, toggle){
-    if (toggle === undefined) {
-      toggle = !realm.mutating;
-    } else {
-      toggle = !!toggle;
+
+  var Realm = (function(){
+    var natives = (function(){
+      function wrapNatives(source, target){
+        if (!Object.getOwnPropertyNames) return;
+        Object.getOwnPropertyNames(source).forEach(function(key){
+          if (typeof source[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
+            var func = new $NativeFunction({
+              name: key,
+              length: source[key].length,
+              call: function(a, b, c, d){
+                var v = this;
+                if (v == null) {
+                  try { v = source.constructor(v) }
+                  catch (e) { v = new source.constructor }
+                }
+                if (v instanceof source.constructor || typeof v !== 'object') {
+                  var result =  v[key](a, b, c, d);
+                } else if (v.PrimitiveValue) {
+                  var result = v.PrimitiveValue[key](a, b, c, d);
+                }
+                if (!isObject(result)) {
+                  return result;
+                }
+                if (result instanceof Array) {
+                  return fromInternalArray(result);
+                }
+              }
+            });
+            defineDirect(target, key, func, 6);
+          }
+        });
+      }
+
+      function wrapMapFunction(name){
+        return function(map, key, val){
+          return map.MapData[name](key, val);
+        };
+      }
+
+      function wrapWeakMapFunction(name){
+        return function(map, key, val){
+          return map.WeakMapData[name](key, val);
+        };
+      }
+
+      var timers = {};
+
+      var nativeCode = ['function ', '() { [native code] }'];
+
+      return {
+        defineDirect: defineDirect,
+        deleteDirect: deleteDirect,
+        hasOwnDirect: hasOwnDirect,
+        hasDirect: hasDirect,
+        setDirect: setDirect,
+        updateAttrDirect: function(obj, key, attr){
+          var prop = obj.properties.getProperty(key);
+          if (prop) {
+            prop[2] &= attr;
+            return true;
+          }
+          return false;
+        },
+        ToObject: ToObject,
+        ToString: ToString,
+        ToNumber: ToNumber,
+        ToBoolean: ToBoolean,
+        ToPropertyName: ToPropertyName,
+        ToInteger: ToInteger,
+        ToInt32: ToInt32,
+        ToUint32: ToUint32,
+        ToUint16: ToUint16,
+        ToModule: function(obj){
+          if (obj.NativeBrand === BRANDS.NativeModule) {
+            return obj;
+          }
+          return new $Module(obj, obj.Enumerate(false, false));
+        },
+        IsConstructCall: function(){
+          return context.isConstruct;
+        },
+        GetNativeBrand: function(object){
+          return object.NativeBrand.name;
+        },
+        SetNativeBrand: function(object, name){
+          var brand = BRANDS[name];
+          if (brand) {
+            object.NativeBrand = brand;
+          } else {
+            return new AbruptException('throw', new $Error('ReferenceError', undefined, 'Unknown NativeBrand "'+name+'"'));
+          }
+          return object.NativeBrand.name;
+        },
+        GetBrand: function(object){
+          return object.Brand || object.NativeBrand.name;
+        },
+        GetPrimitiveValue: function(object){
+          return object ? object.PrimitiveValue : undefined;
+        },
+        IsObject: function(object){
+          return object instanceof $Object;
+        },
+        SetInternal: function(object, key, value){
+          object[key] = value;
+          hide(object, key);
+        },
+        GetInternal: function(object, key){
+          if (object) {
+            return object[key];
+          }
+        },
+        HasInternal: function(object, key){
+          if (object) {
+            return key in object;
+          }
+        },
+        SetHidden: function(object, key, value){
+          if (object) {
+            object.hiddens[key] = value;
+          }
+        },
+        GetHidden: function(object, key){
+          if (object) {
+            return object.hiddens[key];
+          }
+        },
+        DeleteHidden: function(object, key){
+          if (object) {
+            if (key in object.hiddens) {
+              delete object.hiddens[key];
+              return true;
+            }
+            return false;
+          }
+        },
+        HasHidden: function(object, key){
+          if (object) {
+            return key in object.hiddens;
+          }
+        },
+        EnumerateHidden: function(object){
+          if (object) {
+            return ownKeys(object.hiddens);
+          }
+        },
+        Type: function(o){
+          if (o === null) {
+            return 'Null';
+          } else {
+            switch (typeof o) {
+              case UNDEFINED: return 'Undefined';
+              case NUMBER:    return 'Number';
+              case STRING:    return 'String';
+              case BOOLEAN:   return 'Boolean';
+              case OBJECT:    return 'Object';
+            }
+          }
+        },
+        Exception: function(type, args){
+          return MakeException(type, toInternalArray(args));
+        },
+        Signal: function(name, value){
+          if (isObject(value)) {
+            if (value instanceof $Array) {
+              value = toInternalArray(value);
+            } else {
+              throw new Error('NYI');
+            }
+          }
+          realm.emit(name, value);
+        },
+        wrapDateMethods: function(target){
+          wrapNatives(Date.prototype, target);
+        },
+        wrapStringMethods: function(target){
+          wrapNatives(String.prototype, target);
+        },
+        wrapRegExpMethods: function(target){
+          wrapNatives(RegExp.prototype, target);
+        },
+
+
+        CallFunction: function(func, receiver, args){
+          return func.Call(receiver, toInternalArray(args));
+        },
+
+        Fetch: function(name, callback){
+          var result = require('../modules')[name];
+          if (!result) {
+            result = new $Error('Error', undefined, 'Unable to locate module "'+name+'"');
+          }
+          callback.Call(undefined, [result]);
+        },
+
+        EvaluateModule: function(source, global, name, errback, callback){
+          realm.evaluateModule(source, global, name, wrapFunction(errback), wrapFunction(callback));
+        },
+        eval: function(code){
+          if (typeof code !== 'string') {
+            return code;
+          }
+          var script = new Script({
+            scope: SCOPE.EVAL,
+            natives: false,
+            source: code
+          });
+          if (script.error) {
+            return script.error;
+          } else if (script.thunk) {
+            return script.thunk.run(context);
+          }
+        },
+        FunctionCreate: function(args){
+          args = toInternalArray(args);
+          var body = args.pop();
+          var script = new Script({
+            scope: SCOPE.GLOBAL,
+            natives: false,
+            source: '(function anonymous('+args.join(', ')+') {\n'+body+'\n})'
+          });
+          if (script.error) {
+            return script.error;
+          }
+          var ctx = new ExecutionContext(context, new DeclarativeEnvironmentRecord(realm.globalEnv), realm, script.bytecode);
+          ExecutionContext.push(ctx);
+          var func = script.thunk.run(ctx);
+          ExecutionContext.pop();
+          return func;
+        },
+        BoundFunctionCreate: function(func, receiver, args){
+          return new $BoundFunction(func, receiver, toInternalArray(args));
+        },
+        BooleanCreate: function(boolean){
+          return new $Boolean(boolean);
+        },
+        DateCreate: function(args){
+          return utility.applyNew(Date, args);
+        },
+        NumberCreate: function(number){
+          return new $Number(number);
+        },
+        ObjectCreate: function(proto){
+          return new $Object(proto);
+        },
+        RegExpCreate: function(pattern, flags){
+          if (typeof pattern === 'object') {
+            pattern = pattern.PrimitiveValue;
+          }
+          try {
+            var result = new RegExp(pattern, flags);
+          } catch (e) {
+            return ThrowException('invalid_regexp', [pattern+'']);
+          }
+          return new $RegExp(result);
+        },
+        StringCreate: function(string){
+          return new $String(string);
+        },
+
+        DateToNumber: function(object){
+          return +object.PrimitiveValue;
+        },
+        DateToString: function(object){
+          return ''+object.PrimitiveValue;
+        },
+        FunctionToString: function(func){
+          var code = func.Code;
+          if (func.Native || !code) {
+            return nativeCode[0] + func.properties.get('name') + nativeCode[1];
+          } else {
+            return code.source.slice(code.range[0], code.range[1]);
+          }
+        },
+        NumberToString: function(object, radix){
+          return object.PrimitiveValue.toString(radix);
+        },
+        RegExpToString: function(object, radix){
+          return object.PrimitiveValue.toString(radix);
+        },
+
+        CodeUnit: function(char){
+          return char.charCodeAt(0);
+        },
+        StringSlice: function(string, start, end){
+          return string.slice(start, end);
+        },
+        StringReplace: function(string, search, replace){
+          if (typeof search !== 'string') {
+            search = search.PrimitiveValue;
+          }
+          return string.replace(search, replace);
+        },
+        FromCharCode: String.fromCharCode,
+        GetExtensible: function(obj){
+          return obj.GetExtensible();
+        },
+        SetExtensible: function(obj, value){
+          obj.SetExtensible(value);
+        },
+        GetPrototype: function(obj){
+          return obj.GetPrototype();
+        },
+        DefineOwnProperty: function(obj, key, desc){
+          obj.DefineOwnProperty(key, ToPropertyDescriptor(desc), false);
+        },
+        Enumerate: function(obj, includePrototype, onlyEnumerable){
+          return fromInternalArray(obj.Enumerate(includePrototype, onlyEnumerable));
+        },
+        GetProperty: function(obj, key){
+          var desc = obj.GetProperty(key);
+          if (desc) {
+            return FromPropertyDescriptor(desc);
+          }
+        },
+        GetOwnProperty: function(obj, key){
+          var desc = obj.GetOwnProperty(key);
+          if (desc) {
+            return FromPropertyDescriptor(desc);
+          }
+        },
+        GetPropertyAttributes: function(obj, key){
+          return obj.properties.getAttribute(key);
+        },
+        HasOwnProperty: function(obj, key){
+          return obj.HasOwnProperty(key);
+        },
+
+        parseInt: function(value, radix){
+          return parseInt(ToPrimitive(value), ToNumber(radix));
+        },
+        parseFloat: function(value){
+          return parseFloat(ToPrimitive(value));
+        },
+        decodeURI: function(value){
+          return decodeURI(ToString(value));
+        },
+        decodeURIComponent: function(value){
+          return decodeURIComponent(ToString(value));
+        },
+        encodeURI: function(value){
+          return encodeURI(ToString(value));
+        },
+        encodeURIComponent: function(value){
+          return encodeURIComponent(ToString(value));
+        },
+        escape: function(value){
+          return escape(ToString(value));
+        },
+        SetTimer: function(f, time, repeating){
+          if (typeof f === 'string') {
+            f = natives.FunctionCreate(f);
+          }
+          var id = Math.random() * 1000000 << 10;
+          timers[id] = setTimeout(function trigger(){
+            if (timers[id]) {
+              f.Call(global, []);
+              if (repeating) {
+                timers[id] = setTimeout(trigger, time);
+              } else {
+                timers[id] = f = null;
+              }
+            } else {
+              f = null;
+            }
+          }, time);
+          return id;
+        },
+        ClearTimer: function(id){
+          if (timers[id]) {
+            timers[id] = null;
+          }
+        },
+        Quote: (function(){
+          var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+              escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
+              meta = { '\b': '\\b', '\t': '\\t', '\n': '\\n', '\f': '\\f', '\r': '\\r', '"' : '\\"', '\\': '\\\\' };
+
+          function escaper(a) {
+            var c = meta[a];
+            return typeof c === 'string' ? c : '\\u'+('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+          }
+
+          return function(string){
+            escapable.lastIndex = 0;
+            return '"'+string.replace(escapable, escaper)+'"';
+          };
+        })(),
+        MathCreate: (function(Math){
+          var consts = ['E', 'LN2', 'LN10', 'LOG2E', 'LOG10E', 'PI', 'SQRT1_2', 'SQRT2'],
+              sqrt = Math.sqrt,
+              log = Math.log,
+              pow = Math.pow,
+              exp = Math.exp,
+              LN2 = Math.LN2,
+              LN10 = Math.LN10;
+
+
+          function wrapMathFunction(fn, args){
+            if (args === 0) {
+              return fn;
+            }
+            if (args === 1) {
+              return function(x){
+                x = ToNumber(x);
+                if (x && x.Completion) {
+                  if (x.Abrupt) {
+                    return x;
+                  } else {
+                    x = x.value;
+                  }
+                }
+                return fn(x);
+              }
+            } else if (args === 2) {
+              return function(x, y){
+                x = ToNumber(x);
+                if (x && x.Completion) {
+                  if (x.Abrupt) {
+                    return x;
+                  } else {
+                    x = x.value;
+                  }
+                }
+                y = ToNumber(y);
+                if (y && y.Completion) {
+                  if (y.Abrupt) {
+                    return y;
+                  } else {
+                    y = y.value;
+                  }
+                }
+                return fn(x, y);
+              }
+            } else {
+              return function(){
+                var values = [];
+                for (var k in arguments) {
+                  var x = arguments[k]
+                  if (x && x.Completion) {
+                    if (x.Abrupt) {
+                      return x;
+                    } else {
+                      x = x.value;
+                    }
+                  }
+                  values.push(x);
+                }
+                return fn.apply(null, values);
+              };
+            }
+          }
+
+          var funcs = {
+            abs: wrapMathFunction(Math.abs, 1),
+            acos: wrapMathFunction(Math.acos, 1),
+            acosh: wrapMathFunction(function(x){
+              return Math.log(x + Math.sqrt(x * x - 1));
+            }, 1),
+            asinh: wrapMathFunction(function(x){
+              return Math.log(x + Math.sqrt(x * x + 1));
+            }, 1),
+            asin: wrapMathFunction(Math.asin, 1),
+            atan: wrapMathFunction(Math.atan, 1),
+            atanh: wrapMathFunction(function(x) {
+              return .5 * log((1 + x) / (1 - x));
+            }, 1),
+            atan2: wrapMathFunction(Math.atan2, 2),
+            ceil: wrapMathFunction(Math.ceil, 1),
+            cos: wrapMathFunction(Math.acos, 1),
+            cosh: wrapMathFunction(function(x) {
+              if (x < 0) {
+                x = -x;
+              }
+              if (x > 21) {
+                return exp(x) / 2;
+              } else {
+                return (exp(x) + exp(-x)) / 2;
+              }
+            }, 1),
+            exp: wrapMathFunction(Math.exp, 1),
+            expm1: wrapMathFunction(function(x) {
+              function factorial(x){
+                for (var i = 2, o = 1; i <= x; i++) {
+                  o *= i;
+                }
+                return o;
+              }
+
+              var o = 0, n = 50;
+              for (var i = 1; i < n; i++) {
+                o += pow(x, i) / factorial(i);
+              }
+              return o;
+            }, 1),
+            floor: wrapMathFunction(Math.floor, 1),
+            hypot: wrapMathFunction(function(x, y) {
+              return sqrt(x * x + y * y) || 0;
+            }, 2),
+            log: wrapMathFunction(Math.log, 1),
+            log2: wrapMathFunction(function(x){
+              return log(x) * (1 / LN2);
+            }, 1),
+            log10: wrapMathFunction(function(x){
+              return log(x) * (1 / LN10);
+            }, 1),
+            log1p: wrapMathFunction(function(x){
+              var o = 0,
+                  n = 50;
+
+              if (x <= -1) {
+                return -Infinity;
+              } else if (x < 0 || value > 1) {
+                return log(1 + x);
+              } else {
+                for (var i = 1; i < n; i++) {
+                  if ((i % 2) === 0) {
+                    o -= pow(x, i) / i;
+                  } else {
+                    o += pow(x, i) / i;
+                  }
+                }
+                return o;
+              }
+            }, 1),
+            max: wrapMathFunction(Math.max),
+            min: wrapMathFunction(Math.min),
+            pow: wrapMathFunction(Math.pow, 2),
+            random: wrapMathFunction(Math.random, 0),
+            round: wrapMathFunction(Math.round, 1),
+            sign: wrapMathFunction(function(x){
+              x = +x;
+              return x === 0 || x !== x ? x : x < 0 ? -1 : 1;
+            }, 1),
+            sinh: wrapMathFunction(function(x){
+              return (exp(x) - exp(-x)) / 2;
+            }, 1),
+            sin: wrapMathFunction(Math.sin, 1),
+            sqrt: wrapMathFunction(Math.sqrt, 1),
+            tan: wrapMathFunction(Math.tan, 1),
+            tanh: wrapMathFunction(function(x) {
+              return (exp(x) - exp(-x)) / (exp(x) + exp(-x));
+            }, 1),
+            trunc: wrapMathFunction(function(x){
+              return ~~x;
+            }, 1)
+          };
+
+          return function(){
+            var math = new $Object;
+            math.NativeBrand = BRANDS.NativeMath;
+            for (var i=0; i < consts.length; i++) {
+              defineDirect(math, consts[i], Math[consts[i]], ___);
+            }
+            for (var k in funcs) {
+              defineDirect(math, k, new $NativeFunction({
+                call: funcs[k],
+                name: k,
+                length: funcs[k].length
+              }), _CW);
+            }
+            return math;
+          };
+        })(Math),
+
+        MapInitialization: CollectionInitializer(MapData, 'Map'),
+        MapSigil: function(){
+          return MapData.sigil;
+        },
+        MapSize: function(map){
+          return map.MapData.size;
+        },
+        MapClear: wrapMapFunction('clear'),
+        MapSet: wrapMapFunction('set'),
+        MapDelete: wrapMapFunction('remove'),
+        MapGet: wrapMapFunction('get'),
+        MapHas: wrapMapFunction('has'),
+        MapNext: function(map, key){
+          var result = map.MapData.after(key);
+          return result instanceof Array ? fromInternalArray(result) : result;
+        },
+
+        WeakMapInitialization: CollectionInitializer(WeakMapData, 'WeakMap'),
+        WeakMapSet: wrapWeakMapFunction('set'),
+        WeakMapDelete: wrapWeakMapFunction('remove'),
+        WeakMapGet: wrapWeakMapFunction('get'),
+        WeakMapHas: wrapWeakMapFunction('has')
+      };
+    })();
+
+
+    var moduleInitScript = new Script({
+      scope: SCOPE.GLOBAL,
+      natives: true,
+      filename: 'module-init.js',
+      source: 'import * from "@std";\n'+
+              'for (let k in this) {\n'+
+              '  let isConstant = typeof this[k] !== "function" && typeof this[k] !== "object";\n'+
+              '  Object.defineProperty(this, k, { enumerable: false, configurable: !isConstant, writable: !isConstant });\n'+
+              '}'
+    });
+
+    var mutationScopeScript = new Script('void 0');
+
+    var emptyClassScript = new Script({
+      scope: SCOPE.GLOBAL,
+      natives: true,
+      filename: 'class-init.js',
+      source: '$__EmptyClass = function constructor(...args){ super(...args) }'
+    });
+
+    function initialize(realm, ƒ, Ω){
+      if (realm.initialized) Ω();
+      realm.state = 'initializing';
+      realm.initialized = true;
+      realm.mutationScope = new ExecutionContext(null, realm.globalEnv, realm, mutationScopeScript.bytecode);
+      realm.evaluate(emptyClassScript, true);
+      resolveModule(require('../modules')['@system'], realm.global, '@system', ƒ, function(){
+        realm.evaluateAsync(moduleInitScript, function(){
+          realm.state = 'idle';
+          Ω();
+        });
+      });
     }
 
-    if (toggle !== this.mutating) {
-      realm.mutating = toggle;
-      if (toggle) {
-        activate(realm);
-        realm.mutationScope || (realm.mutationScope = extendGlobalScope(realm));
-        ExecutionContext.push(realm.mutationScope);
+    function prepareToRun(bytecode, scope){
+      if (!scope) {
+        var realm = createSandbox(realm.global);
+        scope = realm.globalEnv;
       } else {
-        ExecutionContext.pop();
+        var realm = scope.Realm;
+      }
+      ExecutionContext.push(new ExecutionContext(null, scope, realm, bytecode));
+      var status = TopLevelDeclarationInstantiation(bytecode);
+      if (status && status.Abrupt) {
+        realm.emit(status.type, status);
+        return status;
       }
     }
-    return toggle;
-  }
 
+    function run(realm, thunk, bytecode){
+      realm.executing = thunk;
+      realm.state = 'executing';
+      realm.emit('executing', thunk);
 
+      var result = thunk.run(context);
 
-  var realms = [],
-      realmStack = [],
-      realm = null,
-      global = null,
-      context = null,
-      intrinsics = null;
+      if (result === Pause) {
+        var resume = function(){
+          resume = function(){};
+          delete realm.resume;
+          realm.emit('resume');
+          return run(realm, thunk, bytecode);
+        };
 
-  function Realm(callback){
-    var self = this;
+        realm.resume = function(){ return resume() };
+        realm.state = 'paused';
+        realm.emit('pause');
+      } else {
+        realm.executing = null;
+        realm.state = 'idle';
+        if (result && result.Abrupt) {
+          realm.emit(result.type, result);
+        } else {
+          realm.emit('complete', result);
+        }
 
-    Emitter.call(this);
-    realms.push(this);
-    this.active = false;
-    this.scripts = [];
-    this.templates = {};
-    this.state = 'bootstrapping';
-
-    activate(this);
-    this.natives = new Intrinsics(this);
-    intrinsics = this.intrinsics = this.natives.bindings;
-    intrinsics.global = global = this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
-    this.global.NativeBrand = BRANDS.GlobalObject;
-    globalEnv = this.globalEnv = new GlobalEnvironmentRecord(this.global);
-    this.globalEnv.Realm = this;
-
-    this.intrinsics.FunctionProto.Scope = this.globalEnv;
-    this.intrinsics.FunctionProto.Realm = this;
-    this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
-    hide(this.intrinsics.FunctionProto, 'Scope');
-
-    for (var k in natives) {
-      this.natives.binding({ name: k, call: natives[k] });
+        return result;
+      }
     }
 
-    this.state = 'initializing';
 
-    initializeRealm(this, function(){
-      self.state = 'idle';
-      callback && callback(self);
-      self.emit('ready');
-    });
-  }
+    function mutationContext(realm, toggle){
+      if (toggle === undefined) {
+        toggle = !realm.mutating;
+      } else {
+        toggle = !!toggle;
+      }
 
-  void function(){
+      if (toggle !== this.mutating) {
+        realm.mutating = toggle;
+        if (toggle) {
+          ExecutionContext.push(realm.mutationScope);
+        } else {
+          ExecutionContext.pop();
+        }
+      }
+      return toggle;
+    }
+
+    function resolveImports(code, ƒ, Ω){
+      var modules = create(null);
+      if (code.imports && code.imports.length) {
+        var load = intrinsics.System.Get('load'),
+            count = code.imports.length,
+            errors = [];
+
+        var callback = {
+          Call: function(receiver, args){
+            var result = args[0],
+                internals = result.hiddens['loader-internals'];
+
+            if (result instanceof $Module) {
+              modules[internals.mrl] = result;
+            } else {}
+
+            if (!--count) {
+              if (errors.length) {
+                ƒ(errors);
+              }
+              Ω(modules);
+            }
+          }
+        };
+
+
+        var errback = {
+          Call: function(receiver, args){
+            errors.push(args[0]);
+            if (!--count) {
+              ƒ(errors);
+              Ω(modules);
+            }
+          }
+        };
+
+        each(code.imports, function(imported){
+          load.Call(intrinsics.System, [imported.origin, callback, errback]);
+        });
+      } else {
+        Ω(modules);
+      }
+    }
+
+    function createSandbox(object){
+      var bindings = new $Object;
+      var scope = new GlobalEnvironmentRecord(bindings);
+      bindings.NativeBrand = BRANDS.GlobalObject;
+      scope.outer = object.Realm.globalEnv;
+      scope.Realm = bindings.Realm = create(object.Realm || object.Prototype.Realm);
+      scope.Realm.globalEnv = scope;
+      return scope.Realm;
+    }
+
+
+    function runScript(script, realm, ƒ, Ω){
+      var scope = realm.globalEnv,
+          ctx = new ExecutionContext(context, scope, realm, script.bytecode);
+
+      ExecutionContext.push(ctx);
+      var status = TopLevelDeclarationInstantiation(script.bytecode);
+      context === ctx && ExecutionContext.pop();
+
+      if (status && status.Abrupt) {
+        realm.emit(status.type, status);
+        return ƒ(status);
+      }
+
+      resolveImports(script.bytecode, ƒ, function(modules){
+        each(script.bytecode.imports, function(imported){
+          var module = modules[imported.origin];
+
+          iterate(imported.specifiers, function(path, name){
+            if (name === '*') {
+              module.properties.forEach(function(prop){
+                scope.SetMutableBinding(prop[0], module.Get(prop[0]));
+              });
+            } else {
+              var obj = module;
+
+              each(path, function(part){
+                var o = obj;
+                obj = obj.Get(part);
+                console.log(o, obj, part);
+              });
+
+              scope.SetMutableBinding(name, obj);
+            }
+          });
+        });
+
+        ExecutionContext.push(ctx);
+        var result = run(realm, script.thunk, script.bytecode);
+        context === ctx && ExecutionContext.pop();
+        Ω(result);
+      });
+    }
+
+    function resolveModule(source, global, name, ƒ, Ω){
+      var script = new Script({
+        name: name,
+        natives: true,
+        source: source,
+        scope: SCOPE.MODULE
+      });
+
+      if (script.error) {
+        return ƒ(script.error);
+      }
+
+      var sandbox = createSandbox(global);
+
+      runScript(script, sandbox, ƒ, function(){
+        var module = new $Module(sandbox.globalEnv, script.bytecode.ExportedNames);
+        Ω(module);
+      });
+    }
+
+
+    function Realm(callback){
+      var self = this;
+
+      Emitter.call(this);
+      realms.push(this);
+      this.active = false;
+      this.scripts = [];
+      this.templates = {};
+      this.state = 'bootstrapping';
+
+      activate(this);
+      this.natives = new Intrinsics(this);
+      intrinsics = this.intrinsics = this.natives.bindings;
+      intrinsics.global = global = this.global = new $Object(new $Object(this.intrinsics.ObjectProto));
+      this.global.NativeBrand = BRANDS.GlobalObject;
+      globalEnv = this.globalEnv = new GlobalEnvironmentRecord(this.global);
+      this.globalEnv.Realm = this;
+
+      this.intrinsics.FunctionProto.Scope = this.globalEnv;
+      this.intrinsics.FunctionProto.Realm = this;
+      this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
+      hide(this.intrinsics.FunctionProto, 'Scope');
+
+      for (var k in natives) {
+        this.natives.binding({ name: k, call: natives[k] });
+      }
+
+      this.state = 'initializing';
+
+      function errback(error){
+        self.state = 'error';
+        callback && callback(error);
+        self.emit('error', error);
+      }
+
+      initialize(this, errback, function(){
+        deactivate(self);
+        self.state = 'idle';
+        callback && callback(self);
+        self.emit('ready');
+      });
+    }
+
     inherit(Realm, Emitter, [
       function enterMutationContext(){
         mutationContext(this, true);
@@ -4353,17 +4483,22 @@ var runtime = (function(GLOBAL, exports, undefined){
       function exitMutationContext(){
         mutationContext(this, false);
       },
-      function subscope(){
-        return extendGlobalScope(this);
-      },
-      function evaluateAsync(subject, callback, scope){
-        if (!scope) {
-          scope = this.globalEnv;
+      function evaluateModule(source, global, name, errback, callback){
+        if (typeof errback !== FUNCTION) {
+          if (typeof name === FUNCTION) {
+            errback = name;
+            name = '';
+          } else {
+            errback = noop;
+          }
         }
-
-        var realm = scope.Realm;
-        activate(realm);
-
+        if (typeof callback !== FUNCTION) {
+          callback = errback;
+          errback = noop;
+        }
+        resolveModule(source, global, name, errback, callback);
+      },
+      function evaluateAsync(subject, callback){
         var script = new Script(subject);
 
         if (script.error) {
@@ -4373,33 +4508,12 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         this.scripts.push(script);
 
-
-        if (!script.bytecode.imports || !script.bytecode.imports.length) {
-          return callback(prepareToRun(realm, script.bytecode, scope) || run(realm, script.thunk, script.bytecode));
+        function errback(error){
+          callback(error);
+          self.emit('error', error);
         }
 
-        resolveImports(script.bytecode, function(modules, result){
-          if (result = prepareToRun(realm, script.bytecode, scope)) {
-            return callback(result);
-          }
-          each(script.bytecode.imports, function(imported){
-            var module = modules[imported.origin];
-            iterate(imported.specifiers, function(path, name){
-              if (name === '*') {
-                module.properties.forEach(function(prop){
-                  globalEnv.SetMutableBinding(prop[0], module.Get(prop[0]));
-                });
-              } else {
-                var obj = module;
-                each(path, function(part){
-                  obj = obj.Get(part);
-                });
-                globalEnv.SetMutableBinding(name, obj);
-              }
-            });
-          });
-          callback(run(realm, script.thunk, script.bytecode));
-        });
+        runScript(script, this, errback, callback);
       },
       function evaluate(subject, quiet){
         activate(this);
@@ -4412,35 +4526,32 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         realm.quiet = !!quiet;
         this.scripts.push(script);
-        return prepareToRun(this, script.bytecode) || run(this, script.thunk, script.bytecode);
+        return prepareToRun(script.bytecode, this.globalEnv) || run(this, script.thunk, script.bytecode);
       }
     ]);
-  }();
+
+    return Realm;
+  })();
 
 
+  var realms = [],
+      realmStack = [],
+      realm = null,
+      global = null,
+      context = null,
+      intrinsics = null;
 
   exports.Realm = Realm;
   exports.Script = Script;
-  exports.NativeScript = NativeScript;
-  function activeRealm(){
+  exports.activeRealm = function activeRealm(){
     if (!realm && realms.length) {
       activate(realms[realms.length - 1]);
     }
     return realm;
   };
-  exports.activeRealm = activeRealm;
-
-  function activeContext(){
+  exports.activeContext = function activeContext(){
     return context;
-  }
-  exports.activeContext = activeContext;
-
-  exports.builtins = {
-    $Object: $Object
   };
-  for (var k in $builtins) {
-    exports.builtins['$'+k] = $builtins[k];
-  }
 
   return exports;
 })((0,eval)('this'), typeof module !== 'undefined' ? module.exports : {});

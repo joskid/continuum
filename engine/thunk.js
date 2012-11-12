@@ -202,7 +202,7 @@ var thunk = (function(exports){
       var args     = stack[--sp],
           receiver = stack[--sp],
           func     = stack[--sp],
-          result   = context.EvaluateCall(func, receiver, args);
+          result   = context.callFunction(func, receiver, args);
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -291,7 +291,7 @@ var thunk = (function(exports){
     function CONSTRUCT(){
       var args   = stack[--sp],
           func   = stack[--sp],
-          result = context.EvaluateConstruct(func, args);
+          result = context.constructFunction(func, args);
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -346,7 +346,7 @@ var thunk = (function(exports){
     function ELEMENT(){
       var obj    = stack[--sp],
           key    = stack[--sp],
-          result = context.Element(obj, key);
+          result = context.getPropertyReference(obj, key);
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -452,7 +452,7 @@ var thunk = (function(exports){
             array = stack[sp - 1];
 
         if (ops[ip][1]) {
-          var status = context.SpreadInitialization(array, index, val);
+          var status = context.spreadArray(array, index, val);
 
           if (status && status.Abrupt) {
             error = status;
@@ -501,7 +501,7 @@ var thunk = (function(exports){
     function MEMBER(){
       var obj    = stack[--sp],
           key    = code.lookup(ops[ip][0]),
-          result = context.Element(key, obj);
+          result = context.getPropertyReference(key, obj);
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -591,8 +591,8 @@ var thunk = (function(exports){
     }
 
     function REF(){
-      var key = code.lookup(ops[ip][0]);
-      stack[sp++] = context.IdentifierResolution(key);
+      var ident = code.lookup(ops[ip][0]);
+      stack[sp++] = context.getReference(ident);
       return cmds[++ip];
     }
 
@@ -639,7 +639,7 @@ var thunk = (function(exports){
     function SPREAD(){
       var obj    = stack[--sp],
           index  = ops[ip][0],
-          result = context.SpreadDestructuring(obj, index);
+          result = context.destructureSpread(obj, index);
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -657,7 +657,7 @@ var thunk = (function(exports){
     function SPREAD_ARG(){
       var spread = stack[--sp],
           args   = stack[sp - 1],
-          status = context.SpreadArguments(args, spread);
+          status = context.spreadArguments(args, spread);
 
       if (status && status.Abrupt) {
         error = status;
@@ -673,7 +673,7 @@ var thunk = (function(exports){
     }
 
     function SUPER_CALL(){
-      var result = context.SuperReference(false);
+      var result = context.getSuperReference(false);
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -689,7 +689,7 @@ var thunk = (function(exports){
     }
 
     function SUPER_ELEMENT(){
-      var result = context.SuperReference(stack[--sp]);
+      var result = context.getSuperReference(stack[--sp]);
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -705,7 +705,7 @@ var thunk = (function(exports){
     }
 
     function SUPER_MEMBER(){
-      var result = context.SuperReference(code.lookup(ops[ip][0]));
+      var result = context.getSuperReference(code.lookup(ops[ip][0]));
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -721,13 +721,13 @@ var thunk = (function(exports){
     }
 
     function TEMPLATE(){
-      stack[sp++] = context.GetTemplateCallSite(ops[ip][0]);
+      stack[sp++] = context.getTemplateCallSite(ops[ip][0]);
       console.log(stack, sp);
       return cmds[++ip];
     }
 
     function THIS(){
-      var result = context.ThisResolution();
+      var result = context.getThis();
 
       if (result && result.Completion) {
         if (result.Abrupt) {

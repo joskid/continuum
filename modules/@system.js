@@ -149,7 +149,7 @@ class Request {
       translated = '"use strict";'+translated;
     }
 
-    $__EvaluateModule(translated, _loader.global, _this.resolved, module => {
+    $__EvaluateModule(translated, _loader.global, _this.resolved, msg => this.reject(msg), module => {
       var _module = _(module);
       _module.loader = _this.loader;
       $__SetInternal(_module, 'resolved', _this.resolved);
@@ -273,7 +273,7 @@ export let Module = function Module(object){
 $__deleteDirect(Module, 'prototype');
 
 $__System = new Loader(null, {
-  global: this,
+  global: $__global,
   baseURL: '',
   strict: false,
   fetch(relURL, baseURL, request, resolved) {
