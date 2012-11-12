@@ -9,6 +9,33 @@ export function Number(value){
 
 $__setupConstructor(Number, $__NumberProto);
 
+
+export function isNaN(number){
+  return number !== number;
+}
+
+export function isFinite(number){
+  return typeof value === 'number'
+      && value === value
+      && value < POSITIVE_INFINITY
+      && value > NEGATIVE_INFINITY;
+}
+
+export function isInteger(value) {
+  return typeof value === 'number'
+      && value === value
+      && value > -MAX_INTEGER
+      && value < MAX_INTEGER
+      && value | 0 === value;
+}
+
+export function toInteger(value){
+  return (value / 1 || 0) | 0;
+}
+
+$__defineMethods(Number, [isNaN, isFinite, isInteger, toInteger]);
+
+
 export let
   EPSILON           = 2.220446049250313e-16,
   MAX_INTEGER       = 9007199254740992,
@@ -28,29 +55,7 @@ $__defineConstants(Number, {
   POSITIVE_INFINITY: POSITIVE_INFINITY
 });
 
-$__defineProps(Number, {
-  isNaN(number){
-    return number !== number;
-  },
-  isFinite(number){
-    return typeof value === 'number'
-        && value === value
-        && value < Infinity
-        && value > -Infinity;
-  },
-  isInteger(value) {
-    return typeof value === 'number'
-        && value === value
-        && value > -9007199254740992
-        && value < 9007199254740992
-        && value | 0 === value;
-  },
-  toInteger(value){
-    return (value / 1 || 0) | 0;
-  }
-});
 
-let isFinite = Number.isFinite;
 
 $__defineProps(Number.prototype, {
   toString(radix){
