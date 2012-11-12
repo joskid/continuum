@@ -809,12 +809,16 @@ var debug = (function(exports){
   }();
 
 
-  function MirrorScope(subject){
-    subject.__introspected = this;
-    this.subject = subject;
-  }
 
-  void function(){
+  var MirrorScope = (function(){
+    function MirrorScope(subject){
+      if (subject.type === 'Global Env') {
+        return new MirrorGlobalScope(subject);
+      }
+      subject.__introspected = this;
+      this.subject = subject;
+    }
+
     inherit(MirrorScope, Mirror, {
       kind: 'Scope',
       type: 'scope',
@@ -823,6 +827,9 @@ var debug = (function(exports){
       isPropEnumerable: always(true),
       isPropAccessor: always(false)
     }, [
+      function isPropAccessor(key){
+        return this.getPrototype().isPropAccessor(key) || false;
+      },
       function getPrototype(){
         return introspect(this.subject.outer);
       },
@@ -894,10 +901,59 @@ var debug = (function(exports){
         return 1 | (this.isPropConfigurable(key) << 1) | (this.isPropWritable(key) << 2);
       },
     ]);
-  }();
 
+    return MirrorScope;
+  })();
 
+  var MirrorGlobalScope = (function(){
+    function MirrorGlobalScope(subject){
+      subject.__introspected = this;
+      this.subject = subject;
+      this.global = introspect(subject.bindings);
+    }
 
+    inherit(MirrorGlobalScope, MirrorScope, {
+    }, [
+      function isExtensible(){
+        return this.global.isExtensible();
+      },
+      function isPropEnumerable(key){
+        return this.global.isPropEnumerable(key);
+      },
+      function isPropConfigurable(key){
+        return this.global.isPropConfigurable(key);
+      },
+      function isPropWritable(key){
+        return this.global.isPropWritable(key);
+      },
+      function isPropAccessor(key){
+        return this.global.isPropAccessor(key);
+      },
+      function propAttributes(key){
+        return this.global.propAttributes(key);
+      },
+      function getProperty(key){
+        return this.global.getProperty(key);
+      },
+      function getDescriptor(key){
+        return this.global.getDescriptor(key);
+      },
+      function getOwnDescriptor(key){
+        return this.global.getOwnDescriptor(key);
+      },
+      function inheritedAttrs(){
+        return this.global.inheritedAttrs();
+      },
+      function ownAttrs(props){
+        return this.global.ownAttrs(props);
+      },
+      function list(hidden, own){
+        return this.global.list(hidden, own);
+      }
+    ]);
+
+    return MirrorGlobalScope;
+  })();
 
   var brands = {
     Arguments: MirrorArguments,
