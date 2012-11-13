@@ -30,11 +30,8 @@ Will soon work in:
 
 ### Already Implemented
 
-* destructuring assignment
-* destructuring arguments
-* spread array initializer
-* spread arguments
-* spread destructuring
+* destructuring assignment and arguments
+* spread in arguments and array initializers
 * rest parameters
 * classes and super
 * arrow functions
@@ -42,15 +39,13 @@ Will soon work in:
 * new Math functions
 * new Object functions
 * new String functions
-* concise object literal method syntax
+* concise methods in object literals
 * mutable and deletable __proto__
-* Map
-* Set
-* WeakMap (garbage collection semantics not fully realized)
+* Map, Set, and WeakMap (garbage collection semantics not fully realized)
 * Iterators and for...of
 * Templates
-* `is` and `isnt` operators (not in es6 but supported anyway)
-* Module system and '@std' builtin modules `module std = '@std'` or `import call from '@Function'`
+* Module system with imports and exports
+* builtin '@std' modules `module std = '@std'` or `import call from '@Function'`
 * Generators (kind of broken at the moment though)
 
 ### Partially Implemented
@@ -67,6 +62,7 @@ Will soon work in:
 
 
 # TODO
+* Hook up module system to environment
 * Much work on optimizations
 * Serializable state for saving applications while they run
 * Expanded debugger and eventually full dev environment built around continuum
