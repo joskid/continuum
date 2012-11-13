@@ -829,12 +829,55 @@ var thunk = (function(exports){
       stacktrace.push(unwound);
     }
 
-    function normalPrepare(){
-      stack = [];
+    function normalPrepare(newContext){
+      thunkStack.push({
+        ip: ip,
+        sp: sp,
+        stack: stack,
+        error: error,
+        prepare: prepare,
+        execute: execute,
+        cleanup: cleanup,
+        history: history,
+        completion: completion,
+        stacktrace: stacktrace,
+        context: context,
+        log: log,
+        ctx: ctx,
+        yielded: yielded
+      });
       ip = 0;
       sp = 0;
-      stacktrace = completion = error = undefined;
+      stack = [];
+      error = completion = stacktrace = yielded = undefined;
+      log = log || cmds.log;
+      context = newContext;
+      history = [];
+      execute = context.Realm.quiet ? normalExecute : instrumentedExecute;
     }
+
+    function normalCleanup(){
+      var result = GetValue(completion);
+      if (thunkStack.length) {
+        var v = thunkStack.pop();
+        ip = v.ip;
+        sp = v.sp;
+        stack = v.stack;
+        error = v.error;
+        prepare = v.prepare;
+        execute = v.execute;
+        cleanup = v.cleanup;
+        history = v.history;
+        completion = v.completion;
+        stacktrace = v.stacktrace;
+        context = v.context;
+        log = v.log;
+        ctx = v.ctx;
+        yielded = v.yielded;
+      }
+      return result;
+    }
+
 
     function normalExecute(){
       var f = cmds[ip],
@@ -850,25 +893,15 @@ var thunk = (function(exports){
       }
     }
 
-    function normalCleanup(){
-      var result = completion;
-      prepare();
-      return result;
-    }
-
     function instrumentedExecute(){
       var f = cmds[ip],
           ips = 0,
           realm = context.Realm;
 
-      history = [];
-
       while (f) {
-        if (f) {
-          history[ips++] = [ip, ops[ip]];
-          realm.emit('op', [ops[ip], stack[sp - 1]]);
-          f = f();
-        }
+        history[ips++] = [ip, ops[ip]];
+        realm.emit('op', [ops[ip], stack[sp - 1]]);
+        f = f();
       }
     }
 
@@ -890,8 +923,9 @@ var thunk = (function(exports){
       return Pause;
     }
 
-    function yieldPrepare(){
+    function yieldPrepare(ctx){
       prepare = normalPrepare;
+      context = ctx;
     }
 
     function yieldCleanup(){
@@ -901,18 +935,9 @@ var thunk = (function(exports){
     }
 
     function run(ctx){
-      context = ctx;
-      if (context.Realm.quiet) {
-        execute = normalExecute;
-      } else {
-        execute = instrumentedExecute;
-      }
-      var prevLog = log;
-      log = log || cmds.log;
-      prepare();
+      prepare(ctx);
       execute();
-      if (log && !prevLog) log = false;
-      return GetValue(cleanup());
+      return cleanup();
     }
 
     function send(ctx, value){
@@ -923,7 +948,9 @@ var thunk = (function(exports){
     }
 
 
-    var completion, stack, ip, sp, error, ctx, context, stacktrace, history;
+    var completion, yielded, stack, ip, sp, error, ctx, context, stacktrace, history;
+
+    var executing = false, thunkStack = [];
 
     var prepare = normalPrepare,
         execute = normalExecute,

@@ -14,22 +14,24 @@ function J(value){
   }
 
   var stepback = indent,
-      partial = [];
+      partial = [],
+      brackets;
 
   indent += gap;
   stack.add(value);
 
   if ($__GetNativeBrand(value) === 'Array') {
-    var brackets = ['[', ']'];
+    brackets = ['[', ']'];
 
     for (var i=0, len = value.length; i < len; i++) {
       var prop = Str(i, value);
       partial[i] = prop === undefined ? 'null' : prop;
     }
   } else {
-    var brackets = ['{', '}'],
-        keys = PropertyList || $__Enumerate(value, false, true),
+    var keys = PropertyList || $__Enumerate(value, false, true),
         colon = gap ? ': ' : ':';
+
+    brackets = ['{', '}'];
 
     for (var i=0, len=keys.length; i < len; i++) {
       var prop = Str(keys[i], value);
@@ -42,30 +44,29 @@ function J(value){
   if (!partial.length) {
     stack.delete(value);
     indent = stepback;
-    return final = '';
+    return brackets[0]+brackets[1];
   } else if (!gap) {
     stack.delete(value);
     indent = stepback;
-    return final = partial.join(',');
+    return brackets[0]+partial.join(',')+brackets[1];
   } else {
     var final = '\n' + indent + partial.join(',\n' + indent) + '\n' + stepback;
     stack.delete(value);
     indent = stepback;
-    return final;
+    return brackets[0]+final+brackets[1];
   }
 }
 
 
 function Str(key, holder){
-  let value = holder[key];
-  if ($__Type(value) === 'Object') {
-    var toJSON = value.toJSON;
+  var v = holder[key];
+  if ($__Type(v) === 'Object') {
+    var toJSON = v.toJSON;
     if (typeof toJSON === 'function') {
-      value = $__CallFunction(toJSON, value, [key]);
+      v = $__CallFunction(toJSON, v, [key]);
     }
   }
 
-  var v = value;
   if (ReplacerFunction) {
     v = $__CallFunction(ReplacerFunction, holder, [key, v]);
   }
@@ -88,23 +89,22 @@ function Str(key, holder){
     return 'true';
   } else if (v === false) {
     return 'false';
-  } else {
-    var type = typeof v;
-    if (type === 'string') {
-      return $__Quote(v);
-    } else if (type === 'number') {
-      return (v !== v || v === Infinity || v === -Infinity) ? 'null' : '' + v;
-    } else if (type === 'object') {
-      return J(v);
-    }
   }
 
-  throw value;
+  var type = typeof v;
+  if (type === 'string') {
+    return $__Quote(v);
+  } else if (type === 'number') {
+    return v !== v || v === Infinity || v === -Infinity ? 'null' : '' + v;
+  } else if (type === 'object') {
+    return J(v);
+  }
+
 }
 
 
 $__defineProps(JSON, {
-  stringify(_value, replacer, space){
+  stringify(value, replacer, space){
     ReplacerFunction = undefined;
     PropertyList = undefined;
     stack = new Set;
@@ -154,6 +154,6 @@ $__defineProps(JSON, {
       gap = '';
     }
 
-    return Str('x', { 'x': _value });
+    return Str('', { '': value });
   }
 });

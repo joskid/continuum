@@ -301,12 +301,12 @@ function joinArray(array, separator){
     separator = $__ToString(separator);
   }
 
-  len--;
   for (var i=0; i < len; i++) {
-    result += $__ToString(array[i]) + separator;
+    if (i) result += separator;
+    result += $__ToString(array[i]);
   }
 
-  return result + $__ToString(array[i]);
+  return result;
 }
 
 

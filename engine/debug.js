@@ -456,7 +456,11 @@ var debug = (function(exports){
   ]);
 
   function MirrorThrown(subject){
-    MirrorError.call(this, subject);
+    if (utility.isObject(subject)) {
+      MirrorError.call(this, subject);
+    } else {
+      return introspect(subject);
+    }
   }
 
   void function(){

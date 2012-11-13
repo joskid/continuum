@@ -916,10 +916,9 @@ var assembler = (function(exports){
   }
 
   function ForStatement(node){
-    control(function(){
-      var update;
-      lexical(function(){
-        var scope = BLOCK({ LexicalDeclarations: [] });
+    lexical(function(){
+      var scope = BLOCK({ LexicalDeclarations: [] });
+      control(function(){
         var init = node.init;
         if (init){
           if (init.type === 'VariableDeclaration') {
@@ -953,7 +952,7 @@ var assembler = (function(exports){
           var op = IFEQ(0, false);
         }
 
-        update = current();
+        var update = current();
 
         if (node.body.body && decl) {
           block(function(){
@@ -985,9 +984,9 @@ var assembler = (function(exports){
 
         JUMP(test);
         adjust(op);
-        UPSCOPE();
+        return update;
       });
-      return update;
+      UPSCOPE();
     });
   }
 
