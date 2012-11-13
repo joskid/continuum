@@ -30,11 +30,10 @@ var assembler = (function(exports){
       FUNCTYPE  = constants.FUNCTYPE.hash;
 
   var hasOwn = {}.hasOwnProperty,
-      push = [].push;
-
-  var context;
-
-  var opcodes = 0;
+      push = [].push,
+      proto = Math.random().toString(36).slice(2),
+      context,
+      opcodes = 0;
 
   function StandardOpCode(params, name){
     var opcode = this;
@@ -149,96 +148,107 @@ var assembler = (function(exports){
 
 
 
-  function Directive(op, args){
-    this.op = op;
-    this.loc = currentNode.loc;
-    this.range = currentNode.range;
-    for (var i=0; i < op.params; i++) {
-      this[i] = args[i];
-    }
-  }
 
-  define(Directive.prototype, [
-    function inspect(){
-      var out = [];
-      for (var i=0; i < this.op.params; i++) {
-        out.push(util.inspect(this[i]));
+  var Code = (function(){
+    var Directive = (function(){
+      function Directive(op, args){
+        this.op = op;
+        this.loc = currentNode.loc;
+        this.range = currentNode.range;
+        for (var i=0; i < op.params; i++) {
+          this[i] = args[i];
+        }
       }
-      return util.inspect(this.op)+'('+out.join(', ')+')';
-    }
-  ]);
 
+      define(Directive.prototype, [
+        function inspect(){
+          var out = [];
+          for (var i=0; i < this.op.params; i++) {
+            out.push(util.inspect(this[i]));
+          }
+          return util.inspect(this.op)+'('+out.join(', ')+')';
+        }
+      ]);
 
+      return Directive;
+    })();
 
-  function Params(params, node, rest){
-    this.length = 0;
-    if (params) {
-      push.apply(this, params)
-      this.BoundNames = BoundNames(params);
-    } else {
-      this.BoundNames = [];
-    }
-    this.Rest = rest;
-    this.ExpectedArgumentCount = this.BoundNames.length;
-    if (rest) this.BoundNames.push(rest.name);
-  }
-
-
-  function Code(node, source, type, scope, strict){
-    function Instruction(opcode, args){
-      Directive.call(this, opcode, args);
-    }
-
-    inherit(Instruction, Directive, {
-      code: this
-    });
-
-    if (node.type === 'Program') {
-      this.topLevel = true;
-      body = node;
-      this.imports = Imports(node);
-    } else {
-      this.topLevel = false;
-      body = node.body;
-    }
-
-    define(this, {
-      body: body,
-      source: source,
-      range: node.range,
-      loc: node.loc,
-      children: [],
-      LexicalDeclarations: LexicalDeclarations(body),
-      createDirective: function(opcode, args){
-        var op = new Instruction(opcode, args);
-        this.ops.push(op);
-        return op;
+    var Params = (function(){
+      function Params(params, node, rest){
+        this.length = 0;
+        if (params) {
+          push.apply(this, params)
+          this.BoundNames = BoundNames(params);
+        } else {
+          this.BoundNames = [];
+        }
+        this.Rest = rest;
+        this.ExpectedArgumentCount = this.BoundNames.length;
+        if (rest) this.BoundNames.push(rest.name);
       }
-    });
 
-    if (!this.topLevel && node.id) {
-      this.name = node.id.name;
-      if (node.generator) {
-        this.generator = true;
+      define(Params, [
+        function add(items){
+
+        }
+      ]);
+      return Params;
+    })();
+
+    function Code(node, source, type, scope, strict){
+      function Instruction(opcode, args){
+        Directive.call(this, opcode, args);
       }
+
+      inherit(Instruction, Directive, {
+        code: this
+      });
+
+      var body = node;
+
+      if (node.type === 'Program') {
+        this.topLevel = true;
+        this.imports = getImports(node);
+      } else {
+        this.topLevel = false;
+        body = body.body;
+      }
+
+      define(this, {
+        body: body,
+        source: source,
+        range: node.range,
+        loc: node.loc,
+        children: [],
+        LexicalDeclarations: LexicalDeclarations(body),
+        createDirective: function(opcode, args){
+          var op = new Instruction(opcode, args);
+          this.ops.push(op);
+          return op;
+        }
+      });
+
+      if (!this.topLevel && node.id) {
+        this.name = node.id.name;
+        if (node.generator) {
+          this.generator = true;
+        }
+      }
+
+
+      this.transfers = [];
+      this.ScopeType = scope;
+      this.Type = type || FUNCTYPE.NORMAL;
+      this.VarDeclaredNames = [];
+      this.NeedsSuperBinding = ReferencesSuper(this.body);
+      this.Strict = strict || isStrict(this.body);
+      if (scope === SCOPE.MODULE) {
+        this.ExportedNames = getExports(this.body);
+      }
+      this.params = new Params(node.params, node, node.rest);
+      this.ops = [];
     }
 
-
-    this.transfers = [];
-    this.ScopeType = scope;
-    this.Type = type || FUNCTYPE.NORMAL;
-    this.VarDeclaredNames = [];
-    this.NeedsSuperBinding = ReferencesSuper(this.body);
-    this.Strict = strict || isStrict(this.body);
-    if (scope === SCOPE.MODULE) {
-      this.ExportedNames = Exports(this.body);
-    }
-    this.params = new Params(node.params, node, node.rest);
-    this.ops = [];
-  }
-
-  void function(){
-    var proto = Math.random().toString(36).slice(2);
 
     define(Code.prototype, [
       function inherit(code){
@@ -257,7 +267,9 @@ var assembler = (function(exports){
         }
       }
     ]);
-  }();
+
+    return Code;
+  })();
 
 
   function ClassDefinition(node){
@@ -296,190 +308,51 @@ var assembler = (function(exports){
     }
   }
 
+  var Unwinder = (function(){
+    function Unwinder(type, begin, end){
+      this.type = type;
+      this.begin = begin;
+      this.end = end;
+    }
 
-  function Unwinder(type, begin, end){
-    this.type = type;
-    this.begin = begin;
-    this.end = end;
-  }
-
-  void function(){
     define(Unwinder.prototype, [
       function toJSON(){
         return [this.type, this.begin, this.end];
       }
     ]);
-  }();
 
+    return Unwinder;
+  })();
 
+  var ControlTransfer = (function(){
+    function ControlTransfer(labels){
+      this.labels = labels;
+      this.breaks = [];
+      this.continues = [];
+    }
 
-  function ControlTransfer(labels){
-    this.labels = labels;
-    this.breaks = [];
-    this.continues = [];
-  }
-
-  void function(){
     define(ControlTransfer.prototype, {
       labels: null,
       breaks: null,
       continues: null
-    })
+    });
 
     define(ControlTransfer.prototype, [
       function updateContinues(ip){
         if (ip !== undefined) {
-          for (var i=0, item; item = this.breaks[i]; i++) {
-            item[0] = ip;
-          }
+          each(this.continues, function(item){ item[0] = ip });
         }
       },
       function updateBreaks(ip){
         if (ip !== undefined) {
-          for (var i=0, item; item = this.continues[i]; i++) {
-            item[0] = ip;
-          }
+          each(this.breaks, function(item){ item[0] = ip });
         }
       }
     ]);
-  }();
 
+    return ControlTransfer;
+  })();
 
-
-
-  function AssemblerOptions(o){
-    o = Object(o);
-    for (var k in this)
-      this[k] = k in o ? o[k] : this[k];
-  }
-
-  AssemblerOptions.prototype = {
-    scope: SCOPE.GLOBAL,
-    natives: false,
-    filename: null
-  };
-
-
-
-  function Assembler(options){
-    this.options = new AssemblerOptions(options);
-    define(this, {
-      strings: [],
-      hash: create(null)
-    });
-  }
-
-  define(Assembler.prototype, {
-    source: null,
-    node: null,
-    code: null,
-    pending: null,
-    levels: null,
-    jumps: null,
-    labels: null,
-  });
-
-
-  void function(){
-    define(Assembler.prototype, [
-      function assemble(node, source){
-        context = this;
-        this.pending = new Stack;
-        this.levels = new Stack;
-        this.jumps = new Stack;
-        this.labels = null;
-        this.source = source;
-
-        if (this.options.scope === SCOPE.FUNCTION) {
-          node = node.body[0].expression;
-        }
-
-        var code = new Code(node, source, FUNCTYPE.NORMAL, this.options.scope);
-        define(code, {
-          strings: this.strings,
-          hash: this.hash
-        });
-
-        code.topLevel = true;
-
-        if (this.options.natives) {
-          code.natives = true;
-          reinterpretNatives(node);
-        }
-
-        annotateParent(node);
-        this.queue(code);
-
-        while (this.pending.length) {
-          var lastCode = this.code;
-          this.code = this.pending.pop();
-          this.code.filename = this.filename;
-          if (lastCode) {
-            this.code.inherit(lastCode);
-          }
-          recurse(this.code.body);
-          if (this.code.ScopeType === SCOPE.GLOBAL || this.code.ScopeType === SCOPE.EVAL){
-            COMPLETE();
-          } else {
-            if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
-              GET();
-            } else {
-              UNDEFINED();
-            }
-            RETURN();
-          }
-        }
-
-        return code;
-      },
-      function queue(code){
-        if (this.code) {
-          this.code.children.push(code);
-        }
-        this.pending.push(code);
-      },
-      function intern(name){
-        return name;
-        if (name === '__proto__') {
-          if (!this.hash[proto]) {
-            var index = this.hash[proto] = this.strings.length;
-            this.strings[index] = '__proto__';
-          }
-          name = proto;
-        }
-
-        if (name in this.hash) {
-          return this.hash[name];
-        } else {
-          var index = this.hash[name] = this.strings.length;
-          this.strings[index] = name;
-          return index;
-        }
-      },
-    ]);
-  }();
-
-
-
-  function annotateParent(node, parent){
-    visit(node, function(node){
-      if (isObject(node) && parent) {
-        define(node, 'parent', parent);
-      }
-      return visit.RECURSE;
-    });
-  }
-
-  function reinterpretNatives(node){
-    visit(node, function(node){
-      if (node.type === 'Identifier' && /^\$__/.test(node.name)) {
-        node.type = 'NativeIdentifier';
-        node.name = node.name.slice(3);
-      } else {
-        return visit.RECURSE;
-      }
-    });
-  }
 
   var boundNamesCollector = collector({
     ObjectPattern      : 'properties',
@@ -531,47 +404,110 @@ var assembler = (function(exports){
     };
   });
 
-  var collectExports = collector({
-    Program          : 'body',
-    BlockStatement   : 'body',
-    ExportDeclaration: true
-  });
-
-  var collectImports = collector({
-    Program          : 'body',
-    BlockStatement   : 'body',
-    ImportDeclaration: true
-  });
 
 
-  var findExportedDeclarations = collector({
-    ClassDeclaration   : true,
-    ExportDeclaration  : visit.RECURSE,
-    ExportSpecifier    : true,
-    ExportSpecifierSet : visit.RECURSE,
-    FunctionDeclaration: true,
-    ModuleDeclaration  : true,
-    VariableDeclaration: visit.RECURSE,
-    VariableDeclarator : true
-  });
+  var getExports = (function(){
+    var collectExportDecls = collector({
+      Program          : 'body',
+      BlockStatement   : 'body',
+      ExportDeclaration: true
+    });
+
+    var getExportedDecls = collector({
+      ClassDeclaration   : true,
+      ExportDeclaration  : visit.RECURSE,
+      ExportSpecifier    : true,
+      ExportSpecifierSet : visit.RECURSE,
+      FunctionDeclaration: true,
+      ModuleDeclaration  : true,
+      VariableDeclaration: visit.RECURSE,
+      VariableDeclarator : true
+    });
 
 
-  var exportedNames = collector({
-    ArrayPattern       : 'elements',
-    ObjectPattern      : 'properties',
-    Property           : 'value',
-    ClassDeclaration   : 'id',
-    ExportSpecifier    : 'id',
-    FunctionDeclaration: 'id',
-    ModuleDeclaration  : 'id',
-    VariableDeclarator : 'id',
-    Glob               : true,
-    Identifier         : ['name'],
-  });
+    var getExportedNames = collector({
+      ArrayPattern       : 'elements',
+      ObjectPattern      : 'properties',
+      Property           : 'value',
+      ClassDeclaration   : 'id',
+      ExportSpecifier    : 'id',
+      FunctionDeclaration: 'id',
+      ModuleDeclaration  : 'id',
+      VariableDeclarator : 'id',
+      Glob               : true,
+      Identifier         : ['name'],
+    });
 
-  function Exports(node){
-    return exportedNames(findExportedDeclarations(collectExports(node)));
-  }
+    return function getExports(node){
+      return getExportedNames(getExportedDecls(collectExportDecls(node)));
+    };
+  })();
+
+
+  var getImports = (function(){
+    var collectImportDecls = collector({
+      Program          : 'body',
+      BlockStatement   : 'body',
+      ImportDeclaration: true,
+      ModuleDeclaration: true
+    });
+
+    function Import(origin, name, specifiers){
+      this.origin = origin;
+      this.name = name;
+      this.specifiers = specifiers;
+    }
+
+    var handlers = {
+      Glob: function(){
+        return ['*', '*'];
+      },
+      Path: function(node){
+        return map(node.body, function(subpath){
+          return handlers[subpath.type](subpath);
+        });
+      },
+      ImportSpecifier: function(node){
+        var name = handlers[node.id.type](node.id);
+        var from = node.from === null ? name : handlers[node.from.type](node.from);
+        return [name, from];
+      },
+      Identifier: function(node){
+        return node.name;
+      },
+      Literal: function(node){
+        return node.value;
+      }
+    };
+
+    return function getImports(node){
+      var decls = collectImportDecls(node),
+          imported = [];
+
+      each(decls, function(decl, i){
+        var origin = handlers[decl.from.type](decl.from);
+
+        if (decl.type === 'ModuleDeclaration') {
+          var name = decl.id.name;
+        } else {
+          var specifiers = create(null);
+          each(decl.specifiers, function(specifier){
+            var result = handlers[specifier.type](specifier);
+            result = typeof result === 'string' ? [result, result] : result;
+            if (!(result[1] instanceof Array)) {
+              result[1] = [result[1]];
+            }
+            specifiers[result[0]] = result[1];
+          });
+        }
+
+        imported.push(new Import(origin, name, specifiers));
+      });
+
+      return imported;
+    };
+  })();
+
 
   function isSuperReference(node) {
     return !!node && node.type === 'Identifier' && node.name === 'super';
@@ -639,12 +575,6 @@ var assembler = (function(exports){
   }
 
 
-  var collectExpectedArguments = collector({
-    Identifier: true,
-    ObjectPattern: true,
-    ArrayPattern: true,
-  });
-
 
 
   var currentNode;
@@ -677,7 +607,9 @@ var assembler = (function(exports){
   }
 
   function adjust(op){
-    return op[0] = context.code.ops.length;
+    if (op) {
+      return op[0] = context.code.ops.length;
+    }
   }
 
   function macro(){
@@ -698,16 +630,12 @@ var assembler = (function(exports){
   }
 
   function block(callback){
-    if (context.labels){
       var entry = new ControlTransfer(context.labels);
       context.jumps.push(entry);
       context.labels = create(null);
       callback();
       entry.updateBreaks(current());
       context.jumps.pop();
-    } else {
-      callback();
-    }
   }
 
   function control(callback){
@@ -729,18 +657,18 @@ var assembler = (function(exports){
     context.code.transfers.push(new Unwinder(type, begin, current()));
   }
 
-  function move(node){
+  function move(node, set, pos){
     if (node.label) {
-      var entry = context.jumps.first(function(transfer){
+      var transfer = context.jumps.first(function(transfer){
         return node.label.name in transfer.labels;
       });
+
     } else {
-      var entry = context.jumps.first(function(transfer){
+      var transfer = context.jumps.first(function(transfer){
         return transfer && transfer.continues;
       });
     }
-
-    return entry;
+    transfer && transfer[set].push(pos);
   }
 
   var elementAt = {
@@ -784,55 +712,6 @@ var assembler = (function(exports){
     }
   }
 
-  function Import(origin, specifiers){
-    this.origin = origin;
-    this.specifiers = specifiers;
-  }
-
-  var importSpecifiers = {
-    Glob: function(){
-      return ['*', '*'];
-    },
-    Path: function(node){
-      return map(node.body, function(subpath){
-        return importSpecifiers[subpath.type](subpath);
-      });
-    },
-    ImportSpecifier: function(node){
-      var name = importSpecifiers[node.id.type](node.id);
-      var from = node.from === null ? name : importSpecifiers[node.from.type](node.from);
-      return [name, from];
-    },
-    Identifier: function(node){
-      return node.name;
-    },
-    Literal: function(node){
-      return node.value;
-    }
-  };
-
-  function Imports(node){
-    var decls = collectImports(node),
-        imported = [];
-
-    each(decls, function(decl, i){
-      var origin = importSpecifiers[decl.from.type](decl.from),
-          specifiers = create(null);
-
-      each(decl.specifiers, function(specifier){
-        var result = importSpecifiers[specifier.type](specifier);
-        result = typeof result === 'string' ? [result, result] : result;
-        if (!(result[1] instanceof Array)) {
-          result[1] = [result[1]];
-        }
-        specifiers[result[0]] = result[1];
-      });
-
-      imported.push(new Import(origin, specifiers));
-    });
-
-    return imported;
-  }
 
   function args(node){
     ARGS();
@@ -914,10 +793,7 @@ var assembler = (function(exports){
   }
 
   function BreakStatement(node){
-    var entry = move(node);
-    if (entry) {
-      entry.breaks.push(JUMP(0));
-    }
+    move(node, 'breaks', JUMP(0));
   }
 
   function BlockStatement(node){
@@ -1000,10 +876,7 @@ var assembler = (function(exports){
   }
 
   function ContinueStatement(node){
-    var entry = move(node);
-    if (entry) {
-      entry.continues.push(JUMP(0));
-    }
+    move(node, 'continues', JUMP(0));
   }
 
   function DoWhileStatement(node){
@@ -1026,7 +899,9 @@ var assembler = (function(exports){
 
   function ExportSpecifier(node){}
 
-  function ExportSpecifierSet(node){}
+  function ExportSpecifierSet(node){
+
+  }
 
   function ExportDeclaration(node){
     if (node.declaration) {
@@ -1198,9 +1073,19 @@ var assembler = (function(exports){
     }
   }
 
-  function ImportDeclaration(node){}
+  function ImportDeclaration(node){
+    // recurse(node.from);
+    // IMPORT();
+    // each(node.specifiers, function(specifier){
+    //   recurse(specifier);
+    //   GET();
+    //   PUT();
+    // });
+  }
 
-  function ImportSpecifier(node){}
+  function ImportSpecifier(node){
+
+  }
 
   function Literal(node){
     if (node.value instanceof RegExp) {
@@ -1256,7 +1141,6 @@ var assembler = (function(exports){
 
   function ModuleDeclaration(node){
     if (!node.from) {
-      recurse(node.id);
       node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.MODULE, context.code.Strict);
       context.queue(node.Code);
     }
@@ -1280,7 +1164,9 @@ var assembler = (function(exports){
 
   function ObjectPattern(node){}
 
-  function Path(node){}
+  function Path(node){
+
+  }
 
   function Program(node){
     each(node.body, recurse);
@@ -1535,12 +1421,144 @@ var assembler = (function(exports){
     });
 
 
-  function assemble(options){
+
+
+  var Assembler = exports.Assembler = (function(){
+    function annotateParent(node, parent){
+      visit(node, function(node){
+        if (isObject(node) && parent) {
+          define(node, 'parent', parent);
+        }
+        return visit.RECURSE;
+      });
+    }
+
+    function reinterpretNatives(node){
+      visit(node, function(node){
+        if (node.type === 'Identifier' && /^\$__/.test(node.name)) {
+          node.type = 'NativeIdentifier';
+          node.name = node.name.slice(3);
+        } else {
+          return visit.RECURSE;
+        }
+      });
+    }
+
+
+    function AssemblerOptions(o){
+      o = Object(o);
+      for (var k in this)
+        this[k] = k in o ? o[k] : this[k];
+    }
+
+    AssemblerOptions.prototype = {
+      scope: SCOPE.GLOBAL,
+      natives: false,
+      filename: null
+    };
+
+
+    function Assembler(options){
+      this.options = new AssemblerOptions(options);
+      define(this, {
+        strings: [],
+        hash: create(null)
+      });
+    }
+
+    define(Assembler.prototype, {
+      source: null,
+      node: null,
+      code: null,
+      pending: null,
+      jumps: null,
+      labels: null,
+    });
+
+    define(Assembler.prototype, [
+      function assemble(node, source){
+        context = this;
+        this.pending = new Stack;
+        this.jumps = new Stack;
+        this.labels = null;
+        this.source = source;
+
+        if (this.options.scope === SCOPE.FUNCTION) {
+          node = node.body[0].expression;
+        }
+
+        var code = new Code(node, source, FUNCTYPE.NORMAL, this.options.scope);
+        define(code, {
+          strings: this.strings,
+          hash: this.hash
+        });
+
+        code.topLevel = true;
+
+        if (this.options.natives) {
+          code.natives = true;
+          reinterpretNatives(node);
+        }
+
+        annotateParent(node);
+        this.queue(code);
+
+        while (this.pending.length) {
+          var lastCode = this.code;
+          this.code = this.pending.pop();
+          this.code.filename = this.filename;
+          if (lastCode) {
+            this.code.inherit(lastCode);
+          }
+          recurse(this.code.body);
+          if (this.code.ScopeType === SCOPE.GLOBAL || this.code.ScopeType === SCOPE.EVAL){
+            COMPLETE();
+          } else {
+            if (this.code.Type === FUNCTYPE.ARROW && this.code.body.type !== 'BlockStatement') {
+              GET();
+            } else {
+              UNDEFINED();
+            }
+            RETURN();
+          }
+        }
+
+        return code;
+      },
+      function queue(code){
+        if (this.code) {
+          this.code.children.push(code);
+        }
+        this.pending.push(code);
+      },
+      function intern(name){
+        return name;
+        if (name === '__proto__') {
+          if (!this.hash[proto]) {
+            var index = this.hash[proto] = this.strings.length;
+            this.strings[index] = '__proto__';
+          }
+          name = proto;
+        }
+
+        if (name in this.hash) {
+          return this.hash[name];
+        } else {
+          var index = this.hash[name] = this.strings.length;
+          this.strings[index] = name;
+          return index;
+        }
+      },
+    ]);
+
+    return Assembler;
+  })();
+
+  exports.assemble = function assemble(options){
     var assembler = new Assembler(options);
     return assembler.assemble(options.ast, options.source);
-  }
+  };
 
-  exports.assemble = assemble;
   return exports;
 })(typeof module !== 'undefined' ? module.exports : {});
 

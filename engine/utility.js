@@ -6,35 +6,39 @@ var utility = (function(exports){
       STRING    = 'string',
       UNDEFINED = 'undefined';
 
+
+  var hasDunderProto = { __proto__: [] } instanceof Array,
+      isES5 = !(!Object.getOwnPropertyNames || 'prototype' in Object.getOwnPropertyNames);
+
   var toBrand = {}.toString,
       _slice = [].slice,
       hasOwn = {}.hasOwnProperty,
       toSource = Function.toString;
 
-  var hasDunderProto = { __proto__: [] } instanceof Array;
+  var hidden = {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: undefined
+  };
 
 
   function getBrandOf(o){
-    return toBrand.call(o).slice(8, -1);
+    if (o === null) {
+      return 'Null';
+    } else if (o === undefined) {
+      return 'Undefined';
+    } else {
+      return toBrand.call(o).slice(8, -1);
+    }
   }
 
   function ensureObject(name, o){
-    if (!o || typeof o !== 'object') {
+    if (o === null || typeof o !== 'object') {
       throw new TypeError(name + ' called with non-object ' + getBrandOf(o));
     }
   }
 
-
-  function slice(o, start, end){
-    if (!o.length) {
-      return [];
-    } else if (!end && !start) {
-      return toArray(o);
-    } else {
-      return _slice.call(o, start, end);
-    }
-  }
-  exports.slice = slice;
 
 
   function toArray(o){
@@ -53,23 +57,41 @@ var utility = (function(exports){
   }
   exports.toArray = toArray;
 
-
-
-  if (Function.name === 'Function') {
-    var fname = exports.fname = (function(){
-      function fname(f){
-        return typeof f === FUNCTION ? f.name || '' : '';
-      }
-      return fname;
-    })();
-  } else {
-    var fname = exports.fname = (function(){
-      function fname(f){
-        return typeof f === FUNCTION ? toSource.call(f).match(/^\n?function\s?(\w*)?_?\(/)[1] : '';
-      }
-      return fname;
-    })();
+  function slice(o, start, end){
+    if (!o.length) {
+      return [];
+    } else if (!end && !start) {
+      return toArray(o);
+    } else {
+      return _slice.call(o, start, end);
+    }
   }
+  exports.slice = slice;
+
+  var fname = exports.fname = (function(){
+    if (Function.name === 'Function') {
+      return function fname(f){
+        if (typeof f !== FUNCTION) {
+          throw new TypeError('Tried to get the name of a non-function');
+        }
+
+        return f.name;
+      };
+    } else {
+      return function fname(f){
+        if (typeof f !== FUNCTION) {
+          throw new TypeError('Tried to get the name of a non-function');
+        }
+
+        if (!hasOwn.call(f, 'name')) {
+          hidden.value = toSource.call(f).match(/^\n?function\s?(\w*)?_?\(/)[1];
+          defineProperty(f, 'name', hidden);
+        }
+
+        return f.name;
+      };
+    }
+  })();
 
   function isObject(v){
     var type = typeof v;
@@ -78,13 +100,11 @@ var utility = (function(exports){
   exports.isObject = isObject;
 
 
-  exports.nextTick = typeof process !== UNDEFINED
-    ? process.nextTick
-    : function(f){ setTimeout(f, 1) };
+  exports.nextTick = typeof process !== UNDEFINED ? process.nextTick : function(f){ setTimeout(f, 1) };
 
 
   exports.numbers = (function(cache){
-    function numbers(start, end){
+    return function numbers(start, end){
       if (!isFinite(end)) {
         end = start;
         start = 0;
@@ -97,16 +117,17 @@ var utility = (function(exports){
           cache[curr = length + start] = '' + curr;
       }
       return cache.slice(start, end);
-    }
-
-    return numbers;
+    };
   })([]);
 
 
-  if (Object.create && !Object.create(null).toString) {
+
+  if (isES5) {
     var create = exports.create = Object.create;
   } else {
     var Null = function(){};
+    var hiddens = ['constructor', 'hasOwnProperty', 'propertyIsEnumerable',
+                   'isPrototypeOf', 'toLocaleString', 'toString', 'valueOf'];
 
     var create = exports.create = (function(F){
       var iframe = document.createElement('iframe');
@@ -116,14 +137,12 @@ var utility = (function(exports){
       Null.prototype = iframe.contentWindow.Object.prototype;
       document.body.removeChild(iframe);
 
-      var keys = ['constructor', 'hasOwnProperty', 'propertyIsEnumerable',
-                  'isPrototypeOf', 'toLocaleString', 'toString', 'valueOf'];
 
-      while (keys.length) {
-        delete Null.prototype[keys.pop()];
+      while (hiddens.length) {
+        delete Null.prototype[hiddens.pop()];
       }
 
-      function create(object){
+      return function create(object){
         if (object === null) {
           return new Null;
         } else {
@@ -132,9 +151,7 @@ var utility = (function(exports){
           F.prototype = null;
           return object;
         }
-      }
-
-      return create;
+      };
     })(function(){});
   }
 
@@ -146,40 +163,29 @@ var utility = (function(exports){
   }
   exports.enumerate = enumerate;
 
-
-  if (Object.keys) {
-    var ownKeys = exports.keys = Object.keys;
-  } else {
-    var ownKeys = exports.keys = (function(){
-      function keys(o){
-        var out = [], i=0;
-        for (var k in o) {
-          if (hasOwn.call(o, k)) {
-            out[i++] = k;
-          }
+  var ownKeys = exports.keys = (function(){
+    if (isES5) return Object.keys;
+    return function keys(o){
+      var out = [], i=0;
+      for (var k in o) {
+        if (hasOwn.call(o, k)) {
+          out[i++] = k;
         }
-        return out;
       }
+      return out;
+    };
+  })();
 
-      return keys;
-    })();
-  }
-
-
-  if (Object.getPrototypeOf) {
-    var getPrototypeOf = Object.getPrototypeOf;
-  } else if (hasDunderProto) {
-    var getPrototypeOf = (function(){
-      function getPrototypeOf(o){
+  var getPrototypeOf = exports.getPrototypeOf = (function(){
+    if (isES5) {
+      return Object.getPrototypeOf;
+    } else if (hasDunderProto) {
+      return function getPrototypeOf(o){
         ensureObject('getPrototypeOf', o);
         return o.__proto__;
-      }
-
-      return getPrototypeOf;
-    })();
-  } else {
-    var getPrototypeOf = (function(){
-      function getPrototypeOf(o){
+      };
+    } else {
+      return function getPrototypeOf(o){
         ensureObject('getPrototypeOf', o);
 
         var ctor = o.constructor;
@@ -199,51 +205,65 @@ var utility = (function(exports){
         } else if (o instanceof Object) {
           return Object.prototype;
         }
+      };
+    }
+  })();
+
+
+  var defineProperty = exports.defineProperty = (function(){
+    if (isES5) return Object.defineProperty;
+    return function defineProperty(o, k, desc){
+      o[k] = desc.value;
+      return o;
+    };
+  })();
+
+
+  var describeProperty = exports.describeProperty = (function(){
+    if (isES5) return Object.getOwnPropertyDescriptor;
+    return function getOwnPropertyDescriptor(o, k){
+      ensureObject('getOwnPropertyDescriptor', o);
+      if (hasOwn.call(o, k)) {
+        return { value: o[k] };
       }
+    };
+  })();
 
-      return getPrototypeOf;
-    })();
-  }
+  var ownProperties = exports.ownProperties = isES5 ? Object.getOwnPropertyNames : ownKeys;
 
-  exports.getPrototypeOf = getPrototypeOf
-
-
-  if (Object.getOwnPropertyNames) {
-    var defineProperty = Object.defineProperty;
-  } else {
-    var defineProperty = (function(){
-      function defineProperty(o, k, desc){
-        o[k] = desc.value;
-        return o;
+  function isDOM(o){
+    var proto = getPrototypeOf(o);
+    if (o) {
+      var ctor = proto.constructor;
+      if (typeof ctor === FUNCTION) {
+        return getPrototypeOf(ctor) === Object.prototype;
       }
-      return defineProperty;
-    })();
+    }
+    return false;
   }
 
-  exports.defineProperty = defineProperty;
+  exports.isDOM = isDOM;
 
+  var isMutable = exports.isMutable = (function(){
+    var isExtensible = isES5 ? Object.isExtensible : function(){ return true };
+    var prop = uid();
 
-  if (Object.getOwnPropertyNames) {
-    var describeProperty = Object.getOwnPropertyDescriptor;
-  } else {
-    var describeProperty = (function(){
-      function getOwnPropertyDescriptor(o, k){
-        ensureObject('getOwnPropertyDescriptor', o);
-        return  { value: o[k] };
+    return function isMutable(o){
+      if (!isObject(o) || !isExtensible(o)) return false;
+      if (isDOM(o) && 'namedItem' in o) {
+        o[prop] = true;
+        console.log(o, prop);
+        setTimeout(function(){ console.log(o[prop]); }, 1);
+
+        if (prop in o) {
+          //delete o[prop];
+          return true;
+        }
+        return false;
       }
-      return getOwnPropertyDescriptor;
-    })();
-  }
-
-  exports.describeProperty = describeProperty;
-
-
-  if (Object.getOwnPropertyNames) {
-    var getProperties = Object.getOwnPropertyNames;
-  } else {
-    var getProperties = ownKeys;
-  }
-
+      return true;
+    };
+  })();
 
   function copy(o){
     return assign(create(getPrototypeOf(o)), o);
@@ -255,7 +275,7 @@ var utility = (function(exports){
     var queue = new Queue,
         tag = uid(),
         tagged = [],
-        list = hidden ? getProperties : ownKeys;
+        list = hidden ? ownProperties : ownKeys;
 
     var out = enqueue(o);
 
@@ -270,13 +290,18 @@ var utility = (function(exports){
     return out;
 
     function recurse(from, to, key){
-      if (!isObject(from[key])) {
-        return to[key] = from[key];
-      }
-      if (hasOwn.call(from[key], tag)) {
-        return to[key] = from[key][tag];
-      }
-      to[key] = enqueue(from[key]);
+      try {
+        var val = from[key];
+        if (!isObject(val)) {
+          return to[key] = val;
+        }
+        if (from[key] === val) {
+          if (hasOwn.call(from[key], tag)) {
+            return to[key] = from[key][tag];
+          }
+          to[key] = enqueue(from[key]);
+        }
+      } catch (e) {}
     }
 
     function enqueue(o){
@@ -381,25 +406,14 @@ var utility = (function(exports){
   exports.generate = generate;
 
 
-  function Hidden(value){
-    this.value = value;
-  }
-
-  Hidden.prototype = {
-    configurable: true,
-    enumerable: false,
-    writable: true,
-    value: undefined
-  };
-
-
   function define(o, p, v){
     switch (typeof p) {
-      case STRING:
-        defineProperty(o, p, new Hidden(v));
-        break;
       case FUNCTION:
-        defineProperty(o, fname(p), new Hidden(p));
+        v = p;
+        p = fname(v);
+      case STRING:
+        hidden.value = v;
+        defineProperty(o, p, hidden);
         break;
       case OBJECT:
         if (p instanceof Array) {
@@ -412,38 +426,37 @@ var utility = (function(exports){
               f = p[i+1];
             }
             if (name) {
-              defineProperty(o, name, new Hidden(f));
+              hidden.value = f;
+              defineProperty(o, name, hidden);
             }
           }
         } else if (p) {
           var keys = ownKeys(p)
 
           for (var i=0; i < keys.length; i++) {
-            var k = keys[i];
-            var desc = describeProperty(p, k);
+            var desc = describeProperty(p, keys[i]);
             if (desc) {
               desc.enumerable = 'get' in desc;
-              defineProperty(o, k, desc);
+              defineProperty(o, keys[i], desc);
             }
           }
         }
     }
 
+    hidden.value = undefined;
     return o;
   }
 
   exports.define = define;
 
 
-
-
   function assign(o, p, v){
     switch (typeof p) {
-      case STRING:
-        o[p] = v;
-        break;
       case FUNCTION:
         o[fname(p)] = p;
+        break;
+      case STRING:
+        o[p] = v;
         break;
       case OBJECT:
         if (p instanceof Array) {
@@ -508,8 +521,6 @@ var utility = (function(exports){
   exports.partial = partial;
 
 
-
-
   function quotes(s) {
     s = (''+s).replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
     var singles = 0,
@@ -551,9 +562,14 @@ var utility = (function(exports){
   exports.unique = unique;
 
 
-
   function toInteger(v){
-    return (v / 1 || 0) | 0;
+    if (v === Infinity) {
+      return MAX_INTEGER;
+    } else if (v === -Infinity) {
+      return -MAX_INTEGER;
+    } else {
+      return v - 0 >> 0;
+    }
   }
 
   exports.toInteger = toInteger;
@@ -568,23 +584,25 @@ var utility = (function(exports){
 
   function isFinite(number){
     return typeof value === 'number'
-        && value === value
-        && value < Infinity
-        && value > -Infinity;
+               && value === value
+               && value < Infinity
+               && value > -Infinity;
   }
 
   exports.isFinite = isFinite;
 
+  var MAX_INTEGER = 9007199254740992;
 
   function isInteger(value) {
-    return typeof value === 'number'
-        && value === value
-        && value > -9007199254740992
-        && value < 9007199254740992
-        && value | 0 === value;
+    return typeof value === NUMBER
+               && value === value
+               && value > -MAX_INTEGER
+               && value < MAX_INTEGER
+               && value >> 0 === value;
   }
 
   exports.isInteger = isInteger;
+
 
   function uid(){
     return Math.random().toString(36).slice(2)
@@ -847,7 +865,7 @@ var utility = (function(exports){
   exports.Hash = Hash;
 
 
-  var proto = Math.random().toString(36).slice(2);
+  var proto = uid();
 
 
   var PropertyList = exports.PropertyList = (function(){
@@ -1128,6 +1146,7 @@ var utility = (function(exports){
     return Stack;
   })();
 
+
   var Queue = exports.Queue = (function(){
     function Queue(items){
       if (isObject(items)) {
@@ -1225,37 +1244,13 @@ var utility = (function(exports){
   })();
 
 
-
   function inspect(o){
-    o = require('util').inspect(o, null, 10);
+    o = require('util').inspect(o, null, 4);
     console.log(o);
     return o;
   }
 
-  function decompile(ast, options){
-    return escodegen.generate(ast, options || decompile.options);
-  }
-
-  exports.decompile = decompile;
-
-  decompile.options = {
-    comment: false,
-    allowUnparenthesizedNew: true,
-    format: {
-      indent: {
-        style: '  ',
-        base: 0,
-      },
-      json       : false,
-      renumber   : false,
-      hexadecimal: true,
-      quotes     : 'single',
-      escapeless : true,
-      compact    : false,
-      parentheses: true,
-      semicolons : true
-    }
-  };
+  exports.inspect = inspect;
 
   return exports;
 })(typeof module !== 'undefined' ? module.exports : {});

@@ -533,18 +533,6 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
-  function CreateThrowTypeError(realm){
-    var thrower = create($NativeFunction.prototype);
-    $Object.call(thrower, realm.intrinsics.FunctionProto);
-    thrower.call = function(){ return ThrowException('strict_poison_pill') };
-    defineDirect(thrower, 'length', 0, ___);
-    defineDirect(thrower, 'name', 'ThrowTypeError', ___);
-    thrower.Realm = realm;
-    thrower.Extensible = false;
-    thrower.Strict = true;
-    hide(thrower, 'Realm');
-    return new Accessor(thrower);
-  }
 
 
   function TopLevelDeclarationInstantiation(code) {
@@ -884,74 +872,64 @@ var runtime = (function(GLOBAL, exports, undefined){
     return function(object, iterable){
       object[data] = new Data;
 
-      if (iterable !== undefined) {
-        iterable = ToObject(iterable);
-        if (iterable && iterable.Completion) {
-          if (iterable.Abrupt) {
-            return iterable;
-          } else {
-            iterable = iterable.value;
-          }
-        }
+      if (iterable === undefined) {
+        return object;
+      }
 
-        var itr = Invoke('iterator', iterable, []);
-
-        var adder = object.Get('set');
-        if (adder && adder.Completion) {
-          if (adder.Abrupt) {
-            return adder;
-          } else {
-            adder = adder.value;
-          }
-        }
-
-        if (!IsCallable(adder)) {
-          return ThrowException('called_on_incompatible_object', [name + '.prototype.set']);
-        }
-
-        var next;
-        while (next = Invoke('next', itr, [])) {
-          if (IsStopIteration(next)) {
-            return object;
-          }
-
-          if (next && next.Completion) {
-            if (next.Abrupt) {
-              return next;
-            } else {
-              next = next.value;
-            }
-          }
-
-          next = ToObject(next);
-
-          var k = next.Get(0);
-          if (k && k.Completion) {
-            if (k.Abrupt) {
-              return k;
-            } else {
-              k = k.value;
-            }
-          }
-
-          var v = next.Get(1);
-          if (v && v.Completion) {
-            if (v.Abrupt) {
-              return v;
-            } else {
-              v = v.value;
-            }
-          }
-
-          var status = adder.Call(object, [k, v]);
-          if (status && status.Abrupt) {
-            return status;
-          }
+      iterable = ToObject(iterable);
+      if (iterable && iterable.Completion) {
+        if (iterable.Abrupt) {
+          return iterable;
+        } else {
+          iterable = iterable.value;
         }
       }
 
-      return object;
-    };
+      var iterator = Invoke('iterator', iterable);
+
+      var adder = object.Get('set');
+      if (adder && adder.Completion) {
+        if (adder.Abrupt) {
+          return adder;
+        } else {
+          adder = adder.value;
+        }
+      }
+
+      if (!IsCallable(adder)) {
+        return ThrowException('called_on_incompatible_object', [name + '.prototype.set']);
+      }
+
+      var next;
+      while (next = Invoke('next', iterator)) {
+        if (IsStopIteration(next)) {
+          return object;
+        }
+
+        if (next && next.Completion) {
+          if (next.Abrupt) return next; else next = next.value;
+        }
+
+        next = ToObject(next);
+
+        var k = next.Get(0);
+        if (k && k.Completion) {
+          if (k.Abrupt) return k; else k = k.value;
+        }
+
+        var v = next.Get(1);
+        if (v && v.Completion) {
+          if (v.Abrupt) return v; else v = v.value;
+        }
+
+        var status = adder.Call(object, [k, v]);
+        if (status && status.Abrupt) {
+          return status;
+        }
+      }
+    }
+
+    return object;
   }
 
 
@@ -1198,11 +1176,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     var name = ToPropertyName(prop);
     if (name && name.Completion) {
-      if (name.Abrupt) {
-        return name;
-      } else {
-        name = name.value;
-      }
+      if (name.Abrupt) return name; else name = name.value;
     }
 
     return new Reference(base, name, context.Strict);
@@ -1228,11 +1202,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     } else {
       var key = ToPropertyName(prop);
       if (key && key.Completion) {
-        if (key.Abrupt) {
-          return key;
-        } else {
-          return key.value;
-        }
+        if (key.Abrupt) return key; else return key.value;
       }
     }
 
@@ -1287,21 +1257,13 @@ var runtime = (function(GLOBAL, exports, undefined){
         len = ToUint32(spread.Get('length'));
 
     if (len && len.Completion) {
-      if (len.Abrupt) {
-        return len;
-      } else {
-        return len.value;
-      }
+      if (len.Abrupt) return len; else return len.value;
     }
 
     for (var i=0; i < len; i++) {
       var value = spread.Get(i);
       if (value && value.Completion) {
-        if (value.Abrupt) {
-          return value;
-        } else {
-          value = value.value;
-        }
+        if (value.Abrupt) return value; else value = value.value;
       }
 
       precedingArgs[i + offset] = value;
@@ -1317,11 +1279,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     while (!(value = Invoke('next', iterator, [])) && !IsStopIteration(value)) {
       if (value && value.Completion) {
-        if (value.Abrupt) {
-          return value;
-        } else {
-          value = value.value;
-        }
+        if (value.Abrupt) return value; else value = value.value;
       }
       defineDirect(array, offset++, value, ECW);
     }
@@ -1367,22 +1325,14 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     var len = ToUint32(target.Get('length'));
     if (len && len.Completion) {
-      if (len.Abrupt) {
-        return len;
-      } else {
-        len = len.value;
-      }
+      if (len.Abrupt) return len; else len = len.value;
     }
 
     var count = len - index;
     for (var i=0; i < count; i++) {
       var value = target.Get(index + i);
       if (value && value.Completion) {
-        if (value.Abrupt) {
-          return value;
-        } else {
-          value = value.value;
-        }
+        if (value.Abrupt) return value; else value = value.value;
       }
       defineDirect(array, i, value, ECW);
     }
@@ -2021,35 +1971,21 @@ var runtime = (function(GLOBAL, exports, undefined){
         for (var i=0; i < 2; i++) {
           var method = this.Get(order[i]);
           if (method && method.Completion) {
-            if (method.Abrupt) {
-              return method;
-            } else {
-              method = method.value;
-            }
+            if (method.Abrupt) return method; else method = method.value;
           }
 
           if (IsCallable(method)) {
-            var val = method.Call(this, []);
-            if (val && val.Completion) {
-              if (val.Abrupt) {
-                return val;
-              } else {
-                val = val.value;
-              }
+            var value = method.Call(this, []);
+            if (value && value.Completion) {
+              if (value.Abrupt) return value; else value = value.value;
             }
-            if (!isObject(val)) {
-              return val;
+            if (value === null || typeof value !== OBJECT) {
+              return value;
             }
           }
         }
 
         return ThrowException('cannot_convert_to_primitive', []);
-      },
-      function getWrapper(){
-        if (this.wrapper) {
-          return this.wrapper;
-        }
-
       }
     ]);
 
@@ -2132,11 +2068,7 @@ var runtime = (function(GLOBAL, exports, undefined){
             } else if (typeof receiver !== OBJECT) {
               receiver = ToObject(receiver);
               if (receiver.Completion) {
-                if (receiver.Abrupt) {
-                  return receiver;
-                } else {
-                  receiver = receiver.value;
-                }
+                if (receiver.Abrupt) return receiver; else receiver = receiver.value;
               }
             }
           }
@@ -2178,13 +2110,10 @@ var runtime = (function(GLOBAL, exports, undefined){
           return ThrowException('construct_arrow_function');
         }
         var prototype = this.Get('prototype');
-        if (prototype.Completion) {
-          if (prototype.Abrupt) {
-            return prototype;
-          } else {
-            prototype = prototype.value;
-          }
+        if (prototype && prototype.Completion) {
+          if (prototype.Abrupt) return prototype; else prototype = prototype.value;
         }
+
         var instance = typeof prototype === OBJECT ? new $Object(prototype) : new $Object;
         if (this.NativeConstructor) {
           instance.NativeBrand = prototype.NativeBrand;
@@ -2192,13 +2121,10 @@ var runtime = (function(GLOBAL, exports, undefined){
           instance.Brand = prototype.Brand;
         }
         instance.ConstructorName = this.properties.get('name');
+
         var result = this.Call(instance, args, true);
         if (result && result.Completion) {
-          if (result.Abrupt) {
-            return result;
-          } else {
-            result = result.value;
-          }
+          if (result.Abrupt) return result; else result = result.value;
         }
         return typeof result === OBJECT ? result : instance;
       },
@@ -2209,11 +2135,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         var prototype = this.Get('prototype');
         if (prototype.Completion) {
-          if (prototype.Abrupt) {
-            return prototype;
-          } else {
-            prototype = prototype.value;
-          }
+          if (prototype.Abrupt) return prototype; else prototype = prototype.value;
         }
 
         if (typeof prototype !== OBJECT) {
@@ -2236,8 +2158,9 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   var $NativeFunction = (function(){
     function $NativeFunction(options){
-      if (options.proto === undefined)
+      if (options.proto === undefined) {
         options.proto = intrinsics.FunctionProto;
+      }
       $Object.call(this, options.proto);
       defineDirect(this, 'arguments', null, ___);
       defineDirect(this, 'caller', null, ___);
@@ -2261,11 +2184,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       },
       function Construct(args){
         if (this.construct) {
-          if (hasDirect(this, 'prototype')) {
-            var instance = new $Object(getDirect(this, 'prototype'));
-          } else {
-            var instance = new $Object;
-          }
+          var instance = hasDirect(this, 'prototype') ? new $Object(getDirect(this, 'prototype')) : new $Object;
           instance.ConstructorName = this.properties.get('name');
           var result = this.construct.apply(instance, args);
         } else {
@@ -2333,11 +2252,7 @@ var runtime = (function(GLOBAL, exports, undefined){
             } else if (typeof receiver !== OBJECT) {
               receiver = ToObject(receiver);
               if (receiver.Completion) {
-                if (receiver.Abrupt) {
-                  return receiver;
-                } else {
-                  receiver = receiver.value;
-                }
+                if (receiver.Abrupt) return receiver; else receiver = receiver.value;
               }
             }
           }
@@ -2527,11 +2442,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       function HasOwnProperty(key){
         key = ToPropertyName(key);
         if (key && key.Completion) {
-          if (key.Abrupt) {
-            return key;
-          } else {
-            key = key.value;
-          }
+          if (key.Abrupt) return key; else key = key.value;
         }
         if (typeof key === 'string') {
           if (key < getDirect(this, 'length') && key >= 0) {
@@ -2543,11 +2454,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       function HasProperty(key){
         var ret = this.HasOwnProperty(key);
         if (ret && ret.Completion) {
-          if (ret.Abrupt) {
-            return ret;
-          } else {
-            ret = ret.value;
-          }
+          if (ret.Abrupt) return ret; else ret = ret.value;
         }
         if (ret === true) {
           return true;
@@ -2695,22 +2602,15 @@ var runtime = (function(GLOBAL, exports, undefined){
               newLen = ToUint32(desc.Value);
 
           if (newLen.Completion) {
-            if (newLen.Abrupt) {
-              return newLen;
-            } else {
-              newLen = newLen.Value;
-            }
-          }
-          var val = ToNumber(desc.Value);
-          if (val.Completion) {
-            if (val.Abrupt) {
-              return val;
-            } else {
-              val = val.Value;
-            }
+            if (newLen.Abrupt) return newLen; else newLen = newLen.value;
           }
 
-          if (newLen !== val) {
+          var value = ToNumber(desc.Value);
+          if (value.Completion) {
+            if (value.Abrupt) return value; else value = value.value;
+          }
+
+          if (newLen !== value) {
             return ThrowException('invalid_array_length');
           }
 
@@ -2732,11 +2632,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
           var success = DefineOwn.call(this, 'length', newLenDesc, strict);
           if (success.Completion) {
-            if (success.Abrupt) {
-              return success;
-            } else {
-              success = success.Value;
-            }
+            if (success.Abrupt) return success; else success = success.value;
           }
           if (success === false) {
             return false;
@@ -2746,11 +2642,7 @@ var runtime = (function(GLOBAL, exports, undefined){
             oldLen = oldLen - 1;
             var deleted = this.Delete('' + oldLen, false);
             if (deleted.Completion) {
-              if (deleted.Abrupt) {
-                return deleted;
-              } else {
-                deleted = deleted.Value;
-              }
+              if (deleted.Abrupt) return deleted; else deleted = deleted.value;
             }
 
             if (!deleted) {
@@ -2773,11 +2665,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           var index = ToUint32(key);
 
           if (index.Completion) {
-            if (index.Abrupt) {
-              return index;
-            } else {
-              index = index.Value;
-            }
+            if (index.Abrupt) return index; else index = index.value;
           }
 
           if (index >= oldLen && oldLenDesc.Writable === false) {
@@ -2786,11 +2674,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
           success = DefineOwn.call(this, key, desc, false);
           if (success.Completion) {
-            if (success.Abrupt) {
-              return success;
-            } else {
-              success = success.Value;
-            }
+            if (success.Abrupt) return success; else success = success.value;
           }
 
           if (success === false) {
@@ -3626,6 +3510,21 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   var Realm = (function(){
+
+    function CreateThrowTypeError(realm){
+      var thrower = create($NativeFunction.prototype);
+      $Object.call(thrower, realm.intrinsics.FunctionProto);
+      thrower.call = function(){ return ThrowException('strict_poison_pill') };
+      defineDirect(thrower, 'length', 0, ___);
+      defineDirect(thrower, 'name', 'ThrowTypeError', ___);
+      thrower.Realm = realm;
+      thrower.Extensible = false;
+      thrower.Strict = true;
+      hide(thrower, 'Realm');
+      return new Accessor(thrower);
+    }
+
+
     var natives = (function(){
       function wrapNatives(source, target){
         if (!Object.getOwnPropertyNames) return;
@@ -3714,7 +3613,8 @@ var runtime = (function(GLOBAL, exports, undefined){
           if (brand) {
             object.NativeBrand = brand;
           } else {
-            return new AbruptException('throw', new $Error('ReferenceError', undefined, 'Unknown NativeBrand "'+name+'"'));
+            var err = new $Error('ReferenceError', undefined, 'Unknown NativeBrand "'+name+'"');
+            return new AbruptException('throw', err);
           }
           return object.NativeBrand.name;
         },
@@ -3861,7 +3761,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           return new $Boolean(boolean);
         },
         DateCreate: function(args){
-          return utility.applyNew(Date, args);
+          return new $Date(utility.applyNew(Date, toInternalArray(args)));
         },
         NumberCreate: function(number){
           return new $Number(number);
@@ -4030,11 +3930,7 @@ var runtime = (function(GLOBAL, exports, undefined){
               return function(x){
                 x = ToNumber(x);
                 if (x && x.Completion) {
-                  if (x.Abrupt) {
-                    return x;
-                  } else {
-                    x = x.value;
-                  }
+                  if (x.Abrupt) return x; else x = x.value;
                 }
                 return fn(x);
               }
@@ -4042,19 +3938,11 @@ var runtime = (function(GLOBAL, exports, undefined){
               return function(x, y){
                 x = ToNumber(x);
                 if (x && x.Completion) {
-                  if (x.Abrupt) {
-                    return x;
-                  } else {
-                    x = x.value;
-                  }
+                  if (x.Abrupt) return x; else x = x.value;
                 }
                 y = ToNumber(y);
                 if (y && y.Completion) {
-                  if (y.Abrupt) {
-                    return y;
-                  } else {
-                    y = y.value;
-                  }
+                  if (y.Abrupt) return y; else y = y.value;
                 }
                 return fn(x, y);
               }
@@ -4064,11 +3952,7 @@ var runtime = (function(GLOBAL, exports, undefined){
                 for (var k in arguments) {
                   var x = arguments[k]
                   if (x && x.Completion) {
-                    if (x.Abrupt) {
-                      return x;
-                    } else {
-                      x = x.value;
-                    }
+                    if (x.Abrupt) return x; else x = x.value;
                   }
                   values.push(x);
                 }
@@ -4386,23 +4270,26 @@ var runtime = (function(GLOBAL, exports, undefined){
         each(script.bytecode.imports, function(imported){
           var module = modules[imported.origin];
 
-          iterate(imported.specifiers, function(path, name){
-            if (name === '*') {
-              module.properties.forEach(function(prop){
-                scope.SetMutableBinding(prop[0], module.Get(prop[0]));
-              });
-            } else {
-              var obj = module;
+          if (imported.name) {
+            scope.SetMutableBinding(imported.name, module);
+          } else if (imported.specifiers) {
+            iterate(imported.specifiers, function(path, name){
+              if (name === '*') {
+                module.properties.forEach(function(prop){
+                  scope.SetMutableBinding(prop[0], module.Get(prop[0]));
+                });
+              } else {
+                var obj = module;
 
-              each(path, function(part){
-                var o = obj;
-                obj = obj.Get(part);
-                console.log(o, obj, part);
-              });
+                each(path, function(part){
+                  var o = obj;
+                  obj = obj.Get(part);
+                });
 
-              scope.SetMutableBinding(name, obj);
-            }
-          });
+                scope.SetMutableBinding(name, obj);
+              }
+            });
+          }
         });
 
         ExecutionContext.push(ctx);
@@ -4427,8 +4314,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       var sandbox = createSandbox(global);
 
       runScript(script, sandbox, ƒ, function(){
-        var module = new $Module(sandbox.globalEnv, script.bytecode.ExportedNames);
-        Ω(module);
+        Ω(new $Module(sandbox.globalEnv, script.bytecode.ExportedNames));
       });
     }
 
@@ -4551,6 +4437,18 @@ var runtime = (function(GLOBAL, exports, undefined){
   };
   exports.activeContext = function activeContext(){
     return context;
+  };
+
+  exports.createNativeFunction = function createNativeFunction(o){
+    if (typeof options === FUNCTION) {
+      return new $NativeFunction({
+        length: o._length || o.length,
+        name: o._name || o.name,
+        call: o
+      });
+    } else {
+      return new $NativeFunction(o);
+    }
   };
 
   return exports;

@@ -34,4 +34,5 @@ module.exports = continuum;
 continuum.debug = debug;
 continuum.Realm = runtime.Realm;
 continuum.createBytecode = createBytecode;
+continuum.createNativeFunction = runtime.createNativeFunction;
 utility.define(continuum, 'utility', utility);

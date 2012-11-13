@@ -6,6 +6,7 @@ return (function(Realm){
   continuum.debug = exports.debug;
   continuum.utility = exports.utility;
   continuum.constants = exports.constants;
+  continuum.createNativeFunction = exports.runtime.createNativeFunction;
   continuum.Realm = Realm;
 
   return continuum;
