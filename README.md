@@ -50,21 +50,19 @@ Will soon work in:
 * Iterators and for...of
 * Templates
 * `is` and `isnt` operators (not in es6 but supported anyway)
+* Module system and '@std' builtin modules `module std = '@std'` or `import call from '@Function'`
+* Generators (kind of broken at the moment though)
 
 ### Partially Implemented
-
 * Proxy and Reflect
-* Generators
 
 ### Soon
 * Array Comprehensions
 * Private Names
-* Partial implementation of Modules
 * Default parameters
 * Tail call optimization
 
 ### Further out
-* Proper implementation of Modules
 * Binary data api
 
 
