@@ -3527,8 +3527,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
     var natives = (function(){
       function wrapNatives(source, target){
-        if (!Object.getOwnPropertyNames) return;
-        Object.getOwnPropertyNames(source).forEach(function(key){
+        each(utility.ownProperties(source), function(key){
           if (typeof source[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
             var func = new $NativeFunction({
               name: key,
@@ -3587,6 +3586,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           }
           return false;
         },
+        CheckObjectCoercible: CheckObjectCoercible,
         ToObject: ToObject,
         ToString: ToString,
         ToNumber: ToNumber,
@@ -3705,6 +3705,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         wrapRegExpMethods: function(target){
           wrapNatives(RegExp.prototype, target);
         },
+        now: Date.now || function(){ return +new Date },
 
 
         CallFunction: function(func, receiver, args){
@@ -3804,20 +3805,43 @@ var runtime = (function(GLOBAL, exports, undefined){
         RegExpToString: function(object, radix){
           return object.PrimitiveValue.toString(radix);
         },
+        CallNative: function(target, name, args){
+          if (args) {
+            return target[name].apply(target, toInternalArray(args));
+          } else {
+            return target[name]();
+          }
+        },
 
         CodeUnit: function(char){
           return char.charCodeAt(0);
         },
-        StringSlice: function(string, start, end){
-          return string.slice(start, end);
-        },
         StringReplace: function(string, search, replace){
-          if (typeof search !== 'string') {
+          if (typeof search !== STRING) {
             search = search.PrimitiveValue;
           }
           return string.replace(search, replace);
         },
+        StringSplit: function(string, separator, limit){
+          if (typeof separator !== STRING) {
+            separator = separator.PrimitiveValue;
+          }
+          return fromInternalArray(string.split(separator, limit));
+        },
+        StringSearch: function(regexp){
+          return string.search(regexp);
+        },
+        StringSlice: function(string, start, end){
+          return end === undefined ? string.slice(start) : string.slice(start, end);
+        },
         FromCharCode: String.fromCharCode,
+        StringTrim: String.prototype.trim
+          ? function(str){ return str.trim() }
+          : (function(trimmer){
+            return function(str){
+              return str.replace(trimmer, '');
+            };
+          })(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/),
         GetExtensible: function(obj){
           return obj.GetExtensible();
         },

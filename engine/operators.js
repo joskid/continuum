@@ -215,7 +215,7 @@ var operators = (function(exports){
       return argument;
     }
 
-    return argument >>> 0;;
+    return argument >> 0;;
   }
   exports.ToInteger = ToInteger;
 

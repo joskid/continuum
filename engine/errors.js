@@ -115,6 +115,7 @@ var errors = (function(errors, messages, exports){
     instanceof_nonobject_proto     : ["Function has non-object prototype '", "$0", "' in instanceof check"],
     null_to_object                 : ["Cannot convert null to object"],
     undefined_to_object            : ["Cannot convert undefined to object"],
+    object_not_coercible           : ["$0", " cannot convert ", "$1", " to an object"],
     reduce_no_initial              : ["Reduce of empty array with no initial value"],
     callback_must_be_callable      : ["$0", " requires a function callback"],
     getter_must_be_callable        : ["Getter must be a function: ", "$0"],

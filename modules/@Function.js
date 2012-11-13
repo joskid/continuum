@@ -21,6 +21,10 @@ export function call(func, receiver, ...args){
   return $__CallFunction(func, receiver, args);
 }
 
+$__setupFunction(apply);
+$__setupFunction(bind);
+$__setupFunction(call);
+
 
 $__defineProps(Function.prototype, {
   apply(receiver, args){

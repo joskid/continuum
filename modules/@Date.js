@@ -4,6 +4,10 @@ export function Date(...values){
 
 $__setupConstructor(Date, $__DateProto);
 
+export let now = $__now;
+
+$__defineMethods(Date, [now]);
+
 $__defineProps(Date.prototype, {
   toString(){
     if ($__GetNativeBrand(this) === 'Date') {
@@ -24,4 +28,3 @@ $__defineProps(Date.prototype, {
 $__wrapDateMethods(Date.prototype);
 
 
-export let now = Date.now;
