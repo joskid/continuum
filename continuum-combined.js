@@ -1,4 +1,4 @@
-continuum = (function(exports, require, module){
+continuum = (function(global, exports, require, module){
 
 
 exports.esprima = (function(exports){
@@ -5300,6 +5300,10 @@ exports.utility = (function(exports){
       STRING    = 'string',
       UNDEFINED = 'undefined';
 
+  var KEYS   = 'keys',
+      VALUES = 'values',
+      ITEMS  = 'items',
+      ATTRS  = 'attributes';
 
   var hasDunderProto = { __proto__: [] } instanceof Array,
       isES5 = !(!Object.getOwnPropertyNames || 'prototype' in Object.getOwnPropertyNames);
@@ -5315,6 +5319,8 @@ exports.utility = (function(exports){
     writable: true,
     value: undefined
   };
+
+  var proto = uid();
 
 
   function getBrandOf(o){
@@ -5333,6 +5339,11 @@ exports.utility = (function(exports){
     }
   }
 
+  function uid(){
+    return Math.random().toString(36).slice(2);
+  }
+
+  exports.uid = uid;
 
 
   function toArray(o){
@@ -5371,20 +5382,19 @@ exports.utility = (function(exports){
 
         return f.name;
       };
-    } else {
-      return function fname(f){
-        if (typeof f !== FUNCTION) {
-          throw new TypeError('Tried to get the name of a non-function');
-        }
-
-        if (!hasOwn.call(f, 'name')) {
-          hidden.value = toSource.call(f).match(/^\n?function\s?(\w*)?_?\(/)[1];
-          defineProperty(f, 'name', hidden);
-        }
-
-        return f.name;
-      };
     }
+    return function fname(f){
+      if (typeof f !== FUNCTION) {
+        throw new TypeError('Tried to get the name of a non-function');
+      }
+
+      if (!hasOwn.call(f, 'name')) {
+        hidden.value = toSource.call(f).match(/^\n?function\s?(\w*)?_?\(/)[1];
+        defineProperty(f, 'name', hidden);
+      }
+
+      return f.name;
+    };
   })();
 
   function isObject(v){
@@ -5393,9 +5403,9 @@ exports.utility = (function(exports){
   }
   exports.isObject = isObject;
 
-
-  exports.nextTick = typeof process !== UNDEFINED ? process.nextTick : function(f){ setTimeout(f, 1) };
-
+  exports.nextTick = typeof process !== UNDEFINED
+                    ? process.nextTick
+                    : function nextTick(f){ setTimeout(f, 1) };
 
   exports.numbers = (function(cache){
     return function numbers(start, end){
@@ -5415,7 +5425,6 @@ exports.utility = (function(exports){
   })([]);
 
 
-
   if (isES5) {
     var create = exports.create = Object.create;
   } else {
@@ -5430,7 +5439,6 @@ exports.utility = (function(exports){
       iframe.src = 'javascript:';
       Null.prototype = iframe.contentWindow.Object.prototype;
       document.body.removeChild(iframe);
-
 
       while (hiddens.length) {
         delete Null.prototype[hiddens.pop()];
@@ -5448,14 +5456,6 @@ exports.utility = (function(exports){
       };
     })(function(){});
   }
-
-
-  function enumerate(o){
-    var out = [], i = 0;
-    for (out[i++] in o);
-    return out;
-  }
-  exports.enumerate = enumerate;
 
   var ownKeys = exports.keys = (function(){
     if (isES5) return Object.keys;
@@ -5503,7 +5503,6 @@ exports.utility = (function(exports){
     }
   })();
 
-
   var defineProperty = exports.defineProperty = (function(){
     if (isES5) return Object.defineProperty;
     return function defineProperty(o, k, desc){
@@ -5525,64 +5524,79 @@ exports.utility = (function(exports){
 
   var ownProperties = exports.ownProperties = isES5 ? Object.getOwnPropertyNames : ownKeys;
 
-  function isDOM(o){
-    var proto = getPrototypeOf(o);
-    if (o) {
-      var ctor = proto.constructor;
-      if (typeof ctor === FUNCTION) {
-        return getPrototypeOf(ctor) === Object.prototype;
+  var _call, _apply, _bind;
+
+  if (typeof Function.prototype.bind === FUNCTION && !('prototype' in Function.prototype.bind)) {
+    _bind = Function.prototype.bind;
+    _call = Function.prototype.call;
+    _apply = Function.prototype.apply;
+  } else {
+    void function(){
+      function bind(receiver){
+        if (typeof this !== 'function') {
+          throw new TypeError("Function.prototype.bind called on non-callable");
+        }
+
+        var args = toArray(arguments),
+            params = '',
+            F = this;
+
+        for (var i=1; i < args.length; i++) {
+          if (i > 1) params += ',';
+          params += '$['+i+']';
+        }
+
+        var bound = function(){
+          if (this instanceof bound) {
+            var p = params;
+            for (var i=0; i < arguments.length; i++) {
+              p += ',_['+i+']';
+            }
+            return new Function('F,$,_', 'return new F('+p+')')(F, args, arguments);
+          } else {
+            var a = toArray(args);
+            for (var i=0; i < arguments.length; i++) {
+              a[a.length] = arguments[i];
+            }
+            return _call.apply(F, a);
+          }
+        };
+
+        return bound;
       }
-    }
-    return false;
+
+      var iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      iframe.src = 'javascript:';
+      _call = iframe.contentWindow.Function.prototype.call;
+      _apply = _call.apply;
+      _bind = bind;
+      document.body.removeChild(iframe);
+    }();
   }
 
-  exports.isDOM = isDOM;
+  var bindbind  = exports.bindbind  = _bind.bind(_bind),
+      callbind  = exports.callbind  = bindbind(_call),
+      applybind = exports.applybind = bindbind(_apply),
+      bindapply = exports.bindapply = applybind(_bind),
+      bind      = exports.bind      = callbind(_bind),
+      call      = exports.call      = callbind(_call),
+      apply     = exports.apply     = callbind(_apply);
 
-  var isMutable = exports.isMutable = (function(){
-    var isExtensible = isES5 ? Object.isExtensible : function(){ return true };
-    var prop = uid();
 
-    return function isMutable(o){
-      if (!isObject(o) || !isExtensible(o)) return false;
-      if (isDOM(o) && 'namedItem' in o) {
-        o[prop] = true;
-        console.log(o, prop);
-        setTimeout(function(){ console.log(o[prop]); }, 1);
+  function applyNew(Ctor, args){
+    return new (bindapply(Ctor, [null].concat(args)));
+  }
+  exports.applyNew = applyNew;
 
-        if (prop in o) {
-          //delete o[prop];
-          return true;
-        }
-        return false;
-      }
-      return true;
-    };
-  })();
 
   function copy(o){
     return assign(create(getPrototypeOf(o)), o);
   }
-
   exports.copy = copy;
 
   function clone(o, hidden){
-    var queue = new Queue,
-        tag = uid(),
-        tagged = [],
-        list = hidden ? ownProperties : ownKeys;
-
-    var out = enqueue(o);
-
-    while (queue.length) {
-      recurse.apply(this, queue.shift());
-    }
-
-    for (var i=0; i < tagged.length; i++) {
-      delete tagged[tag];
-    }
-
-    return out;
-
     function recurse(from, to, key){
       try {
         var val = from[key];
@@ -5608,31 +5622,70 @@ exports.utility = (function(exports){
       o[tag] = out;
       return out;
     }
-  }
 
+    var queue = new Queue,
+        tag = uid(),
+        tagged = [],
+        list = hidden ? ownProperties : ownKeys,
+        out = enqueue(o);
+
+    while (queue.length) {
+      recurse.apply(this, queue.shift());
+    }
+
+    for (var i=0; i < tagged.length; i++) {
+      delete tagged[tag];
+    }
+
+    return out;
+  }
   exports.clone = clone;
 
 
+  function enumerate(o){
+    var out = [], i = 0;
+    for (out[i++] in o);
+    return out;
+  }
+  exports.enumerate = enumerate;
+
+  var StopIteration = exports.StopIteration = global.StopIteration || create(null);
+
   function iterate(o, callback, context){
-    if (!o) return;
+    if (o == null) return;
     var type = typeof o;
     context = context || o;
     if (type === 'number' || type === 'boolean') {
-      return void callback.call(context, o, 0, o);
-    }
-    o = Object(o);
-    if (type !== 'function' && o.length) {
-      for (var i=0; i < o.length; i++) {
-        callback.call(context, o[i], i, o);
-      }
+      callback.call(context, o, 0, o);
     } else {
-      var keys = ownKeys(o);
-      for (var i=0; i < keys.length; i++) {
-        callback.call(context, o[keys[i]], keys[i], o);
+      o = Object(o);
+      var iterator = o.iterator || o.__iterator__;
+
+      if (typeof iterator === 'function') {
+        var iter = iterator.call(o);
+        if (iter && typeof iter.next === 'function') {
+          var i=0;
+          try {
+            while (1) callback.call(context, iter.next(), i++, o);
+          } catch (e) {
+            if (e === StopIteration) return;
+            throw e;
+          }
+        }
+      }
+
+      if (type !== 'function' && o.length) {
+        for (var i=0; i < o.length; i++) {
+          callback.call(context, o[i], i, o);
+        }
+      } else {
+        var keys = ownKeys(o);
+        for (var i=0; i < keys.length; i++) {
+          callback.call(context, o[keys[i]], keys[i], o);
+        }
       }
     }
   }
-
   exports.iterate = iterate;
 
   function each(o, callback){
@@ -5740,7 +5793,6 @@ exports.utility = (function(exports){
     hidden.value = undefined;
     return o;
   }
-
   exports.define = define;
 
 
@@ -5777,7 +5829,6 @@ exports.utility = (function(exports){
     }
     return o;
   }
-
   exports.assign = assign;
 
   function inherit(Ctor, Super, properties, methods){
@@ -5793,7 +5844,6 @@ exports.utility = (function(exports){
     methods && define(Ctor.prototype, methods);
     return Ctor;
   }
-
   exports.inherit = inherit;
 
 
@@ -5811,7 +5861,6 @@ exports.utility = (function(exports){
       return f.apply(this, a);
     };
   }
-
   exports.partial = partial;
 
 
@@ -5835,7 +5884,6 @@ exports.utility = (function(exports){
       return "'" + s.replace(/'/g, "\\'") + "'";
     }
   }
-
   exports.quotes = quotes;
 
 
@@ -5852,9 +5900,10 @@ exports.utility = (function(exports){
 
     return out;
   }
-
   exports.unique = unique;
 
+
+  var MAX_INTEGER = 9007199254740992;
 
   function toInteger(v){
     if (v === Infinity) {
@@ -5865,14 +5914,12 @@ exports.utility = (function(exports){
       return v - 0 >> 0;
     }
   }
-
   exports.toInteger = toInteger;
 
 
   function isNaN(number){
     return number !== number;
   }
-
   exports.isNaN = isNaN;
 
 
@@ -5882,10 +5929,8 @@ exports.utility = (function(exports){
                && value < Infinity
                && value > -Infinity;
   }
-
   exports.isFinite = isFinite;
 
-  var MAX_INTEGER = 9007199254740992;
 
   function isInteger(value) {
     return typeof value === NUMBER
@@ -5894,23 +5939,9 @@ exports.utility = (function(exports){
                && value < MAX_INTEGER
                && value >> 0 === value;
   }
-
   exports.isInteger = isInteger;
 
-
-  function uid(){
-    return Math.random().toString(36).slice(2)
-  }
-
-  exports.uid = uid;
-
-
-  var BREAK    = visit.BREAK    = new Number(1),
-      CONTINUE = visit.CONTINUE = new Number(2),
-      RECURSE  = visit.RECURSE  = new Number(3);
-
-
-  function visit(root, callback){
+  function walk(root, callback){
     var queue = new Queue([[root]]),
         branded = [],
         tag = uid();
@@ -5934,19 +5965,20 @@ exports.utility = (function(exports){
           item[tag] = true;
           branded.push(item);
           var result = callback(item, node);
-          if (result === visit.RECURSE) {
+          if (result === walk.RECURSE) {
             queue.push(item);
-          } else if (result === visit.BREAK) {
+          } else if (result === walk.BREAK) {
             return queue.empty();
           }
         }
       }
     }
   }
+  exports.walk = walk;
 
-  exports.visit = visit;
-
-
+  var BREAK    = walk.BREAK    = new Number(1),
+      CONTINUE = walk.CONTINUE = new Number(2),
+      RECURSE  = walk.RECURSE  = new Number(3);
 
   exports.collector = (function(){
     function path(){
@@ -5995,7 +6027,7 @@ exports.utility = (function(exports){
       return function(node){
         var items  = [];
 
-        function visitor(node, parent){
+        function walker(node, parent){
           if (!node) return CONTINUE;
 
           if (node instanceof Array) {
@@ -6010,7 +6042,7 @@ exports.utility = (function(exports){
             return handler;
           } else if (typeof handler === STRING) {
             if (node[handler]) {
-              visit(node[handler], visitor);
+              walk(node[handler], walker);
             }
           } else if (typeof handler === FUNCTION) {
             var item = handler(node);
@@ -6022,7 +6054,7 @@ exports.utility = (function(exports){
           return CONTINUE;
         }
 
-        visit(node, visitor);
+        walk(node, walker);
 
         return items;
       };
@@ -6031,138 +6063,95 @@ exports.utility = (function(exports){
     return collector;
   })();
 
-
-
-
-  var _call, _apply, _bind;
-
-  if (typeof Function.prototype.bind === FUNCTION && !('prototype' in Function.prototype.bind)) {
-    _call = Function.prototype.call;
-    _apply = Function.prototype.apply;
-    _bind = Function.prototype.bind;
-  } else {
-    void function(){
-      function bind(receiver){
-        if (typeof this !== 'function') {
-          throw new TypeError("Function.prototype.bind called on non-callable");
-        }
-
-        var args = toArray(arguments),
-            params = '',
-            F = this;
-
-        for (var i=1; i < args.length; i++) {
-          if (i > 1) params += ',';
-          params += '$['+i+']';
-        }
-
-        var bound = function(){
-          if (this instanceof bound) {
-            var p = params;
-            for (var i=0; i < arguments.length; i++) {
-              p += ',_['+i+']';
-            }
-            return new Function('F,$,_', 'return new F('+p+')')(F, args, arguments);
-          } else {
-            var a = toArray(args);
-            for (var i=0; i < arguments.length; i++) {
-              a[a.length] = arguments[i];
-            }
-            return _call.apply(F, a);
-          }
-        };
-
-        return bound;
-      }
-
-      var iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-      iframe.src = 'javascript:';
-      _call = iframe.contentWindow.Function.prototype.call;
-      _apply = _call.apply;
-      _bind = bind;
-      document.body.removeChild(iframe);
-    }();
-  }
-
-  var bindbind  = exports.bindbind  = _bind.bind(_bind),
-      callbind  = exports.callbind  = bindbind(_call),
-      applybind = exports.applybind = bindbind(_apply),
-      bindapply = exports.bindapply = applybind(_bind),
-      bind      = exports.bind      = callbind(_bind),
-      call      = exports.call      = callbind(_call),
-      apply     = exports.apply     = callbind(_apply);
-
-
-  function applyNew(Ctor, args){
-    return new (bindapply(Ctor, [null].concat(args)));
-  }
-  exports.applyNew = applyNew;
+  function Hash(){}
+  Hash.prototype = create(null);
+  exports.Hash = Hash;
 
   exports.Emitter = (function(){
     function Emitter(){
       '_events' in this || define(this, '_events', create(null));
     }
 
-    function on(events, handler){
-      iterate(events.split(/\s+/), function(event){
-        if (!(event in this)) {
-          this[event] = [];
+    define(Emitter.prototype, [
+      function on(events, handler){
+        iterate(events.split(/\s+/), function(event){
+          if (!(event in this)) {
+            this[event] = [];
+          }
+          this[event].push(handler);
+        }, this._events);
+      },
+      function off(events, handler){
+        iterate(events.split(/\s+/), function(event){
+          if (event in this) {
+            var index = '__index' in handler ? handler.__index : this[event].indexOf(handler);
+            if (~index) {
+              this[event].splice(index, 1);
+            }
+          }
+        }, this._events);
+      },
+      function once(events, handler){
+        function one(val){
+          this.off(events, one);
+          handler.call(this, val);
         }
-        this[event].push(handler);
-      }, this._events);
-    }
+        this.on(events, one);
+      },
+      function emit(event, val){
+        var handlers = this._events['*'];
 
-    function off(events, handler){
-      iterate(events.split(/\s+/), function(event){
-        if (event in this) {
-          var index = '__index' in handler ? handler.__index : this[event].indexOf(handler);
-          if (~index) {
-            this[event].splice(index, 1);
+        if (handlers) {;
+          for (var i=0; i < handlers.length; i++) {
+            handlers[i].call(this, event, val);
           }
         }
-      }, this._events);
-    }
 
-    function once(events, handler){
-      function one(val){
-        this.off(events, one);
-        handler.call(this, val);
-      }
-      this.on(events, one);
-    }
-
-    function emit(event, val){
-      var handlers = this._events['*'];
-
-      if (handlers) {;
-        for (var i=0; i < handlers.length; i++) {
-          handlers[i].call(this, event, val);
+        handlers = this._events[event];
+        if (handlers) {
+          for (var i=0; i < handlers.length; i++) {
+            handlers[i].call(this, val);
+          }
         }
       }
+    ]);
 
-      handlers = this._events[event];
-      if (handlers) {
-        for (var i=0; i < handlers.length; i++) {
-          handlers[i].call(this, val);
-        }
-      }
-    }
-     define(Emitter.prototype, [on, off, once, emit]);
     return Emitter;
   })();
 
-
-  function Hash(){}
-  Hash.prototype = create(null);
-  exports.Hash = Hash;
-
-
-  var proto = uid();
-
-
   var PropertyList = exports.PropertyList = (function(){
+    var PropertyListIterator = (function(){
+      var types = {
+        keys: 0,
+        values: 1,
+        attributes: 2
+      };
+
+      function PropertyListIterator(list, type){
+        this.list = list;
+        this.type = type ? types[type] : ITEMS;
+        this.index = 0;
+      }
+
+      define(PropertyListIterator.prototype, [
+        function next(){
+          var props = this.list.props, property;
+          while (!property) {
+            if (this.index >= props.length) {
+              throw StopIteration;
+            }
+            property = props[this.index++];
+          }
+          return this.type === ITEMS ? property : property[this.type];
+        },
+        function __iterator__(){
+          return this;
+        }
+      ]);
+
+      return PropertyListIterator;
+    })();
+
     function PropertyList(){
       this.hash = new Hash;
       this.props = [];
@@ -6170,222 +6159,203 @@ exports.utility = (function(exports){
       this.length = 0;
     }
 
-    function get(key){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        return this.props[index][1];
-      }
-    }
+    define(PropertyList.prototype, [
+      function get(key){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          return this.props[index][1];
+        }
+      },
+      function getAttribute(key){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          return this.props[index][2];
+        } else {
+          return null;
+        }
+      },
+      function getProperty(key){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          return this.props[index];
+        } else {
+          return null;
+        }
+      },
+      function set(key, value, attr){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name],
+            prop;
 
-    function getAttribute(key){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        return this.props[index][2];
-      } else {
-        return null;
-      }
-    }
+        if (index === undefined) {
+          index = this.hash[name] = this.props.length;
+          prop = this.props[index] = [key, value, 0];
+          this.length++;
+        } else {
+          prop = this.props[index];
+          prop[1] = value;
+        }
 
-    function getProperty(key){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        return this.props[index];
-      } else {
-        return null;
-      }
-    }
-
-    function set(key, value, attr){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name],
-          prop;
-
-      if (index === undefined) {
-        index = this.hash[name] = this.props.length;
-        prop = this.props[index] = [key, value, 0];
-        this.length++;
-      } else {
-        prop = this.props[index];
-        prop[1] = value;
-      }
-
-      if (attr !== undefined) {
-        prop[2] = attr;
-      }
-      return true;
-    }
-
-    function setAttribute(key, attr){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        this.props[index][2] = attr;
+        if (attr !== undefined) {
+          prop[2] = attr;
+        }
         return true;
-      } else {
-        return false;
-      }
-    }
-
-    function setProperty(prop){
-      var key = prop[0],
-          name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index === undefined) {
-        index = this.hash[name] = this.props.length;
-        this.length++;
-      }
-      this.props[index] = prop;
-    }
-
-    function remove(key){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        this.hash[name] = undefined;
-        this.props[index] = undefined;
-        this.holes++;
-        this.length--;
-        return true;
-      } else {
-        return false;
-      }
-    }
-
-    function has(key){
-      var name = key === '__proto__' ? proto : key;
-      return this.hash[name] !== undefined;
-    }
-
-    function hasAttribute(key, mask){
-      var name = key === '__proto__' ? proto : key,
-          attr = this.getAttribute(name);
-      if (attr !== null) {
-        return (attr & mask) > 0;
-      }
-    }
-
-    function compact(){
-      var props = this.props,
-          len = props.length,
-          index = 0,
-          prop;
-
-      this.hash = new Hash;
-      this.props = [];
-      this.holes = 0;
-
-      for (var i=0; i < len; i++) {
-        if (prop = props[i]) {
-          var name = prop[0] === '__proto__' ? proto : prop[0];
-          this.props[index] = prop;
-          this.hash[name] = index++;
+      },
+      function setAttribute(key, attr){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          this.props[index][2] = attr;
+          return true;
+        } else {
+          return false;
         }
-      }
-    }
-
-    function forEach(callback, context){
-      var len = this.props.length,
-          index = 0,
-          prop;
-
-      context = context || this;
-
-      for (var i=0; i < len; i++) {
-        if (prop = this.props[i]) {
-          callback.call(context, prop, index++, this);
+      },
+      function setProperty(prop){
+        var key = prop[0],
+            name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index === undefined) {
+          index = this.hash[name] = this.props.length;
+          this.length++;
         }
-      }
-    }
-
-    function map(callback, context){
-      var out = [],
-          len = this.props.length,
-          index = 0,
-          prop;
-
-      context = context || this;
-
-      for (var i=0; i < len; i++) {
-        if (prop = this.props[i]) {
-          out[index] = callback.call(context, prop, index++, this);
+        this.props[index] = prop;
+      },
+      function remove(key){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          this.hash[name] = undefined;
+          this.props[index] = undefined;
+          this.holes++;
+          this.length--;
+          return true;
+        } else {
+          return false;
         }
-      }
+      },
+      function has(key){
+        var name = key === '__proto__' ? proto : key;
+        return this.hash[name] !== undefined;
+      },
+      function hasAttribute(key, mask){
+        var name = key === '__proto__' ? proto : key,
+            attr = this.getAttribute(name);
+        if (attr !== null) {
+          return (attr & mask) > 0;
+        }
+      },
+      function compact(){
+        var props = this.props,
+            len = props.length,
+            index = 0,
+            prop;
 
-      return out;
-    }
+        this.hash = new Hash;
+        this.props = [];
+        this.holes = 0;
 
-    function translate(callback, context){
-      var out = new PropertyList;
+        for (var i=0; i < len; i++) {
+          if (prop = props[i]) {
+            var name = prop[0] === '__proto__' ? proto : prop[0];
+            this.props[index] = prop;
+            this.hash[name] = index++;
+          }
+        }
+      },
+      function forEach(callback, context){
+        var len = this.props.length,
+            index = 0,
+            prop;
 
-      out.length = this.length;
-      context = context || this;
+        context = context || this;
 
-      this.forEach(function(prop, index){
-        prop = callback.call(context, prop, index, this);
-        var name = prop[0] === '__proto__' ? proto : prop[0];
-        out.props[index] = prop;
-        out.hash[name] = index;
-      });
+        for (var i=0; i < len; i++) {
+          if (prop = this.props[i]) {
+            callback.call(context, prop, index++, this);
+          }
+        }
+      },
+      function map(callback, context){
+        var out = [],
+            len = this.props.length,
+            index = 0,
+            prop;
 
-      return out;
-    }
+        context = context || this;
 
-    function filter(callback, context){
-      var out = new PropertyList,
-          index = 0;
+        for (var i=0; i < len; i++) {
+          if (prop = this.props[i]) {
+            out[index] = callback.call(context, prop, index++, this);
+          }
+        }
 
-      context = context || this;
+        return out;
+      },
+      function translate(callback, context){
+        var out = new PropertyList;
 
-      this.forEach(function(prop, i){
-        if (callback.call(context, prop, i, this)) {
+        out.length = this.length;
+        context = context || this;
+
+        this.forEach(function(prop, index){
+          prop = callback.call(context, prop, index, this);
           var name = prop[0] === '__proto__' ? proto : prop[0];
           out.props[index] = prop;
-          out.hash[name] = index++;
-        }
-      });
+          out.hash[name] = index;
+        });
 
-      return out;
-    }
+        return out;
+      },
+      function filter(callback, context){
+        var out = new PropertyList,
+            index = 0;
 
-    function clone(deep){
-      return this.translate(function(prop, i){
-        return deep ? prop.slice() : prop;
-      });
-    }
+        context = context || this;
 
-    function keys(){
-      return this.map(function(prop){
-        return prop[0];
-      });
-    }
+        this.forEach(function(prop, i){
+          if (callback.call(context, prop, i, this)) {
+            var name = prop[0] === '__proto__' ? proto : prop[0];
+            out.props[index] = prop;
+            out.hash[name] = index++;
+          }
+        });
 
-    function values(){
-      return this.map(function(prop){
-        return prop[1];
-      });
-    }
-
-    function items(){
-      return this.map(function(prop){
-        return prop.slice();
-      });
-    }
-
-    function merge(list){
-      list.forEach(this.setProperty, this);
-    }
-
-    define(PropertyList.prototype, [
-      get, getAttribute, getProperty, set, setAttribute, setProperty, remove, has, hasAttribute,
-      compact, forEach, map, translate,  filter, clone, keys, values, items, merge
+        return out;
+      },
+      function clone(deep){
+        return this.translate(function(prop, i){
+          return deep ? prop.slice() : prop;
+        });
+      },
+      function keys(){
+        return this.map(function(prop){
+          return prop[0];
+        });
+      },
+      function values(){
+        return this.map(function(prop){
+          return prop[1];
+        });
+      },
+      function items(){
+        return this.map(function(prop){
+          return prop.slice();
+        });
+      },
+      function merge(list){
+        list.forEach(this.setProperty, this);
+      },
+      function __iterator__(type){
+        return new PropertyListIterator(this, type);
+      }
     ]);
+
     return PropertyList;
   })();
-
-
 
   exports.Stack = (function(){
     function Stack(){
@@ -6394,52 +6364,48 @@ exports.utility = (function(exports){
         this.push(arguments[k]);
     }
 
-    function push(item){
-      this.items.push(item);
-      this.length++;
-      this.top = item;
-      return this;
-    }
+    define(Stack.prototype, [
+      function push(item){
+        this.items.push(item);
+        this.length++;
+        this.top = item;
+        return this;
+      },
+      function pop(){
+        this.length--;
+        this.top = this.items[this.length - 1];
+        return this.items.pop();
+      },
+      function empty(){
+        this.length = 0;
+        this.items = [];
+        this.top = undefined;
+      },
+      function first(callback, context){
+        var i = this.length;
+        context || (context = this);
+        while (i--)
+          if (callback.call(context, this[i], i, this))
+            return this[i];
+      },
+      function filter(callback, context){
+        var i = this.length,
+            out = new Stack;
 
-    function pop(){
-      this.length--;
-      this.top = this.items[this.length - 1];
-      return this.items.pop();
-    }
+        context || (context = this);
 
-    function empty(){
-      this.length = 0;
-      this.items = [];
-      this.top = undefined;
-    }
-
-    function first(callback, context){
-      var i = this.length;
-      context || (context = this);
-      while (i--)
-        if (callback.call(context, this[i], i, this))
-          return this[i];
-    }
-
-    function filter(callback, context){
-      var i = this.length,
-          out = new Stack;
-
-      context || (context = this);
-
-      for (var i=0; i < this.length; i++) {
-        if (callback.call(context, this[i], i, this)) {
-          out.push(this[i]);
+        for (var i=0; i < this.length; i++) {
+          if (callback.call(context, this[i], i, this)) {
+            out.push(this[i]);
+          }
         }
+
+        return out;
       }
+    ]);
 
-      return out;
-    }
-
-    define(Stack.prototype, [push, pop, empty, first, filter]);
     return Stack;
   })();
-
 
   var Queue = exports.Queue = (function(){
     function Queue(items){
@@ -6462,50 +6428,45 @@ exports.utility = (function(exports){
       this.index = 0;
     }
 
-    function push(item){
-      this.items.push(item);
-      this.length++;
-      return this;
-    }
-
-    function shift(){
-      if (this.length) {
-        var item = this.items[this.index];
-        this.items[this.index++] = null;
-        this.length--;
-        if (this.index === 500) {
-          this.items = this.items.slice(this.index);
-          this.index = 0;
+    define(Queue.prototype, [
+      function push(item){
+        this.items.push(item);
+        this.length++;
+        return this;
+      },
+      function shift(){
+        if (this.length) {
+          var item = this.items[this.index];
+          this.items[this.index++] = null;
+          this.length--;
+          if (this.index === 500) {
+            this.items = this.items.slice(this.index);
+            this.index = 0;
+          }
+          return item;
         }
-        return item;
+      },
+      function empty(){
+        this.length = 0;
+        this.index = 0;
+        this.items = [];
+        return this;
+      },
+      function front(){
+        return this.items[this.index];
       }
-    }
+    ]);
 
-    function empty(){
-      this.length = 0;
-      this.index = 0;
-      this.items = [];
-      return this;
-    }
-
-    function front(){
-      return this.items[this.index];
-    }
-
-    define(Queue.prototype, [push, empty, front, shift]);
     return Queue;
   })();
-
 
   exports.Feeder = (function(){
     function Feeder(callback, context, pace){
       var self = this;
       this.queue = new Queue;
       this.active = false;
-      this.feeder = feeder;
       this.pace = pace || 5;
-
-      function feeder(){
+      this.feeder = function feeder(){
         var count = Math.min(self.pace, self.queue.length);
 
         while (self.active && count--) {
@@ -6517,33 +6478,31 @@ exports.utility = (function(exports){
         } else if (self.active) {
           setTimeout(feeder, 15);
         }
+      };
+    }
+
+    define(Feeder.prototype, [
+      function push(item){
+        this.queue.push(item);
+        if (!this.active) {
+          this.active = true;
+          setTimeout(this.feeder, 15);
+        }
+        return this;
+      },
+      function pause(){
+        this.active = false;
       }
-    }
+    ]);
 
-    function push(item){
-      this.queue.push(item);
-      if (!this.active) {
-        this.active = true;
-        setTimeout(this.feeder, 15);
-      }
-      return this;
-    }
-
-    function pause(){
-      this.active = false;
-    }
-
-    define(Feeder.prototype, [push, pause]);
     return Feeder;
   })();
-
 
   function inspect(o){
     o = require('util').inspect(o, null, 4);
     console.log(o);
     return o;
   }
-
   exports.inspect = inspect;
 
   return exports;
@@ -6925,7 +6884,7 @@ exports.assembler = (function(exports){
   var utility   = require('./utility'),
       util      = require('util');
 
-  var visit     = utility.visit,
+  var walk      = utility.walk,
       collector = utility.collector,
       Stack     = utility.Stack,
       define    = utility.define,
@@ -7277,12 +7236,64 @@ exports.assembler = (function(exports){
   })();
 
 
+  function isSuperReference(node) {
+    return !!node && node.type === 'Identifier' && node.name === 'super';
+  }
+
+  function isUseStrictDirective(node){
+    return node.type === 'ExpressionSatatement'
+        && node.expression.type === 'Literal'
+        && node.expression.value === 'use strict';
+  }
+
+  function isFunction(node){
+    return node.type === 'FunctionDeclaration'
+        || node.type === 'FunctionExpression'
+        || node.type === 'ArrowFunctionExpression';
+  }
+
+  function isDeclaration(node){
+    return node.type === 'FunctionDeclaration'
+        || node.type === 'ClassDeclaration'
+        || node.type === 'VariableDeclaration';
+  }
+
+  function isStrict(node){
+    if (isFunction(node)) {
+      node = node.body.body;
+    } else if (node.type === 'Program') {
+      node = node.body;
+    }
+    if (node instanceof Array) {
+      for (var i=0, element;  element = node[i]; i++) {
+        if (element) {
+          if (isUseStrictDirective(element)) {
+            return true;
+          } else if (element.type !== 'EmptyStatement' && element.type !== 'FunctionDeclaration') {
+            return false;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  function isPattern(node){
+    return !!node && node.type === 'ObjectPattern' || node.type === 'ArrayPattern';
+  }
+
+  function isLexicalDeclaration(node){
+    return !!node && node.type === 'VariableDeclaration' && node.kind !== 'var';
+  }
+
+
   var boundNamesCollector = collector({
     ObjectPattern      : 'properties',
     ArrayPattern       : 'elements',
     VariableDeclaration: 'declarations',
-    BlockStatement     : visit.RECURSE,
-    Program            : visit.RECURSE,
+    BlockStatement     : walk.RECURSE,
+    Program            : walk.RECURSE,
+    ForStatement       : walk.RECURSE,
     Property           : 'value',
     ExportDeclaration  : 'declaration',
     ExportSpecifierSet : 'specifiers',
@@ -7307,9 +7318,9 @@ exports.assembler = (function(exports){
     return collector({
       ClassDeclaration: lexical(false),
       FunctionDeclaration: lexical(false),
-      ExportDeclaration: visit.RECURSE,
-      SwitchCase: visit.RECURSE,
-      Program: visit.RECURSE,
+      ExportDeclaration: walk.RECURSE,
+      SwitchCase: walk.RECURSE,
+      Program: walk.RECURSE,
       VariableDeclaration: lexical(function(node){
         return node.kind === 'const';
       }),
@@ -7338,12 +7349,12 @@ exports.assembler = (function(exports){
 
     var getExportedDecls = collector({
       ClassDeclaration   : true,
-      ExportDeclaration  : visit.RECURSE,
+      ExportDeclaration  : walk.RECURSE,
       ExportSpecifier    : true,
-      ExportSpecifierSet : visit.RECURSE,
+      ExportSpecifierSet : walk.RECURSE,
       FunctionDeclaration: true,
       ModuleDeclaration  : true,
-      VariableDeclaration: visit.RECURSE,
+      VariableDeclaration: walk.RECURSE,
       VariableDeclarator : true
     });
 
@@ -7432,71 +7443,30 @@ exports.assembler = (function(exports){
   })();
 
 
-  function isSuperReference(node) {
-    return !!node && node.type === 'Identifier' && node.name === 'super';
-  }
-
   function ReferencesSuper(node){
     var found = false;
-    visit(node, function(node){
+    walk(node, function(node){
       switch (node.type) {
         case 'MemberExpression':
           if (isSuperReference(node.object)) {
             found = true;
-            return visit.BREAK;
+            return walk.BREAK;
           }
         case 'CallExpression':
           if (isSuperReference(node.callee)) {
             found = true;
-            return visit.BREAK;
+            return walk.BREAK;
           }
           break;
         case 'FunctionExpression':
         case 'FunctionDeclaration':
         case 'ArrowFunctionExpression':
-          return visit.CONTINUE;
+          return walk.CONTINUE;
       }
-      return visit.RECURSE;
+      return walk.RECURSE;
     });
     return found;
   }
-
-  function isUseStrictDirective(node){
-    return node.type === 'ExpressionSatatement'
-        && node.expression.type === 'Literal'
-        && node.expression.value === 'use strict';
-  }
-
-  function isFunction(node){
-    return node.type === 'FunctionDeclaration'
-        || node.type === 'FunctionExpression'
-        || node.type === 'ArrowFunctionExpression';
-  }
-
-  function isStrict(node){
-    if (isFunction(node)) {
-      node = node.body.body;
-    } else if (node.type === 'Program') {
-      node = node.body;
-    }
-    if (node instanceof Array) {
-      for (var i=0, element;  element = node[i]; i++) {
-        if (element) {
-          if (isUseStrictDirective(element)) {
-            return true;
-          } else if (element.type !== 'EmptyStatement' && element.type !== 'FunctionDeclaration') {
-            return false;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
-  function isPattern(node){
-    return !!node && node.type === 'ObjectPattern' || node.type === 'ArrayPattern';
-  }
-
 
 
 
@@ -7605,15 +7575,13 @@ exports.assembler = (function(exports){
 
   function destructure(left, right){
     var key = left.type === 'ArrayPattern' ? 'elements' : 'properties',
-        lefts = left[key],
-        rights = right[key],
-        binding, value;
+        rights = right[key];
 
-    for (var i=0; i < lefts.length; i++) {
-      binding = elementAt[key](left, i);
+    each(left[key], function(item, i){
+      var binding = elementAt[key](left, i);
 
       if (isPattern(binding)){
-        value = rights && rights[i] ? elementAt[key](right, i) : binding;
+        var value = rights && rights[i] ? elementAt[key](right, i) : binding;
         destructure(binding, value);
       } else {
         if (binding.type === 'SpreadElement') {
@@ -7632,13 +7600,13 @@ exports.assembler = (function(exports){
         }
         PUT();
       }
-    }
+    });
   }
 
 
   function args(node){
     ARGS();
-    for (var i=0, item; item = node[i]; i++) {
+    each(node, function(item, i){
       if (item && item.type === 'SpreadElement') {
         recurse(item.argument);
         GET();
@@ -7648,7 +7616,7 @@ exports.assembler = (function(exports){
         GET();
         ARG();
       }
-    }
+    });
   }
 
   function isGlobalOrEval(){
@@ -7679,7 +7647,7 @@ exports.assembler = (function(exports){
 
   function ArrayExpression(node){
     ARRAY();
-    for (var i=0, item; i < node.elements.length; i++) {
+    each(node.elements, function(item, i){
       var empty = false,
           spread = false,
           item = node.elements[i];
@@ -7695,7 +7663,7 @@ exports.assembler = (function(exports){
 
       GET();
       INDEX(empty, spread);
-    }
+    });
     ARRAY_DONE();
   }
 
@@ -7723,11 +7691,7 @@ exports.assembler = (function(exports){
     block(function(){
       lexical(function(){
         BLOCK({ LexicalDeclarations: LexicalDeclarations(node.body) });
-
-        for (var i=0, item; item = node.body[i]; i++) {
-          recurse(item);
-        }
-
+        each(node.body, recurse);
         UPSCOPE();
       });
     });
@@ -7765,10 +7729,7 @@ exports.assembler = (function(exports){
       BLOCK({ LexicalDeclarations: decls });
       recurse(node.param);
       PUT();
-      for (var i=0, item; item = node.body.body[i]; i++) {
-        recurse(item);
-      }
-
+      each(node.body.body, recurse);
       UPSCOPE();
     });
   }
@@ -7795,7 +7756,7 @@ exports.assembler = (function(exports){
     adjust(test);
     recurse(node.alternate);
     GET();
-    adjust(alt)
+    adjust(alt);
   }
 
   function ContinueStatement(node){
@@ -7839,29 +7800,29 @@ exports.assembler = (function(exports){
   }
 
   function ForStatement(node){
-    lexical(function(){
-      var scope = BLOCK({ LexicalDeclarations: [] });
-      control(function(){
+    control(function(){
+      lexical(function(){
         var init = node.init;
         if (init){
-          if (init.type === 'VariableDeclaration') {
+          var isLexical = isLexicalDeclaration(init);
+          if (isLexical) {
+            var scope = BLOCK({ LexicalDeclarations: [] });
             recurse(init);
-            if (init.kind === 'let' || init.kind === 'const') {
-              var decl = init.declarations[init.declarations.length - 1].id;
-              scope[0].LexicalDeclarations = BoundNames(decl);
-              var lexicalDecl = {
-                type: 'VariableDeclaration',
-                kind: init.kind,
-                declarations: [{
-                  type: 'VariableDeclarator',
-                  id: decl,
-                  init: null
-                }],
-              };
-              lexicalDecl.BoundNames = BoundNames(lexicalDecl);
-              recurse(decl);
-            }
+            var decl = init.declarations[init.declarations.length - 1].id;
+            scope[0].LexicalDeclarations = BoundNames(decl);
+            var lexicalDecl = {
+              type: 'VariableDeclaration',
+              kind: init.kind,
+              declarations: [{
+                type: 'VariableDeclarator',
+                id: decl,
+                init: null
+              }],
+            };
+            lexicalDecl.BoundNames = BoundNames(lexicalDecl);
+            recurse(decl);
           } else {
+            recurse(init);
             GET();
             POP();
           }
@@ -7887,11 +7848,7 @@ exports.assembler = (function(exports){
               recurse(decl);
               ROTATE(1);
               PUT();
-
-              for (var i=0, item; item = node.body.body[i]; i++) {
-                recurse(item);
-              }
-
+              each(node.body.body, recurse);
               UPSCOPE();
             });
           });
@@ -7907,9 +7864,9 @@ exports.assembler = (function(exports){
 
         JUMP(test);
         adjust(op);
+        isLexical && UPSCOPE();
         return update;
       });
-      UPSCOPE();
     });
   }
 
@@ -8062,7 +8019,7 @@ exports.assembler = (function(exports){
   function MethodDefinition(node){}
 
   function ModuleDeclaration(node){
-    if (!node.from) {
+    if (node.body) {
       node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.MODULE, context.code.Strict);
       context.queue(node.Code);
     }
@@ -8142,7 +8099,7 @@ exports.assembler = (function(exports){
 
         if (node.cases){
           var cases = [];
-          for (var i=0, item; item = node.cases[i]; i++) {
+          each(node.cases, function(item, i){
             if (item.test){
               recurse(item.test);
               GET();
@@ -8151,7 +8108,7 @@ exports.assembler = (function(exports){
               var defaultFound = i;
               cases.push(0);
             }
-          }
+          });
 
           if (defaultFound != null){
             DEFAULT(cases[defaultFound]);
@@ -8160,12 +8117,10 @@ exports.assembler = (function(exports){
             var last = JUMP(0);
           }
 
-          for (var i=0, item; item = node.cases[i]; i++) {
+          each(node.cases, function(item, i){
             adjust(cases[i])
-            for (var j=0, consequent; consequent = item.consequent[j]; j++) {
-              recurse(consequent);
-            }
-          }
+            each(item.consequent, recurse);
+          });
 
           if (last) {
             adjust(last);
@@ -8347,21 +8302,21 @@ exports.assembler = (function(exports){
 
   var Assembler = exports.Assembler = (function(){
     function annotateParent(node, parent){
-      visit(node, function(node){
+      walk(node, function(node){
         if (isObject(node) && parent) {
           define(node, 'parent', parent);
         }
-        return visit.RECURSE;
+        return walk.RECURSE;
       });
     }
 
     function reinterpretNatives(node){
-      visit(node, function(node){
+      walk(node, function(node){
         if (node.type === 'Identifier' && /^\$__/.test(node.name)) {
           node.type = 'NativeIdentifier';
           node.name = node.name.slice(3);
         } else {
-          return visit.RECURSE;
+          return walk.RECURSE;
         }
       });
     }
@@ -14752,7 +14707,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   exports.Realm = Realm;
   exports.Script = Script;
-  exports.ExecutionContext = ExecutionContext;
   exports.activeRealm = function activeRealm(){
     if (!realm && realms.length) {
       activate(realms[realms.length - 1]);
@@ -16076,7 +16030,7 @@ exports.modules["@Date"] = "export function Date(...values){\n  return $__DateCr
 
 exports.modules["@Error"] = "export function Error(message){\n  this.message = message;\n}\n\nexport function EvalError(message){\n  this.message = message;\n}\n\nexport function RangeError(message){\n  this.message = message;\n}\n\nexport function ReferenceError(message){\n  this.message = message;\n}\n\nexport function SyntaxError(message){\n  this.message = message;\n}\n\nexport function TypeError(message){\n  this.message = message;\n}\n\nexport function URIError(message){\n  this.message = message;\n}\n\n\n$__defineProps(Error.prototype, {\n  toString(){\n    return this.name + ': '+this.message;\n  }\n});\n\n$__setupConstructor(Error, $__ErrorProto);\n$__setupConstructor(EvalError, $__EvalErrorProto);\n$__setupConstructor(RangeError, $__RangeErrorProto);\n$__setupConstructor(ReferenceError, $__ReferenceErrorProto);\n$__setupConstructor(SyntaxError, $__SyntaxErrorProto);\n$__setupConstructor(TypeError, $__TypeErrorProto);\n$__setupConstructor(URIError, $__URIErrorProto);\n";
 
-exports.modules["@Function"] = "export function Function(...args){\n  return $__FunctionCreate(args);\n}\n\n$__setupConstructor(Function, $__FunctionProto);\n$__defineDirect(Function.prototype, 'name', 'Empty', 0);\n\n\nexport function apply(func, receiver, args){\n  ensureFunction(func, '@Function.apply');\n  return $__CallFunction(func, receiver, ensureArgs(args));\n}\n\nexport function bind(func, receiver, ...args){\n  ensureFunction(func, '@Function.bind');\n  return $__BoundFunctionCreate(func, receiver, args);\n}\n\nexport function call(func, receiver, ...args){\n  ensureFunction(func, '@Function.call');\n  return $__CallFunction(func, receiver, args);\n}\n\n$__setupFunction(apply);\n$__setupFunction(bind);\n$__setupFunction(call);\n\n\n$__defineProps(Function.prototype, {\n  apply(receiver, args){\n    ensureFunction(this, 'Function.prototype.apply');\n    return $__CallFunction(this, receiver, ensureArgs(args));\n  },\n  bind(receiver, ...args){\n    ensureFunction(this, 'Function.prototype.bind');\n    return $__BoundFunctionCreate(this, receiver, args);\n  },\n  call(receiver, ...args){\n    ensureFunction(this, 'Function.prototype.call');\n    return $__CallFunction(this, receiver, args);\n  },\n  toString(){\n    ensureFunction(this, 'Function.prototype.toString');\n    return $__FunctionToString(this);\n  }\n});\n\n\nfunction ensureArgs(o, name){\n  if (o == null || typeof o !== 'object' || typeof o.length !== 'number') {\n    throw $__Exception('apply_wrong_args', []);\n  }\n\n  var brand = $__GetNativeBrand(o);\n  return brand === 'Array' || brand === 'Arguments' ? o : [...o];\n}\n\nfunction ensureFunction(o, name){\n  if (typeof o !== 'function') {\n    throw $__Exception('called_on_non_function', [name]);\n  }\n}\n";
+exports.modules["@Function"] = "export function Function(...args){\n  return $__FunctionCreate(args);\n}\n\n$__setupConstructor(Function, $__FunctionProto);\n$__defineDirect(Function.prototype, 'name', '', 0);\n\n\nexport function apply(func, receiver, args){\n  ensureFunction(func, '@Function.apply');\n  return $__CallFunction(func, receiver, ensureArgs(args));\n}\n\nexport function bind(func, receiver, ...args){\n  ensureFunction(func, '@Function.bind');\n  return $__BoundFunctionCreate(func, receiver, args);\n}\n\nexport function call(func, receiver, ...args){\n  ensureFunction(func, '@Function.call');\n  return $__CallFunction(func, receiver, args);\n}\n\n$__setupFunction(apply);\n$__setupFunction(bind);\n$__setupFunction(call);\n\n\n$__defineProps(Function.prototype, {\n  apply(receiver, args){\n    ensureFunction(this, 'Function.prototype.apply');\n    return $__CallFunction(this, receiver, ensureArgs(args));\n  },\n  bind(receiver, ...args){\n    ensureFunction(this, 'Function.prototype.bind');\n    return $__BoundFunctionCreate(this, receiver, args);\n  },\n  call(receiver, ...args){\n    ensureFunction(this, 'Function.prototype.call');\n    return $__CallFunction(this, receiver, args);\n  },\n  toString(){\n    ensureFunction(this, 'Function.prototype.toString');\n    return $__FunctionToString(this);\n  }\n});\n\n\nfunction ensureArgs(o, name){\n  if (o == null || typeof o !== 'object' || typeof o.length !== 'number') {\n    throw $__Exception('apply_wrong_args', []);\n  }\n\n  var brand = $__GetNativeBrand(o);\n  return brand === 'Array' || brand === 'Arguments' ? o : [...o];\n}\n\nfunction ensureFunction(o, name){\n  if (typeof o !== 'function') {\n    throw $__Exception('called_on_non_function', [name]);\n  }\n}\n";
 
 exports.modules["@Map"] = "export function Map(iterable){\n  var map;\n  if ($__IsConstructCall()) {\n    map = this;\n  } else {\n    if (this === undefined || this === $__MapProto) {\n      map = $__ObjectCreate($__MapProto) ;\n    } else {\n      map = $__ToObject(this);\n    }\n  }\n\n  if ($__HasInternal(map, 'MapData')) {\n    throw $__Exception('double_initialization', ['Map'])\n  }\n\n  $__MapInitialization(map, iterable);\n  return map;\n}\n\n\n$__setupConstructor(Map, $__MapProto);\n{\n$__defineProps(Map.prototype, {\n  clear(){\n    ensureMap(this, 'clear');\n    return $__MapClear(this, key);\n  },\n  set(key, value){\n    ensureMap(this, 'set');\n    return $__MapSet(this, key, value);\n  },\n  get(key){\n    ensureMap(this, 'get');\n    return $__MapGet(this, key);\n  },\n  has(key){\n    ensureMap(this, 'has');\n    return $__MapHas(this, key);\n  },\n  delete: function(key){\n    ensureMap(this, 'delete');\n    return $__MapDelete(this, key);\n  },\n  items(){\n    ensureMap(this, 'items');\n    return new MapIterator(this, 'key+value');\n  },\n  keys(){\n    ensureMap(this, 'keys');\n    return new MapIterator(this, 'key');\n  },\n  values(){\n    ensureMap(this, 'values');\n    return new MapIterator(this, 'value');\n  },\n  iterator(){\n    ensureMap(this, 'iterator');\n    return new MapIterator(this, 'key+value');\n  }\n});\n\n$__defineDirect(Map.prototype.delete, 'name', 'delete', 0);\n\n$__DefineOwnProperty(Map.prototype, 'size', {\n  configurable: true,\n  enumerable: false,\n  get: function(){\n    if (this === $__MapProto) {\n      return 0;\n    }\n    return $__MapSize(this);\n  },\n  set: undefined\n});\n\nlet MAP = 'Map',\n    KEY  = 'MapNextKey',\n    KIND  = 'MapIterationKind';\n\n\nlet K = 0x01,\n    V = 0x02;\n\nlet kinds = {\n  'key': 1,\n  'value': 2,\n  'key+value': 3\n};\n\n\nfunction MapIterator(map, kind){\n  map = $__ToObject(map);\n  $__SetInternal(this, MAP, map);\n  $__SetInternal(this, KEY,  $__MapSigil());\n  $__SetInternal(this, KIND, kinds[kind]);\n  this.next = () => next.call(this);\n}\n\n$__defineProps(MapIterator.prototype, {\n  next(){\n\n    if (!$__IsObject(this)) {\n      throw $__Exception('called_on_non_object', ['MapIterator.prototype.next']);\n    }\n    if (!$__HasInternal(this, MAP) || !$__HasInternal(this, KEY) || !$__HasInternal(this, KIND)) {\n      throw $__Exception('called_on_incompatible_object', ['MapIterator.prototype.next']);\n    }\n    var map = $__GetInternal(this, MAP),\n        key = $__GetInternal(this, KEY),\n        kind = $__GetInternal(this, KIND);\n\n    var item = $__MapNext(map, key);\n    $__SetInternal(this, KEY, item[0]);\n\n    if (kind & V) {\n      if (kind & K) {\n        return item;\n      }\n      return item[1];\n    }\n    return item[0];\n  },\n  iterator(){\n    return this;\n  }\n});\n\nlet next = MapIterator.prototype.next;\n\nfunction ensureMap(o, name){\n  if (!o || typeof o !== 'object' || !$__HasInternal(o, 'MapData')) {\n    throw Exception('called_on_incompatible_object', ['Map.prototype.'+name]);\n  }\n}\n}\n";
 
@@ -16104,7 +16058,7 @@ exports.modules["@reflect"] = "let ___ = 0b0000,\n    E__ = 0b0001,\n    _C_ = 0
 
 exports.modules["@std"] = "// standard constants\nconst NaN       = +'NaN';\nconst Infinity  = 1 / 0;\nconst undefined = void 0;\n\n// standard functions\nimport { decodeURI,\n         decodeURIComponent,\n         encodeURI,\n         encodeURIComponent,\n         eval,\n         isFinite,\n         isNaN,\n         parseFloat,\n         parseInt } from '@globals';\n\n\nimport { clearInterval,\n         clearTimeout,\n         setInterval,\n         setTimeout } from '@timers';\n\n// standard types\nimport Array    from '@Array';\nimport Boolean  from '@Boolean';\nimport Date     from '@Date';\nimport Function from '@Function';\nimport Map      from '@Map';\nimport Number   from '@Number';\nimport Object   from '@Object';\nimport RegExp   from '@RegExp';\nimport Set      from '@Set';\nimport String   from '@String';\nimport WeakMap  from '@WeakMap';\n\n\n\n// standard errors\nimport { Error,\n         EvalError,\n         RangeError,\n         ReferenceError,\n         SyntaxError,\n         TypeError,\n         URIError } from '@Error';\n\n\n// standard pseudo-modules\nimport JSON from '@json';\nimport Math from '@math';\n\n//export var Symbol      = '@symbol.js';\n//export var Iterator    = '@iter.js';\nlet StopIteration = $__StopIteration\n\n\nexport Array, Boolean, Date, Function, Map, Number, Object, RegExp, Set, String, WeakMap,\n       Error, EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError,\n       decodeURI, decodeURIComponent, encodeURI, encodeURIComponent, eval, isFinite, isNaN,\n       parseFloat, parseInt, clearInterval, clearTimeout, setInterval, setTimeout,\n       StopIteration, JSON, Math, NaN, Infinity, undefined;\n\n\n";
 
-exports.modules["@system"] = "{\n  let ___ = 0x00,\n      E__ = 0x01,\n      _C_ = 0x02,\n      EC_ = 3,\n      __W = 0x04,\n      E_W = 5,\n      _CW = 6,\n      ECW = 7,\n      __A = 0x08,\n      E_A = 9,\n      _CA = 10,\n      ECA = 11;\n\n  let global = $__global;\n\n\n  $__defineMethods = function defineMethods(obj, props){\n    for (var i=0; i < props.length; i++) {\n      $__SetInternal(props[i], 'Native', true);\n      $__defineDirect(obj, props[i].name, props[i], _CW);\n      $__deleteDirect(props[i], 'prototype');\n    }\n    return obj;\n  };\n\n  $__defineProps = function defineProps(obj, props){\n    var keys = $__Enumerate(props, false, false);\n    for (var i=0; i < keys.length; i++) {\n      var name = keys[i],\n          prop = props[name];\n\n      $__defineDirect(obj, name, prop, _CW);\n\n      if (typeof prop === 'function') {\n        $__SetInternal(prop, 'Native', true);\n        $__defineDirect(prop, 'name', name, ___);\n        $__deleteDirect(prop, 'prototype');\n      }\n    }\n    return obj;\n  };\n\n  $__setupFunction = function setupFunction(func, name){\n    $__SetInternal(func, 'Native', true);\n    if (name !== undefined) {\n      $__defineDirect(func, 'name', name, ___);\n    }\n    $__deleteDirect(func, 'prototype');\n  };\n\n  $__defineConstants = function defineConstants(obj, props){\n    var keys = $__Enumerate(props, false, false);\n    for (var i=0; i < keys.length; i++) {\n      $__defineDirect(obj, keys[i], props[keys[i]], 0);\n    }\n  };\n\n  $__setupConstructor = function setupConstructor(ctor, proto){\n    $__defineDirect(ctor, 'prototype', proto, ___);\n    $__defineDirect(ctor, 'length', 1, ___);\n    $__defineDirect(ctor.prototype, 'constructor', ctor, _CW);\n    $__defineDirect(global, ctor.name, ctor, _CW);\n    $__SetInternal(ctor, 'Native', true);\n    $__SetInternal(ctor, 'NativeConstructor', true);\n  };\n\n\n  $__setLength = function setLength(f, length){\n    if (typeof length === 'string') {\n      $__setDirect(f, 'length', length);\n    } else {\n      var keys = $__Enumerate(length, false, false);\n      for (var i=0; i < keys.length; i++) {\n        var key = keys[i];\n        $__setDirect(f[key], 'length', length[key]);\n      }\n    }\n  };\n\n\n  let hidden = { enumerable: false };\n\n  $__hideEverything = function hideEverything(o){\n    if (!o || typeof o !== 'object') return o;\n\n    var keys = $__Enumerate(o, false, true),\n        i = keys.length;\n\n    while (i--) {\n      $__updateAttrDirect(o, keys[i], ~E__);\n    }\n\n    if (typeof o === 'function') {\n      hideEverything(o.prototype);\n    }\n\n    return o;\n  };\n}\n\n\nclass Storage {\n  constructor(){}\n  set(props){\n    for (var k in props) {\n      this[k] = props[k];\n    }\n  }\n  empty(){\n    for (var k in this) {\n      delete this[k];\n    }\n  }\n}\n\n$__DefineOwnProperty(Storage.prototype, 'set', { enumerable: false, configurable: false, writable: false });\n$__DefineOwnProperty(Storage.prototype, 'empty', { enumerable: false, configurable: false, writable: false });\n\n\nlet _ = o => {\n  var v = $__GetHidden(o, 'loader-internals');\n  if (!v) {\n    v = new Storage;\n    $__SetHidden(o, 'loader-internals', v);\n  }\n  return v;\n}\n\n\n\nclass Request {\n  constructor(loader, mrl, resolved, callback, errback){\n    _(this).set({\n      loader: loader,\n      callback: callback,\n      errback: errback,\n      mrl: mrl,\n      resolved: resolved\n    });\n  }\n\n  fulfill(src){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    var translated = (_loader.translate)(src, _this.mrl, _loader.baseURL, _this.resolved);\n    if (_loader.strict) {\n      translated = '\"use strict\";'+translated;\n    }\n\n    $__EvaluateModule(translated, _loader.global, _this.resolved, msg => this.reject(msg), module => {\n      var _module = _(module);\n      _module.loader = _this.loader;\n      $__SetInternal(_module, 'resolved', _this.resolved);\n      $__SetInternal(_module, 'mrl', _this.mrl);\n      _loader.modules[_this.resolved] = module;\n      (_this.callback)(module);\n      _this.empty();\n    });\n  }\n\n  redirect(mrl, baseURL){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    _this.resolved = (_loader.resolve)(mrl, baseURL);\n    _this.mrl = mrl;\n\n    var module = _this.loader.get(_this.resolved);\n    if (module) {\n      (_this.callback)(module);\n    } else {\n      (_loader.fetch)(mrl, baseURL, this, _this.resolved);\n    }\n  }\n\n  reject(msg){\n    var _this = _(this);\n    (_this.errback)(msg);\n    _this.empty();\n  }\n}\n\n\nexport class Loader {\n  constructor(parent, options){\n    this.linkedTo  = options.linkedTo || null;\n    _(this).set({\n      translate: options.translate || parent.translate,\n      resolve  : options.resolve || parent.resolve,\n      fetch    : options.fetch || parent.fetch,\n      strict   : options.strict === true,\n      global   : options.global || $__global,\n      baseURL  : options.baseURL || parent ? parent.baseURL : '',\n      modules  : $__ObjectCreate(null)\n    });\n  }\n\n  get global(){\n    return _(this).global;\n  }\n\n  get baseURL(){\n    return _(this).baseURL;\n  }\n\n  load(mrl, callback, errback){\n    var _this = _(this),\n        key = (_this.resolve)(mrl, _this.baseURL),\n        module = _this.modules[key];\n\n    if (module) {\n      callback(module);\n    } else {\n      (_this.fetch)(mrl, _this.baseURL, new Request(this, mrl, key, callback, errback), key);\n    }\n  }\n\n  eval(src){\n    var _this = _(this);\n    var module = $__EvaluateModule(src, _this.global, _this.baseURL);\n    return module;\n  }\n\n  evalAsync(src, callback, errback){\n\n  }\n\n  get(mrl){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n    return _this.modules[canonical];\n  }\n\n  set(mrl, mod){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n\n    if (typeof canonical === 'string') {\n      _this.modules[canonical] = mod;\n    } else {\n      for (var k in canonical) {\n        _this.modules[k] = canonical[k];\n      }\n    }\n  }\n\n  defineBuiltins(object){\n    var std  = $__StandardLibrary(),\n        desc = { configurable: true,\n                 enumerable: false,\n                 writable: true,\n                 value: undefined };\n\n    object || (object = _(this).global);\n    for (var k in std) {\n      desc.value = std[k];\n      $__DefineOwnProperty(object, k, desc);\n    }\n\n    return object;\n  }\n}\n\nexport let Module = function Module(object){\n  if ($__GetNativeBrand(object) === 'Module') {\n    return object;\n  }\n  return $__ToModule($__ToObject(object));\n}\n\n$__deleteDirect(Module, 'prototype');\n\n$__System = new Loader(null, {\n  global: $__global,\n  baseURL: '',\n  strict: false,\n  fetch(relURL, baseURL, request, resolved) {\n    $__Fetch(resolved, src => {\n      if (typeof src === 'string') {\n        request.fulfill(src);\n      } else {\n        request.reject(src.message);\n      }\n    });\n  },\n  resolve(relURL, baseURL){\n    return baseURL + relURL;\n  },\n  translate(src, relURL, baseURL, resolved) {\n    return src;\n  }\n});\n\n\n";
+exports.modules["@system"] = "{\n  let ___ = 0x00,\n      E__ = 0x01,\n      _C_ = 0x02,\n      EC_ = 3,\n      __W = 0x04,\n      E_W = 5,\n      _CW = 6,\n      ECW = 7,\n      __A = 0x08,\n      E_A = 9,\n      _CA = 10,\n      ECA = 11;\n\n  let global = $__global;\n\n\n  $__defineMethods = function defineMethods(obj, props){\n    for (var i=0; i < props.length; i++) {\n      $__SetInternal(props[i], 'Native', true);\n      $__defineDirect(obj, props[i].name, props[i], _CW);\n      $__deleteDirect(props[i], 'prototype');\n    }\n    return obj;\n  };\n\n  $__defineProps = function defineProps(obj, props){\n    var keys = $__Enumerate(props, false, false);\n    for (var i=0; i < keys.length; i++) {\n      var name = keys[i],\n          prop = props[name];\n\n      $__defineDirect(obj, name, prop, _CW);\n\n      if (typeof prop === 'function') {\n        $__SetInternal(prop, 'Native', true);\n        $__defineDirect(prop, 'name', name, ___);\n        $__deleteDirect(prop, 'prototype');\n      }\n    }\n    return obj;\n  };\n\n  $__setupFunction = function setupFunction(func, name){\n    $__SetInternal(func, 'Native', true);\n    if (name !== undefined) {\n      $__defineDirect(func, 'name', name, ___);\n    }\n    $__deleteDirect(func, 'prototype');\n  };\n\n  $__defineConstants = function defineConstants(obj, props){\n    var keys = $__Enumerate(props, false, false);\n    for (var i=0; i < keys.length; i++) {\n      $__defineDirect(obj, keys[i], props[keys[i]], 0);\n    }\n  };\n\n  $__setupConstructor = function setupConstructor(ctor, proto){\n    $__defineDirect(ctor, 'prototype', proto, ___);\n    $__defineDirect(ctor, 'length', 1, ___);\n    $__defineDirect(ctor.prototype, 'constructor', ctor, _CW);\n    $__defineDirect(global, ctor.name, ctor, _CW);\n    $__SetInternal(ctor, 'Native', true);\n    $__SetInternal(ctor, 'NativeConstructor', true);\n  };\n\n\n  $__setLength = function setLength(f, length){\n    if (typeof length === 'string') {\n      $__setDirect(f, 'length', length);\n    } else {\n      var keys = $__Enumerate(length, false, false);\n      for (var i=0; i < keys.length; i++) {\n        var key = keys[i];\n        $__setDirect(f[key], 'length', length[key]);\n      }\n    }\n  };\n\n  $__setProperty = function setProperty(key, object, values){\n    var keys = $__Enumerate(values, false, false),\n        i = keys.length;\n\n    while (i--) {\n      $__defineDirect(object[keys[i]], key, values[keys[i]], ___);\n    }\n  };\n\n\n  let hidden = { enumerable: false };\n\n  $__hideEverything = function hideEverything(o){\n    if (!o || typeof o !== 'object') return o;\n\n    var keys = $__Enumerate(o, false, true),\n        i = keys.length;\n\n    while (i--) {\n      $__updateAttrDirect(o, keys[i], ~E__);\n    }\n\n    if (typeof o === 'function') {\n      hideEverything(o.prototype);\n    }\n\n    return o;\n  };\n}\n\n\nclass Storage {\n  constructor(){}\n  set(props){\n    for (var k in props) {\n      this[k] = props[k];\n    }\n  }\n  empty(){\n    for (var k in this) {\n      delete this[k];\n    }\n  }\n}\n\n$__DefineOwnProperty(Storage.prototype, 'set', { enumerable: false, configurable: false, writable: false });\n$__DefineOwnProperty(Storage.prototype, 'empty', { enumerable: false, configurable: false, writable: false });\n\n\nlet _ = o => {\n  var v = $__GetHidden(o, 'loader-internals');\n  if (!v) {\n    v = new Storage;\n    $__SetHidden(o, 'loader-internals', v);\n  }\n  return v;\n}\n\n\n\nclass Request {\n  constructor(loader, mrl, resolved, callback, errback){\n    _(this).set({\n      loader: loader,\n      callback: callback,\n      errback: errback,\n      mrl: mrl,\n      resolved: resolved\n    });\n  }\n\n  fulfill(src){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    var translated = (_loader.translate)(src, _this.mrl, _loader.baseURL, _this.resolved);\n    if (_loader.strict) {\n      translated = '\"use strict\";'+translated;\n    }\n\n    $__EvaluateModule(translated, _loader.global, _this.resolved, msg => this.reject(msg), module => {\n      var _module = _(module);\n      _module.loader = _this.loader;\n      $__SetInternal(_module, 'resolved', _this.resolved);\n      $__SetInternal(_module, 'mrl', _this.mrl);\n      _loader.modules[_this.resolved] = module;\n      (_this.callback)(module);\n      _this.empty();\n    });\n  }\n\n  redirect(mrl, baseURL){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    _this.resolved = (_loader.resolve)(mrl, baseURL);\n    _this.mrl = mrl;\n\n    var module = _this.loader.get(_this.resolved);\n    if (module) {\n      (_this.callback)(module);\n    } else {\n      (_loader.fetch)(mrl, baseURL, this, _this.resolved);\n    }\n  }\n\n  reject(msg){\n    var _this = _(this);\n    (_this.errback)(msg);\n    _this.empty();\n  }\n}\n\n\nexport class Loader {\n  constructor(parent, options){\n    this.linkedTo  = options.linkedTo || null;\n    _(this).set({\n      translate: options.translate || parent.translate,\n      resolve  : options.resolve || parent.resolve,\n      fetch    : options.fetch || parent.fetch,\n      strict   : options.strict === true,\n      global   : options.global || $__global,\n      baseURL  : options.baseURL || parent ? parent.baseURL : '',\n      modules  : $__ObjectCreate(null)\n    });\n  }\n\n  get global(){\n    return _(this).global;\n  }\n\n  get baseURL(){\n    return _(this).baseURL;\n  }\n\n  load(mrl, callback, errback){\n    var _this = _(this),\n        key = (_this.resolve)(mrl, _this.baseURL),\n        module = _this.modules[key];\n\n    if (module) {\n      callback(module);\n    } else {\n      (_this.fetch)(mrl, _this.baseURL, new Request(this, mrl, key, callback, errback), key);\n    }\n  }\n\n  eval(src){\n    var _this = _(this);\n    var module = $__EvaluateModule(src, _this.global, _this.baseURL);\n    return module;\n  }\n\n  evalAsync(src, callback, errback){\n\n  }\n\n  get(mrl){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n    return _this.modules[canonical];\n  }\n\n  set(mrl, mod){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n\n    if (typeof canonical === 'string') {\n      _this.modules[canonical] = mod;\n    } else {\n      for (var k in canonical) {\n        _this.modules[k] = canonical[k];\n      }\n    }\n  }\n\n  defineBuiltins(object){\n    var std  = $__StandardLibrary(),\n        desc = { configurable: true,\n                 enumerable: false,\n                 writable: true,\n                 value: undefined };\n\n    object || (object = _(this).global);\n    for (var k in std) {\n      desc.value = std[k];\n      $__DefineOwnProperty(object, k, desc);\n    }\n\n    return object;\n  }\n}\n\nexport let Module = function Module(object){\n  if ($__GetNativeBrand(object) === 'Module') {\n    return object;\n  }\n  return $__ToModule($__ToObject(object));\n}\n\n$__deleteDirect(Module, 'prototype');\n\n$__System = new Loader(null, {\n  global: $__global,\n  baseURL: '',\n  strict: false,\n  fetch(relURL, baseURL, request, resolved) {\n    $__Fetch(resolved, src => {\n      if (typeof src === 'string') {\n        request.fulfill(src);\n      } else {\n        request.reject(src.message);\n      }\n    });\n  },\n  resolve(relURL, baseURL){\n    return baseURL + relURL;\n  },\n  translate(src, relURL, baseURL, resolved) {\n    return src;\n  }\n});\n\n\n";
 
 exports.modules["@timers"] = "export function clearInterval(id){\n  id = $__ToInteger(id);\n  $__ClearTimer(id);\n}\n\nexport function clearTimeout(id){\n  id = $__ToInteger(id);\n  $__ClearTimer(id);\n}\n\nexport function setInterval(callback, milliseconds){\n  milliseconds = $__ToInteger(milliseconds);\n  if (typeof callback !== 'function') {\n    callback = $__ToString(callback);\n  }\n  return $__SetTimer(callback, milliseconds, true);\n}\n\nexport function setTimeout(callback, milliseconds){\n  milliseconds = $__ToInteger(milliseconds);\n  if (typeof callback !== 'function') {\n    callback = $__ToString(callback);\n  }\n  return $__SetTimer(callback, milliseconds, false);\n}\n\n$__setupFunction(clearInterval);\n$__setupFunction(clearTimeout);\n$__setupFunction(setInterval);\n$__setupFunction(setTimeout);\n";
 
@@ -16132,5 +16086,5 @@ return (function(Realm){
     return exports[request];
   }
 
-  return [exports, require];
+  return [this, exports, require];
 }());
