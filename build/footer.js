@@ -1,16 +1,22 @@
-return (function(Realm){
-  function continuum(listener){
-    return new Realm(listener);
-  }
+  var continuum = {
+    createBytecode      : exports.runtime.createBytecode,
+    createNativeFunction: exports.runtime.createNativeFunction,
+    createRealm         : exports.runtime.createRealm,
+    createRenderer      : exports.debug.createRenderer,
+    introspect          : exports.debug.introspect
+  };
 
-  continuum.debug = exports.debug;
-  continuum.utility = exports.utility;
-  continuum.constants = exports.constants;
-  continuum.createNativeFunction = exports.runtime.createNativeFunction;
-  continuum.Realm = Realm;
+  exports.utility.define(continuum, {
+    Assembler : exports.assembler.Assembler,
+    Realm     : exports.runtime.Realm,
+    Renderer  : exports.debug.Renderer,
+    Script    : exports.runtime.Script,
+    ScriptFile: exports.runtime.ScriptFile,
+    constants : exports.constants,
+    utility   : exports.utility
+  });
 
   return continuum;
-})(exports.runtime.Realm);
 
 }).apply(this, function(){
   var exports = { builtins: {}, modules: {} };

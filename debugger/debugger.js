@@ -1,4 +1,4 @@
-(function(global, Realm, constants, utility, debug){
+(function(global, continuum, constants, utility){
 var inherit = utility.inherit,
     create = utility.create,
     assign = utility.assign,
@@ -2121,7 +2121,7 @@ var FunctionPreview = (function(){
 })();
 
 
-var renderer = new debug.Renderer({
+var renderer = continuum.createRenderer({
   Unknown: Branch.create,
   BooleanValue: Leaf.create,
   StringValue: StringLeaf.create,
@@ -2150,7 +2150,7 @@ var renderer = new debug.Renderer({
   WeakMap: Branch.create
 });
 
-var previewRenderer = new debug.Renderer({
+var previewRenderer = continuum.createRenderer({
   Unknown: Preview.create,
   BooleanValue: Leaf.create,
   StringValue: StringLeaf.create,
@@ -2245,7 +2245,9 @@ void function(){
   }();
 
 
-  realm = new Realm(function(realm){
+  realm = (function(){
+    var realm = continuum.createRealm();
+
     function run(code){
       realm.evaluateAsync(code, inspect);
     }
@@ -2298,12 +2300,12 @@ void function(){
       });
     }, 100);
 
-    realm.evaluateAsync('this', function(result){
-      var item = inspect(result);
-      setTimeout(function(){ item.expand() }, 50);
-    });
-  });
+    var item = inspect(realm.evaluate('this'));
+    setTimeout(function(){ item.expand() }, 50);
+
+    return realm;
+  })();
 }();
 
 
-})(this, continuum.Realm, continuum.constants, continuum.utility, continuum.debug);
+})(this, continuum, continuum.constants, continuum.utility);

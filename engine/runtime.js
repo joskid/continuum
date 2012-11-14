@@ -1644,7 +1644,8 @@ var runtime = (function(GLOBAL, exports, undefined){
     function GlobalEnvironmentRecord(global){
       ObjectEnvironmentRecord.call(this, global);
       this.thisValue = this.bindings;
-      this.bindings.env = this;
+      global.env = this;
+      hide(global, 'env');
     }
 
     inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
@@ -3485,6 +3486,38 @@ var runtime = (function(GLOBAL, exports, undefined){
   })();
 
 
+  function ScriptFile(source){
+    Script.call(this, ScriptFile.load(source));
+  }
+
+  ScriptFile.load = (function(){
+    if (typeof process !== 'undefined') {
+      return function load(source){
+        if (!~source.indexOf('\n') && require('fs').existsSync(source)) {
+          return {
+            source: require('fs').readFileSync(source, 'utf8'),
+            filename: source
+          };
+        } else {
+          return {
+            source: source,
+            filename: ''
+          };
+        }
+      };
+    }
+    return function load(source){
+      // TODO ajax
+      return {
+        source: source,
+        filename: ''
+      };
+    };
+  })();
+
+  utility.inherit(ScriptFile, Script);
+
+
 
   function activate(target){
     if (realm !== target) {
@@ -4392,6 +4425,12 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.intrinsics.FunctionProto.Realm = this;
       this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
       hide(this.intrinsics.FunctionProto, 'Scope');
+      hide(this, 'intrinsics');
+      hide(this, 'natives');
+      hide(this, 'active');
+      hide(this, 'templates');
+      hide(this, 'scripts');
+      hide(this, 'globalEnv');
 
       for (var k in natives) {
         this.natives.binding({ name: k, call: natives[k] });
@@ -4407,10 +4446,14 @@ var runtime = (function(GLOBAL, exports, undefined){
 
       initialize(this, errback, function(){
         deactivate(self);
+        self.scripts = [];
         self.state = 'idle';
         callback && callback(self);
         self.emit('ready');
       });
+      hide(this, 'mutationScope');
+      hide(this, 'initialized');
+      hide(this, 'quiet');
     }
 
     inherit(Realm, Emitter, [
@@ -4480,12 +4523,23 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   exports.Realm = Realm;
   exports.Script = Script;
+  exports.ScriptFile = ScriptFile;
+
+  exports.createRealm = function createRealm(listener){
+    return new Realm(listener);
+  };
+
+  exports.createBytecode = function createBytecode(source){
+    return new ScriptFile(source).bytecode;
+  };
+
   exports.activeRealm = function activeRealm(){
     if (!realm && realms.length) {
       activate(realms[realms.length - 1]);
     }
     return realm;
   };
+
   exports.activeContext = function activeContext(){
     return context;
   };

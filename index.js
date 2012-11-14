@@ -1,38 +1,19 @@
-var runtime = require('./engine/runtime'),
-    utility = require('./engine/utility'),
-    debug = require('./engine/debug'),
-    fs = require('fs')
+var runtime   = require('./engine/runtime'),
+    assembler = require('./engine/assembler'),
+    debug     = require('./engine/debug'),
+    utility   = require('./engine/utility');
 
-function ScriptFile(location){
-  runtime.Script.call(this, {
-    source: ScriptFile.load(location),
-    filename: location
-  });
-}
+exports.createRealm = runtime.createRealm;
+exports.createBytecode = runtime.createBytecode;
+exports.createRenderer = debug.createRenderer;
+exports.createNativeFunction = runtime.createNativeFunction;
+exports.introspect = debug.introspect;
 
-ScriptFile.load = function load(location){
-  return require('fs').readFileSync(location, 'utf8');
-};
-
-utility.inherit(ScriptFile, runtime.Script);
-
-
-function createBytecode(source){
-  if (!~source.indexOf('\n') && fs.existsSync(source)) {
-    return new ScriptFile(source).bytecode;
-  } else {
-    return new runtime.Script(source).bytecode;
-  }
-}
-
-
-function continuum(listener){
-  return new runtime.Realm(listener);
-}
-
-module.exports = continuum;
-continuum.debug = debug;
-continuum.Realm = runtime.Realm;
-continuum.createBytecode = createBytecode;
-continuum.createNativeFunction = runtime.createNativeFunction;
-utility.define(continuum, 'utility', utility);
+utility.define(exports, {
+  Assembler : assembler.Assembler,
+  Realm     : runtime.Realm,
+  Renderer  : debug.Renderer,
+  Script    : runtime.Script,
+  ScriptFile: runtime.ScriptFile,
+  utility   : utility
+});
