@@ -4226,7 +4226,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         realm.resume = function(){ return resume() };
         realm.state = 'paused';
-        realm.emit('pause');
+        realm.emit('pause', realm.resume);
       } else {
         realm.executing = null;
         realm.state = 'idle';
@@ -4495,7 +4495,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
         runScript(script, this, errback, callback);
       },
-      function evaluate(subject, quiet){
+      function evaluate(subject){
         activate(this);
         var script = new Script(subject);
 
@@ -4504,7 +4504,6 @@ var runtime = (function(GLOBAL, exports, undefined){
           return script.error;
         }
 
-        realm.quiet = !!quiet;
         this.scripts.push(script);
         return prepareToRun(script.bytecode, this.globalEnv) || run(this, script.thunk, script.bytecode);
       }
