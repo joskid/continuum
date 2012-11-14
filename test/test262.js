@@ -31,44 +31,7 @@ function escapeJS(source){
   return '"' + source.replace(/\\/g, '\\\\').replace(/(?!=\\)\r?\n/g, '\\n').replace(/"/g, '\\"') + '"';
 }
 
-function Queue(){
-  this.items = [];
-  this.length = 0;
-  this.index = 0;
-}
-
-Queue.prototype = {
-  constructor: Queue,
-  push: function push(items){
-    if (!(items instanceof Array))
-      items = [items];
-
-    _push.apply(this.items, items);
-    this.length += items.length;
-    return this;
-  },
-  shift: function shift(){
-    if (this.length) {
-      var item = this.items[this.index];
-      this.items[this.index++] = null;
-      this.length--;
-      if (this.index === 500) {
-        this.items = this.items.slice(this.index);
-        this.index = 0;
-      }
-      return item;
-    }
-  },
-  empty: function empty(){
-    this.length = 0;
-    this.index = 0;
-    this.items = [];
-    return this;
-  },
-  front: function front(){
-    return this.items[this.index];
-  }
-};
+var Queue = continuum.utility.Queue;
 
 
 
@@ -233,7 +196,7 @@ TestSuite.prototype.chapter = function chapter(chapter){
   return this;
 };
 
-TestSuite.prototype.next = function next(){
+TestSuite.prototype.next = function next(done){
   var item = this.queue.shift();
   if (item) {
     var test = new TestCase(item, this.strict);
@@ -250,19 +213,21 @@ TestSuite.prototype.next = function next(){
       }
       return r[s];
     }, this.results);
+    var self = this;
 
-    var context = continuum();
-    test.global = context.global;
-    context.on('throw', function(e){
-      print(e.Get('message'))
+    continuum(function(context){
+      test.global = context.global;
+      context.on('throw', function(e){
+        print(e.value.Get('message'))
+      });
+      context.evaluate(self.includes);
+      context.global.properties.forEach(function(prop){
+        prop[2] &= ~1;
+      });
+      var src = test.getSource();
+      test.result = context.evaluate(src);
+      done.call(self, test);
     });
-    context.evaluate(this.includes);
-    context.global.properties.forEach(function(prop){
-      prop[2] &= ~1;
-    });
-    var src = test.getSource();
-    test.result = context.evaluate(src);
-    return test;
   }
 }
 
@@ -270,38 +235,46 @@ function formatPath(name){
   return name.split(/\/|\\/).slice(3).join('/');
 }
 
-TestSuite.prototype.run = function run(count){
-  var test;
+TestSuite.prototype.run = function run(count, done){
   var record = __dirname+'/tested.json';
   var tested = fs.existsSync(record) ? require(record) : {};
-  count = count || 40;
-  while (count-- && this.queue.length) {
+  if (typeof count === 'function') {
+    done = count;
+    count = 40;
+  }
+  if (count-- && this.queue.length) {
     var name = formatPath(path.relative(__dirname, this.queue.front()));
     if (name in tested) {
       this.queue.shift();
-      count++;
-      continue;
+      return this.run(++count, done);
     }
     tested[name] = true;
-    test = this.next();
-    var name = test.paths.slice(-1);
-    delete test.abspath;
-    delete test.path;
-    delete test.paths;
-    if (test.result === undefined) {
-      test.result = 'PASS';
-    }
-    fs.writeFileSync(__dirname + '/results/'+name+'.js', require('util').inspect(test));
-    test.global = null;
-  }
 
-  fs.writeFileSync(record, JSON.stringify(tested, null, '  '));
-  return 'done';
+    this.next(function(test){
+      var name = test.paths.slice(-1);
+      delete test.abspath;
+      delete test.path;
+      delete test.paths;
+      if (test.result === undefined) {
+        test.result = 'PASS';
+      }
+      fs.writeFileSync(__dirname + '/results/'+name+'.js', require('util').inspect(test));
+      test.global = null;
+
+      fs.writeFileSync(record, JSON.stringify(test, null, '  '));
+
+      this.run(count, done);
+    });
+  } else {
+    done('done')
+  }
 }
 
 var x = new TestSuite;
 
-x.chapter('12.3');
-print(x.run());
+x.chapter('8.2');
+x.run(function(result){
+  print(x);
+});
 // print(x.includes);
 //print(realm.global);
