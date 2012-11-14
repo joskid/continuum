@@ -3,6 +3,7 @@ var inherit = utility.inherit,
     create = utility.create,
     assign = utility.assign,
     define = utility.define,
+    each = utility.each,
     isObject = utility.isObject;
 
 
@@ -52,8 +53,7 @@ function forward(o, from, to){
 try {
   new global.Event('test');
   var Event = global.Event;
-}
-catch (e) {
+} catch (e) {
   var Event = (function(E){
     function EventInit(type, o){
       if (o)
@@ -64,19 +64,17 @@ catch (e) {
         this.type = type;
     }
 
-    EventInit.prototype = assign(create(null), { bubbles: true, cancelable: true, type: '' });
+    EventInit.prototype = assign(create(null), eventOptions);
+    EventInit.prototype.type = '';
 
 
     if ('createEvent' in document) {
-      var Event = (function(){
-        function Event(type, dict){
-          dict = new EventInit(type, dict);
-          var evt = document.createEvent('Event');
-          evt.initEvent(dict.type, dict.bubbles, dict.cancelable);
-          return evt;
-        }
-        return Event;
-      })();
+      var Event = function Event(type, dict){
+        dict = new EventInit(type, dict);
+        var evt = document.createEvent('Event');
+        evt.initEvent(dict.type, dict.bubbles, dict.cancelable);
+        return evt;
+      };
     } else {
       var Event = (function(){
         function Event(type, dict){
@@ -111,24 +109,27 @@ catch (e) {
 
 
 
-function Component(tag){
-  if (typeof tag === 'string') {
-    this.element = _(tag);
-  } else {
-    this.element = tag;
-  }
-  if (this.element.classList) {
-    this.classes = this.element.classList;
-  }
-  this.styles = this.element.style;
-  this.element.component = this;
-}
 
-define(Component.prototype, {
-  ns: 'ƒ'
-});
+var Component = (function(){
+  var textContent = 'textContent' in document.body ? 'textContent' : 'innerText';
 
-void function(){
+  function Component(tag){
+    if (typeof tag === 'string') {
+      this.element = _(tag);
+    } else {
+      this.element = tag;
+    }
+    if (this.element.classList) {
+      this.classes = this.element.classList;
+    }
+    this.styles = this.element.style;
+    this.element.component = this;
+  }
+
+  define(Component.prototype, {
+    ns: 'ƒ'
+  });
+
   define(Component.prototype, [
     function append(subject){
       if (!subject) return subject;
@@ -289,12 +290,19 @@ void function(){
       } else if (el) {
         return new Component(el);
       }
+    },
+    function text(value){
+      if (value === undefined) {
+        return this.element[textContent];
+      } else {
+        this.element[textContent] = value;
+        return this;
+      }
     }
   ]);
-}();
 
-if (document.body.classList) {
-  void function(){
+
+  if (document.body.classList) {
     define(Component.prototype, [
       function addClass(name, noNS){
         if (!noNS) name = this.ns+name;
@@ -313,53 +321,53 @@ if (document.body.classList) {
         return this.classes.contains(name);
       }
     ]);
-  }();
-} else {
-  void function(cache){
-    function matcher(n){
-      if (!(n in cache)) {
-        cache[n] = new RegExp('(.*)(?:^'+n+'\\s|\\s'+n+'$|\\s'+n+'\\s)(.*)');
+  } else {
+    void function(){
+      var cache = create(null);
+
+      function matcher(n){
+        if (!(n in cache)) {
+          cache[n] = new RegExp('(.*)(?:^'+n+'\\s|\\s'+n+'$|\\s'+n+'\\s)(.*)');
+        }
+        return cache[n];
       }
-      return cache[n];
-    }
 
-    define(Component.prototype, [
-      function addClass(name, noNS){
-      if (!noNS) name = this.ns+name;
-        var className = this.element.className;
-        if (!matcher(name).test(className)) {
-          this.element.className = className + ' ' + name;
+      define(Component.prototype, [
+        function addClass(name, noNS){
+        if (!noNS) name = this.ns+name;
+          var className = this.element.className;
+          if (!matcher(name).test(className)) {
+            this.element.className = className + ' ' + name;
+          }
+          return this;
+        },
+        function removeClass(name, noNS){
+        if (!noNS) name = this.ns+name;
+          var p = this.element.className.match(matcher(name));
+          if (p) {
+            this.element.className = p[1] ? p[2] ? p[1]+' '+p[2] : p[1] : p[2];
+          }
+          return this;
+        },
+        function toggleClass(name, noNS){
+        if (!noNS) name = this.ns+name;
+          if (this.hasClass(name)) {
+            this.removeClass(name);
+          } else {
+            this.addClass(name);
+          }
+          return this;
+        },
+        function hasClass(name, noNS){
+        if (!noNS) name = this.ns+name;
+          return matcher(name).test(this.element.className);
         }
-        return this;
-      },
-      function removeClass(name, noNS){
-      if (!noNS) name = this.ns+name;
-        var p = this.element.className.match(matcher(name));
-        if (p) {
-          this.element.className = p[1] ? p[2] ? p[1]+' '+p[2] : p[1] : p[2];
-        }
-        return this;
-      },
-      function toggleClass(name, noNS){
-      if (!noNS) name = this.ns+name;
-        if (this.hasClass(name)) {
-          this.removeClass(name);
-        } else {
-          this.addClass(name);
-        }
-        return this;
-      },
-      function hasClass(name, noNS){
-      if (!noNS) name = this.ns+name;
-        return matcher(name).test(this.element.className);
-      }
-    ]);
-  }(create(null));
-}
+      ]);
+    }();
+  }
 
 
-if ('dispatchEvent' in document.body) {
-  void function(){
+  if ('dispatchEvent' in document.body) {
     define(Component.prototype, [
       function on(event, listener, receiver){
         if (typeof listener !== 'function') {
@@ -410,121 +418,93 @@ if ('dispatchEvent' in document.body) {
         return this.element.dispatchEvent(event);
       }
     ]);
-  }();
-} else {
-  void function(){
-    var realEvents = create(null);
-    utility.iterate([
-      'activate', 'afterupdate', 'beforeactivate', 'beforecopy', 'beforecut', 'beforedeactivate', 'beforeeditfocus',
-      'beforepaste', 'beforeupdate', 'blur', 'cellchange', 'click', 'contextmenu', 'controlselect', 'copy',
-      'dataavailable', 'datasetchanged', 'datasetcomplete', 'dblclick', 'deactivate', 'drag', 'dragend', 'dragenter',
-      'dragleave', 'dragover', 'dragstart', 'drop', 'errorupdate', 'filterchange', 'focus', 'focusin', 'focusout',
-      'help', 'keydown', 'keyup', 'losecapture', 'mousedown', 'mouseenter', 'mouseleave', 'mousemove', 'mouseout',
-      'mouseup', 'mousewheel', 'move', 'moveend', 'movestart', 'paste', 'propertychange', 'readystatechange', 'resize',
-      'resizeend', 'resizestart', 'rowenter', 'rowexit', 'rowsdelete', 'rowsinserted', 'scroll', 'selectstart'
-    ], function(name){ realEvents[name] = true });
+  } else {
+    void function(){
+      var realEvents = create(null);
+      each([
+        'activate', 'afterupdate', 'beforeactivate', 'beforecopy', 'beforecut', 'beforedeactivate',
+        'beforeeditfocus', 'beforepaste', 'beforeupdate', 'blur', 'cellchange', 'click', 'contextmenu',
+        'controlselect', 'copy', 'dataavailable', 'datasetchanged', 'datasetcomplete', 'dblclick',
+        'deactivate', 'drag', 'dragend', 'dragenter', 'dragleave', 'dragover', 'dragstart', 'drop',
+        'errorupdate', 'filterchange', 'focus', 'focusin', 'focusout', 'help', 'keydown', 'keyup',
+        'losecapture', 'mousedown', 'mouseenter', 'mouseleave', 'mousemove', 'mouseout', 'mouseup',
+        'mousewheel', 'move', 'moveend', 'movestart', 'paste', 'propertychange', 'readystatechange',
+        'resize', 'resizeend', 'resizestart', 'rowenter', 'rowexit', 'rowsdelete', 'rowsinserted',
+        'scroll', 'selectstart'
+      ], function(name){ realEvents[name] = true });
 
-    define(Component.prototype, [
-      function on(event, listener, receiver){
-        if (typeof listener !== 'function') {
-          for (var k in listener) {
-            this.on(k, listener[k], receiver)
-          }
-          return this;
-        }
-
-        receiver || (receiver = this);
-
-        var real = event in realEvents;
-
-        if (real) {
-          var bound = function(e){
-            return listener.call(receiver, e);
-          };
-        } else {
-          var bound = function(e){
-            e = e.srcElement.customEvent;
-            if (e && !e.expired && e.type === event) {
-              return listener.call(receiver, e);
+      define(Component.prototype, [
+        function on(event, listener, receiver){
+          if (typeof listener !== 'function') {
+            for (var k in listener) {
+              this.on(k, listener[k], receiver)
             }
-          };
-        }
+            return this;
+          }
 
-        define(listener, 'bound', bound);
-        if (real) {
+          receiver || (receiver = this);
+
+          var real = event in realEvents;
+
+          if (real) {
+            var bound = function(e){
+              return listener.call(receiver, e);
+            };
+          } else {
+            var bound = function(e){
+              e = e.srcElement.customEvent;
+              if (e && !e.expired && e.type === event) {
+                return listener.call(receiver, e);
+              }
+            };
+          }
+
+          define(listener, 'bound', bound);
+          event = real ? event : 'propertychange';
           this.element.attachEvent('on'+event, bound);
-        } else {
-          this.element.attachEvent('onpropertychange', bound);
-        }
-        return this;
-      },
-      function off(event, listener){
-        event = event in realEvents ? event : 'propertychange';
-        this.element.detachEvent('on'+event, listener.bound);
-        delete listener.bound;
-        return this;
-      },
-      function once(event, listener, receiver){
-        function one(e){
-          this.off(event, one);
-          return listener.call(receiver, e);
-        }
-        this.on(event, one, this);
-        return this;
-      },
-      function emit(event, data){
-        if (typeof event === 'string') {
-          var opts = data && data.bubbles === false ? noBubbleEventOptions : eventOptions;
-          event = new Event(event, opts);
-        }
+          return this;
+        },
+        function off(event, listener){
+          event = event in realEvents ? event : 'propertychange';
+          this.element.detachEvent('on'+event, listener.bound);
+          delete listener.bound;
+          return this;
+        },
+        function once(event, listener, receiver){
+          function one(e){
+            this.off(event, one);
+            return listener.call(receiver, e);
+          }
+          this.on(event, one, this);
+          return this;
+        },
+        function emit(event, data){
+          if (typeof event === 'string') {
+            var opts = data && data.bubbles === false ? noBubbleEventOptions : eventOptions;
+            event = new Event(event, opts);
+          }
 
-        if (data) {
-          for (var k in data) {
-            event[k] = data[k];
+          if (data) {
+            for (var k in data) {
+              event[k] = data[k];
+            }
+          }
+
+          if (event in realEvents) {
+            return this.element.fireEvent(event);
+          } else {
+            this.element.customEvent = event;
+            event.expired = true;
+            return event.returnValue === undefined ? true : event.returnValue;
           }
         }
+      ]);
+    }();
+  }
 
-        if (event in realEvents) {
-          return this.element.fireEvent(event);
-        } else {
-          this.element.customEvent = event;
-          console.dir(event);
-          event.expired = true;
-          return event.returnValue === undefined ? true : event.returnValue;
-        }
-      }
-    ]);
-  }();
-}
+  return Component;
+})();
 
-
-if ('textContent' in document.body) {
-  void function(){
-    define(Component.prototype, [
-      function text(value){
-        if (value === undefined) {
-          return this.element.textContent;
-        } else {
-          this.element.textContent = value;
-          return this;
-        }
-      }
-    ]);
-  }();
-} else {
-  void function(){
-    define(Component.prototype, [
-      function text(value){
-        if (value === undefined) {
-          return this.element.innerText;
-        } else {
-          this.element.innerText = value;
-          return this;
-        }
-      }
-    ]);
-  }();
-}
 
 
 var Span = (function(){
@@ -2327,5 +2307,3 @@ void function(){
 
 
 })(this, continuum.Realm, continuum.constants, continuum.utility, continuum.debug);
-delete continuum
-
