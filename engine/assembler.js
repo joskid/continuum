@@ -212,11 +212,18 @@ var assembler = (function(exports){
       } else {
         this.topLevel = false;
         body = body.body;
+        if (node.type === 'ModuleDeclaration') {
+          this.imports = getImports(body);
+          body = body.body;
+        }
       }
+
+      this.path = [];
+
 
       define(this, {
         body: body,
-        source: source,
+        source: source == null ? context.code.source : source,
         range: node.range,
         loc: node.loc,
         children: [],
@@ -228,11 +235,13 @@ var assembler = (function(exports){
         }
       });
 
-      if (!this.topLevel && node.id) {
+
+      if (node.id) {
         this.name = node.id.name;
-        if (node.generator) {
-          this.generator = true;
-        }
+      }
+
+      if (node.generator) {
+        this.generator = true;
       }
 
 
@@ -241,7 +250,7 @@ var assembler = (function(exports){
       this.Type = type || FUNCTYPE.NORMAL;
       this.VarDeclaredNames = [];
       this.NeedsSuperBinding = ReferencesSuper(this.body);
-      this.Strict = strict || isStrict(this.body);
+      this.Strict = strict || (context.code && context.code.strict) || isStrict(this.body);
       if (scope === SCOPE.MODULE) {
         this.ExportedNames = getExports(this.body);
       }
@@ -364,6 +373,14 @@ var assembler = (function(exports){
         && node.expression.value === 'use strict';
   }
 
+  function isPattern(node){
+    return !!node && node.type === 'ObjectPattern' || node.type === 'ArrayPattern';
+  }
+
+  function isLexicalDeclaration(node){
+    return !!node && node.type === 'VariableDeclaration' && node.kind !== 'var';
+  }
+
   function isFunction(node){
     return node.type === 'FunctionDeclaration'
         || node.type === 'FunctionExpression'
@@ -383,25 +400,15 @@ var assembler = (function(exports){
       node = node.body;
     }
     if (node instanceof Array) {
-      for (var i=0, element;  element = node[i]; i++) {
-        if (element) {
-          if (isUseStrictDirective(element)) {
-            return true;
-          } else if (element.type !== 'EmptyStatement' && element.type !== 'FunctionDeclaration') {
-            return false;
-          }
+      for (var i=0, element; element = node[i]; i++) {
+        if (isUseStrictDirective(element)) {
+          return true;
+        } else if (element.type !== 'EmptyStatement' && element.type !== 'FunctionDeclaration') {
+          return false;
         }
       }
     }
     return false;
-  }
-
-  function isPattern(node){
-    return !!node && node.type === 'ObjectPattern' || node.type === 'ArrayPattern';
-  }
-
-  function isLexicalDeclaration(node){
-    return !!node && node.type === 'VariableDeclaration' && node.kind !== 'var';
   }
 
 
@@ -427,7 +434,7 @@ var assembler = (function(exports){
 
   function BoundNames(node){
     if (isFunction(node) || node.type === 'ClassDeclaration') {
-      node = node.body;
+      //node = node.body;
     }
     return boundNamesCollector(node);
   }
@@ -537,20 +544,25 @@ var assembler = (function(exports){
           imported = [];
 
       each(decls, function(decl, i){
-        var origin = handlers[decl.from.type](decl.from);
-
-        if (decl.type === 'ModuleDeclaration') {
-          var name = decl.id.name;
+        if (decl.body) {
+          var origin = name = decl.id.name;
+          var specifiers = decl;
         } else {
-          var specifiers = create(null);
-          each(decl.specifiers, function(specifier){
-            var result = handlers[specifier.type](specifier);
-            result = typeof result === 'string' ? [result, result] : result;
-            if (!(result[1] instanceof Array)) {
-              result[1] = [result[1]];
-            }
-            specifiers[result[0]] = result[1];
-          });
+          var origin = handlers[decl.from.type](decl.from);
+
+          if (decl.type === 'ModuleDeclaration') {
+            var name = decl.id.name;
+          } else {
+            var specifiers = create(null);
+            each(decl.specifiers, function(specifier){
+              var result = handlers[specifier.type](specifier);
+              result = typeof result === 'string' ? [result, result] : result;
+              if (!(result[1] instanceof Array)) {
+                result[1] = [result[1]];
+              }
+              specifiers[result[0]] = result[1];
+            });
+          }
         }
 
         imported.push(new Import(origin, name, specifiers));
@@ -570,18 +582,20 @@ var assembler = (function(exports){
             found = true;
             return walk.BREAK;
           }
+          return walk.RECURSE;
         case 'CallExpression':
           if (isSuperReference(node.callee)) {
             found = true;
             return walk.BREAK;
           }
-          break;
+          return walk.RECURSE;
         case 'FunctionExpression':
         case 'FunctionDeclaration':
         case 'ArrowFunctionExpression':
           return walk.CONTINUE;
+        default:
+          return walk.RECURSE;
       }
-      return walk.RECURSE;
     });
     return found;
   }
@@ -591,11 +605,15 @@ var assembler = (function(exports){
   var currentNode;
   function recurse(node){
     if (node) {
-      var lastNode = currentNode;
-      currentNode = node;
-      handlers[node.type](node);
-      if (lastNode) {
-        currentNode = lastNode;
+      if (node.type) {
+        var lastNode = currentNode;
+        currentNode = node;
+        handlers[node.type](node);
+        if (lastNode) {
+          currentNode = lastNode;
+        }
+      } else if (node.length) {
+        each(node, recurse);
       }
     }
   }
@@ -788,7 +806,7 @@ var assembler = (function(exports){
   function ArrayPattern(node){}
 
   function ArrowFunctionExpression(node){
-    var code = new Code(node, context.code.source, FUNCTYPE.ARROW, SCOPE.FUNCTION, context.code.Strict);
+    var code = new Code(node, null, FUNCTYPE.ARROW, SCOPE.FUNCTION);
     context.queue(code);
     FUNCTION(null, code);
   }
@@ -1035,12 +1053,12 @@ var assembler = (function(exports){
   }
 
   function FunctionDeclaration(node){
-    node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.Strict);
+    node.Code = new Code(node, null, FUNCTYPE.NORMAL, SCOPE.FUNCTION);
     context.queue(node.Code);
   }
 
   function FunctionExpression(node, methodName){
-    var code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.Strict);
+    var code = new Code(node, null, FUNCTYPE.NORMAL, SCOPE.FUNCTION);
     if (methodName) {
       code.name = methodName;
     }
@@ -1138,7 +1156,8 @@ var assembler = (function(exports){
 
   function ModuleDeclaration(node){
     if (node.body) {
-      node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.MODULE, context.code.Strict);
+      node.Code = new Code(node, null, FUNCTYPE.NORMAL, SCOPE.MODULE);
+      node.Code.path = context.code.path.concat(node.id.name);
       context.queue(node.Code);
     }
   }
@@ -1336,30 +1355,24 @@ var assembler = (function(exports){
   }
 
   function VariableDeclaration(node){
-    var OP = {
+    var DECLARE = {
       'var': VAR,
       'const': CONST,
       'let': LET
     }[node.kind];
 
-    for (var i=0, item; item = node.declarations[i]; i++) {
+    each(node.declarations, function(item){
       if (item.init) {
         recurse(item.init);
         GET();
-      } else if (item.kind === 'let') {
-        UNDEFINED();
       }
 
-      //if (item.id.type === 'Identifier') {
-      //  op(intern(item.id.name));
-      //} else {
-        OP(item.id);
-      //}
+      DECLARE(item.id);
 
       if (node.kind === 'var') {
-        context.code.VarDeclaredNames.push(intern(item.id.name));
+        push.apply(context.code.VarDeclaredNames, BoundNames(item.id));
       }
-    }
+    });
   }
 
   function VariableDeclarator(node){}

@@ -2863,7 +2863,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       var getter = this.Get = {
         Call: function(){
           var value = GetValue(ref);
-          //ref = null;
+          ref = null;
           getter.Call = function(){ return value };
           return value;
         }
@@ -3234,7 +3234,8 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
   var Intrinsics = (function(){
-    var $errors = ['EvalError',  'RangeError',  'ReferenceError',  'SyntaxError',  'TypeError',  'URIError'];
+    var $errors = ['EvalError', 'RangeError', 'ReferenceError',
+                   'SyntaxError', 'TypeError', 'URIError'];
 
     var $builtins = {
       Array   : $Array,
@@ -3528,7 +3529,10 @@ var runtime = (function(GLOBAL, exports, undefined){
     var natives = (function(){
       function wrapNatives(source, target){
         each(utility.ownProperties(source), function(key){
-          if (typeof source[key] === 'function' && key !== 'constructor' && key !== 'toString' && key !== 'valueOf') {
+          if (typeof source[key] === 'function'
+                          && key !== 'constructor'
+                          && key !== 'toString'
+                          && key !== 'valueOf') {
             var func = new $NativeFunction({
               name: key,
               length: source[key].length,
@@ -4247,7 +4251,6 @@ var runtime = (function(GLOBAL, exports, undefined){
           }
         };
 
-
         var errback = {
           Call: function(receiver, args){
             errors.push(args[0]);
@@ -4259,7 +4262,24 @@ var runtime = (function(GLOBAL, exports, undefined){
         };
 
         each(code.imports, function(imported){
-          load.Call(intrinsics.System, [imported.origin, callback, errback]);
+          if (imported.specifiers && imported.specifiers.Code) {
+            var code = imported.specifiers.Code,
+                sandbox = createSandbox(global);
+
+            runScript({ bytecode: code }, sandbox, errback.Call, function(){
+              var module = new $Module(sandbox.globalEnv, code.ExportedNames);
+              var internals = module.hiddens['loader-internals'] = create(null);
+              internals.mrl = code.name;
+              callback.Call(null, [module]);
+            });
+          } else {
+            var origin = imported.origin;
+            if (typeof origin !== STRING && origin instanceof Array) {
+
+            } else {
+              load.Call(intrinsics.System, [imported.origin, callback, errback]);
+            }
+          }
         });
       } else {
         Ω(modules);
@@ -4267,19 +4287,26 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
     function createSandbox(object){
-      var bindings = new $Object;
-      var scope = new GlobalEnvironmentRecord(bindings);
+      var outerRealm = object.Realm || object.Prototype.Realm,
+          bindings = new $Object,
+          scope = new GlobalEnvironmentRecord(bindings),
+          realm = scope.Realm = bindings.Realm = create(outerRealm);
+
       bindings.NativeBrand = BRANDS.GlobalObject;
-      scope.outer = object.Realm.globalEnv;
-      scope.Realm = bindings.Realm = create(object.Realm || object.Prototype.Realm);
-      scope.Realm.globalEnv = scope;
-      return scope.Realm;
+      scope.outer = outerRealm.globalEnv;
+      realm.global = bindings;
+      realm.globalEnv = scope;
+      return realm;
     }
 
 
     function runScript(script, realm, ƒ, Ω){
       var scope = realm.globalEnv,
           ctx = new ExecutionContext(context, scope, realm, script.bytecode);
+
+      if (!script.thunk) {
+        script.thunk = new Thunk(script.bytecode);
+      }
 
       ExecutionContext.push(ctx);
       var status = TopLevelDeclarationInstantiation(script.bytecode);
