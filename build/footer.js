@@ -20,5 +20,5 @@ return (function(Realm){
     return exports[request];
   }
 
-  return [exports, require];
+  return [this, exports, require];
 }());
