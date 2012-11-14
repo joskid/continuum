@@ -1066,13 +1066,13 @@ var debug = (function(exports){
     }
   }
 
-  var label = function(mirror){
+  var alwaysLabel = function(mirror){
     return mirror.label();
   };
 
   Renderer.prototype = {
-    Unknown: label,
-    BooleanValue: label,
+    Unknown: alwaysLabel,
+    BooleanValue: alwaysLabel,
     StringValue: function(mirror){
       return utility.quotes(mirror.subject);
     },
@@ -1080,32 +1080,32 @@ var debug = (function(exports){
       var label = mirror.label();
       return label === 'number' ? mirror.subject : label;
     },
-    UndefinedValue: label,
-    NullValue: label,
+    UndefinedValue: alwaysLabel,
+    NullValue: alwaysLabel,
     Thrown: function(mirror){
       return mirror.getError();
     },
-    Accessor: label,
-    Arguments: label,
-    Array: label,
-    Boolean: label,
-    Date: label,
+    Accessor: alwaysLabel,
+    Arguments: alwaysLabel,
+    Array: alwaysLabel,
+    Boolean: alwaysLabel,
+    Date: alwaysLabel,
     Error: function(mirror){
       return mirror.getValue('name') + ': ' + mirror.getValue('message');
     },
-    Function: label,
-    Global: label,
-    JSON: label,
-    Map: label,
-    Math: label,
-    Module: label,
-    Object: label,
-    Number: label,
-    RegExp: label,
-    Scope: label,
-    Set: label,
-    String: label,
-    WeakMap: label
+    Function: alwaysLabel,
+    Global: alwaysLabel,
+    JSON: alwaysLabel,
+    Map: alwaysLabel,
+    Math: alwaysLabel,
+    Module: alwaysLabel,
+    Object: alwaysLabel,
+    Number: alwaysLabel,
+    RegExp: alwaysLabel,
+    Scope: alwaysLabel,
+    Set: alwaysLabel,
+    String: alwaysLabel,
+    WeakMap: alwaysLabel
   };
 
   void function(){
