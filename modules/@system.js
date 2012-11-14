@@ -78,6 +78,15 @@
     }
   };
 
+  $__setProperty = function setProperty(key, object, values){
+    var keys = $__Enumerate(values, false, false),
+        i = keys.length;
+
+    while (i--) {
+      $__defineDirect(object[keys[i]], key, values[keys[i]], ___);
+    }
+  };
+
 
   let hidden = { enumerable: false };
 

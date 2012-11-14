@@ -3,7 +3,7 @@ export function Function(...args){
 }
 
 $__setupConstructor(Function, $__FunctionProto);
-$__defineDirect(Function.prototype, 'name', 'Empty', 0);
+$__defineDirect(Function.prototype, 'name', '', 0);
 
 
 export function apply(func, receiver, args){
