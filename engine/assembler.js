@@ -2,7 +2,7 @@ var assembler = (function(exports){
   var utility   = require('./utility'),
       util      = require('util');
 
-  var visit     = utility.visit,
+  var walk      = utility.walk,
       collector = utility.collector,
       Stack     = utility.Stack,
       define    = utility.define,
@@ -354,12 +354,64 @@ var assembler = (function(exports){
   })();
 
 
+  function isSuperReference(node) {
+    return !!node && node.type === 'Identifier' && node.name === 'super';
+  }
+
+  function isUseStrictDirective(node){
+    return node.type === 'ExpressionSatatement'
+        && node.expression.type === 'Literal'
+        && node.expression.value === 'use strict';
+  }
+
+  function isFunction(node){
+    return node.type === 'FunctionDeclaration'
+        || node.type === 'FunctionExpression'
+        || node.type === 'ArrowFunctionExpression';
+  }
+
+  function isDeclaration(node){
+    return node.type === 'FunctionDeclaration'
+        || node.type === 'ClassDeclaration'
+        || node.type === 'VariableDeclaration';
+  }
+
+  function isStrict(node){
+    if (isFunction(node)) {
+      node = node.body.body;
+    } else if (node.type === 'Program') {
+      node = node.body;
+    }
+    if (node instanceof Array) {
+      for (var i=0, element;  element = node[i]; i++) {
+        if (element) {
+          if (isUseStrictDirective(element)) {
+            return true;
+          } else if (element.type !== 'EmptyStatement' && element.type !== 'FunctionDeclaration') {
+            return false;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  function isPattern(node){
+    return !!node && node.type === 'ObjectPattern' || node.type === 'ArrayPattern';
+  }
+
+  function isLexicalDeclaration(node){
+    return !!node && node.type === 'VariableDeclaration' && node.kind !== 'var';
+  }
+
+
   var boundNamesCollector = collector({
     ObjectPattern      : 'properties',
     ArrayPattern       : 'elements',
     VariableDeclaration: 'declarations',
-    BlockStatement     : visit.RECURSE,
-    Program            : visit.RECURSE,
+    BlockStatement     : walk.RECURSE,
+    Program            : walk.RECURSE,
+    ForStatement       : walk.RECURSE,
     Property           : 'value',
     ExportDeclaration  : 'declaration',
     ExportSpecifierSet : 'specifiers',
@@ -384,9 +436,9 @@ var assembler = (function(exports){
     return collector({
       ClassDeclaration: lexical(false),
       FunctionDeclaration: lexical(false),
-      ExportDeclaration: visit.RECURSE,
-      SwitchCase: visit.RECURSE,
-      Program: visit.RECURSE,
+      ExportDeclaration: walk.RECURSE,
+      SwitchCase: walk.RECURSE,
+      Program: walk.RECURSE,
       VariableDeclaration: lexical(function(node){
         return node.kind === 'const';
       }),
@@ -415,12 +467,12 @@ var assembler = (function(exports){
 
     var getExportedDecls = collector({
       ClassDeclaration   : true,
-      ExportDeclaration  : visit.RECURSE,
+      ExportDeclaration  : walk.RECURSE,
       ExportSpecifier    : true,
-      ExportSpecifierSet : visit.RECURSE,
+      ExportSpecifierSet : walk.RECURSE,
       FunctionDeclaration: true,
       ModuleDeclaration  : true,
-      VariableDeclaration: visit.RECURSE,
+      VariableDeclaration: walk.RECURSE,
       VariableDeclarator : true
     });
 
@@ -509,71 +561,30 @@ var assembler = (function(exports){
   })();
 
 
-  function isSuperReference(node) {
-    return !!node && node.type === 'Identifier' && node.name === 'super';
-  }
-
   function ReferencesSuper(node){
     var found = false;
-    visit(node, function(node){
+    walk(node, function(node){
       switch (node.type) {
         case 'MemberExpression':
           if (isSuperReference(node.object)) {
             found = true;
-            return visit.BREAK;
+            return walk.BREAK;
           }
         case 'CallExpression':
           if (isSuperReference(node.callee)) {
             found = true;
-            return visit.BREAK;
+            return walk.BREAK;
           }
           break;
         case 'FunctionExpression':
         case 'FunctionDeclaration':
         case 'ArrowFunctionExpression':
-          return visit.CONTINUE;
+          return walk.CONTINUE;
       }
-      return visit.RECURSE;
+      return walk.RECURSE;
     });
     return found;
   }
-
-  function isUseStrictDirective(node){
-    return node.type === 'ExpressionSatatement'
-        && node.expression.type === 'Literal'
-        && node.expression.value === 'use strict';
-  }
-
-  function isFunction(node){
-    return node.type === 'FunctionDeclaration'
-        || node.type === 'FunctionExpression'
-        || node.type === 'ArrowFunctionExpression';
-  }
-
-  function isStrict(node){
-    if (isFunction(node)) {
-      node = node.body.body;
-    } else if (node.type === 'Program') {
-      node = node.body;
-    }
-    if (node instanceof Array) {
-      for (var i=0, element;  element = node[i]; i++) {
-        if (element) {
-          if (isUseStrictDirective(element)) {
-            return true;
-          } else if (element.type !== 'EmptyStatement' && element.type !== 'FunctionDeclaration') {
-            return false;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
-  function isPattern(node){
-    return !!node && node.type === 'ObjectPattern' || node.type === 'ArrayPattern';
-  }
-
 
 
 
@@ -682,15 +693,13 @@ var assembler = (function(exports){
 
   function destructure(left, right){
     var key = left.type === 'ArrayPattern' ? 'elements' : 'properties',
-        lefts = left[key],
-        rights = right[key],
-        binding, value;
+        rights = right[key];
 
-    for (var i=0; i < lefts.length; i++) {
-      binding = elementAt[key](left, i);
+    each(left[key], function(item, i){
+      var binding = elementAt[key](left, i);
 
       if (isPattern(binding)){
-        value = rights && rights[i] ? elementAt[key](right, i) : binding;
+        var value = rights && rights[i] ? elementAt[key](right, i) : binding;
         destructure(binding, value);
       } else {
         if (binding.type === 'SpreadElement') {
@@ -709,13 +718,13 @@ var assembler = (function(exports){
         }
         PUT();
       }
-    }
+    });
   }
 
 
   function args(node){
     ARGS();
-    for (var i=0, item; item = node[i]; i++) {
+    each(node, function(item, i){
       if (item && item.type === 'SpreadElement') {
         recurse(item.argument);
         GET();
@@ -725,7 +734,7 @@ var assembler = (function(exports){
         GET();
         ARG();
       }
-    }
+    });
   }
 
   function isGlobalOrEval(){
@@ -756,7 +765,7 @@ var assembler = (function(exports){
 
   function ArrayExpression(node){
     ARRAY();
-    for (var i=0, item; i < node.elements.length; i++) {
+    each(node.elements, function(item, i){
       var empty = false,
           spread = false,
           item = node.elements[i];
@@ -772,7 +781,7 @@ var assembler = (function(exports){
 
       GET();
       INDEX(empty, spread);
-    }
+    });
     ARRAY_DONE();
   }
 
@@ -800,11 +809,7 @@ var assembler = (function(exports){
     block(function(){
       lexical(function(){
         BLOCK({ LexicalDeclarations: LexicalDeclarations(node.body) });
-
-        for (var i=0, item; item = node.body[i]; i++) {
-          recurse(item);
-        }
-
+        each(node.body, recurse);
         UPSCOPE();
       });
     });
@@ -842,10 +847,7 @@ var assembler = (function(exports){
       BLOCK({ LexicalDeclarations: decls });
       recurse(node.param);
       PUT();
-      for (var i=0, item; item = node.body.body[i]; i++) {
-        recurse(item);
-      }
-
+      each(node.body.body, recurse);
       UPSCOPE();
     });
   }
@@ -872,7 +874,7 @@ var assembler = (function(exports){
     adjust(test);
     recurse(node.alternate);
     GET();
-    adjust(alt)
+    adjust(alt);
   }
 
   function ContinueStatement(node){
@@ -916,29 +918,29 @@ var assembler = (function(exports){
   }
 
   function ForStatement(node){
-    lexical(function(){
-      var scope = BLOCK({ LexicalDeclarations: [] });
-      control(function(){
+    control(function(){
+      lexical(function(){
         var init = node.init;
         if (init){
-          if (init.type === 'VariableDeclaration') {
+          var isLexical = isLexicalDeclaration(init);
+          if (isLexical) {
+            var scope = BLOCK({ LexicalDeclarations: [] });
             recurse(init);
-            if (init.kind === 'let' || init.kind === 'const') {
-              var decl = init.declarations[init.declarations.length - 1].id;
-              scope[0].LexicalDeclarations = BoundNames(decl);
-              var lexicalDecl = {
-                type: 'VariableDeclaration',
-                kind: init.kind,
-                declarations: [{
-                  type: 'VariableDeclarator',
-                  id: decl,
-                  init: null
-                }],
-              };
-              lexicalDecl.BoundNames = BoundNames(lexicalDecl);
-              recurse(decl);
-            }
+            var decl = init.declarations[init.declarations.length - 1].id;
+            scope[0].LexicalDeclarations = BoundNames(decl);
+            var lexicalDecl = {
+              type: 'VariableDeclaration',
+              kind: init.kind,
+              declarations: [{
+                type: 'VariableDeclarator',
+                id: decl,
+                init: null
+              }],
+            };
+            lexicalDecl.BoundNames = BoundNames(lexicalDecl);
+            recurse(decl);
           } else {
+            recurse(init);
             GET();
             POP();
           }
@@ -964,11 +966,7 @@ var assembler = (function(exports){
               recurse(decl);
               ROTATE(1);
               PUT();
-
-              for (var i=0, item; item = node.body.body[i]; i++) {
-                recurse(item);
-              }
-
+              each(node.body.body, recurse);
               UPSCOPE();
             });
           });
@@ -984,9 +982,9 @@ var assembler = (function(exports){
 
         JUMP(test);
         adjust(op);
+        isLexical && UPSCOPE();
         return update;
       });
-      UPSCOPE();
     });
   }
 
@@ -1139,7 +1137,7 @@ var assembler = (function(exports){
   function MethodDefinition(node){}
 
   function ModuleDeclaration(node){
-    if (!node.from) {
+    if (node.body) {
       node.Code = new Code(node, context.code.source, FUNCTYPE.NORMAL, SCOPE.MODULE, context.code.Strict);
       context.queue(node.Code);
     }
@@ -1219,7 +1217,7 @@ var assembler = (function(exports){
 
         if (node.cases){
           var cases = [];
-          for (var i=0, item; item = node.cases[i]; i++) {
+          each(node.cases, function(item, i){
             if (item.test){
               recurse(item.test);
               GET();
@@ -1228,7 +1226,7 @@ var assembler = (function(exports){
               var defaultFound = i;
               cases.push(0);
             }
-          }
+          });
 
           if (defaultFound != null){
             DEFAULT(cases[defaultFound]);
@@ -1237,12 +1235,10 @@ var assembler = (function(exports){
             var last = JUMP(0);
           }
 
-          for (var i=0, item; item = node.cases[i]; i++) {
+          each(node.cases, function(item, i){
             adjust(cases[i])
-            for (var j=0, consequent; consequent = item.consequent[j]; j++) {
-              recurse(consequent);
-            }
-          }
+            each(item.consequent, recurse);
+          });
 
           if (last) {
             adjust(last);
@@ -1424,21 +1420,21 @@ var assembler = (function(exports){
 
   var Assembler = exports.Assembler = (function(){
     function annotateParent(node, parent){
-      visit(node, function(node){
+      walk(node, function(node){
         if (isObject(node) && parent) {
           define(node, 'parent', parent);
         }
-        return visit.RECURSE;
+        return walk.RECURSE;
       });
     }
 
     function reinterpretNatives(node){
-      visit(node, function(node){
+      walk(node, function(node){
         if (node.type === 'Identifier' && /^\$__/.test(node.name)) {
           node.type = 'NativeIdentifier';
           node.name = node.name.slice(3);
         } else {
-          return visit.RECURSE;
+          return walk.RECURSE;
         }
       });
     }
