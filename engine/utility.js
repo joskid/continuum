@@ -6,6 +6,10 @@ var utility = (function(exports){
       STRING    = 'string',
       UNDEFINED = 'undefined';
 
+  var KEYS   = 'keys',
+      VALUES = 'values',
+      ITEMS  = 'items',
+      ATTRS  = 'attributes';
 
   var hasDunderProto = { __proto__: [] } instanceof Array,
       isES5 = !(!Object.getOwnPropertyNames || 'prototype' in Object.getOwnPropertyNames);
@@ -21,6 +25,8 @@ var utility = (function(exports){
     writable: true,
     value: undefined
   };
+
+  var proto = uid();
 
 
   function getBrandOf(o){
@@ -39,6 +45,11 @@ var utility = (function(exports){
     }
   }
 
+  function uid(){
+    return Math.random().toString(36).slice(2);
+  }
+
+  exports.uid = uid;
 
 
   function toArray(o){
@@ -77,20 +88,19 @@ var utility = (function(exports){
 
         return f.name;
       };
-    } else {
-      return function fname(f){
-        if (typeof f !== FUNCTION) {
-          throw new TypeError('Tried to get the name of a non-function');
-        }
-
-        if (!hasOwn.call(f, 'name')) {
-          hidden.value = toSource.call(f).match(/^\n?function\s?(\w*)?_?\(/)[1];
-          defineProperty(f, 'name', hidden);
-        }
-
-        return f.name;
-      };
     }
+    return function fname(f){
+      if (typeof f !== FUNCTION) {
+        throw new TypeError('Tried to get the name of a non-function');
+      }
+
+      if (!hasOwn.call(f, 'name')) {
+        hidden.value = toSource.call(f).match(/^\n?function\s?(\w*)?_?\(/)[1];
+        defineProperty(f, 'name', hidden);
+      }
+
+      return f.name;
+    };
   })();
 
   function isObject(v){
@@ -99,9 +109,9 @@ var utility = (function(exports){
   }
   exports.isObject = isObject;
 
-
-  exports.nextTick = typeof process !== UNDEFINED ? process.nextTick : function(f){ setTimeout(f, 1) };
-
+  exports.nextTick = typeof process !== UNDEFINED
+                    ? process.nextTick
+                    : function nextTick(f){ setTimeout(f, 1) };
 
   exports.numbers = (function(cache){
     return function numbers(start, end){
@@ -121,7 +131,6 @@ var utility = (function(exports){
   })([]);
 
 
-
   if (isES5) {
     var create = exports.create = Object.create;
   } else {
@@ -136,7 +145,6 @@ var utility = (function(exports){
       iframe.src = 'javascript:';
       Null.prototype = iframe.contentWindow.Object.prototype;
       document.body.removeChild(iframe);
-
 
       while (hiddens.length) {
         delete Null.prototype[hiddens.pop()];
@@ -154,14 +162,6 @@ var utility = (function(exports){
       };
     })(function(){});
   }
-
-
-  function enumerate(o){
-    var out = [], i = 0;
-    for (out[i++] in o);
-    return out;
-  }
-  exports.enumerate = enumerate;
 
   var ownKeys = exports.keys = (function(){
     if (isES5) return Object.keys;
@@ -209,7 +209,6 @@ var utility = (function(exports){
     }
   })();
 
-
   var defineProperty = exports.defineProperty = (function(){
     if (isES5) return Object.defineProperty;
     return function defineProperty(o, k, desc){
@@ -231,64 +230,79 @@ var utility = (function(exports){
 
   var ownProperties = exports.ownProperties = isES5 ? Object.getOwnPropertyNames : ownKeys;
 
-  function isDOM(o){
-    var proto = getPrototypeOf(o);
-    if (o) {
-      var ctor = proto.constructor;
-      if (typeof ctor === FUNCTION) {
-        return getPrototypeOf(ctor) === Object.prototype;
+  var _call, _apply, _bind;
+
+  if (typeof Function.prototype.bind === FUNCTION && !('prototype' in Function.prototype.bind)) {
+    _bind = Function.prototype.bind;
+    _call = Function.prototype.call;
+    _apply = Function.prototype.apply;
+  } else {
+    void function(){
+      function bind(receiver){
+        if (typeof this !== 'function') {
+          throw new TypeError("Function.prototype.bind called on non-callable");
+        }
+
+        var args = toArray(arguments),
+            params = '',
+            F = this;
+
+        for (var i=1; i < args.length; i++) {
+          if (i > 1) params += ',';
+          params += '$['+i+']';
+        }
+
+        var bound = function(){
+          if (this instanceof bound) {
+            var p = params;
+            for (var i=0; i < arguments.length; i++) {
+              p += ',_['+i+']';
+            }
+            return new Function('F,$,_', 'return new F('+p+')')(F, args, arguments);
+          } else {
+            var a = toArray(args);
+            for (var i=0; i < arguments.length; i++) {
+              a[a.length] = arguments[i];
+            }
+            return _call.apply(F, a);
+          }
+        };
+
+        return bound;
       }
-    }
-    return false;
+
+      var iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      iframe.src = 'javascript:';
+      _call = iframe.contentWindow.Function.prototype.call;
+      _apply = _call.apply;
+      _bind = bind;
+      document.body.removeChild(iframe);
+    }();
   }
 
-  exports.isDOM = isDOM;
+  var bindbind  = exports.bindbind  = _bind.bind(_bind),
+      callbind  = exports.callbind  = bindbind(_call),
+      applybind = exports.applybind = bindbind(_apply),
+      bindapply = exports.bindapply = applybind(_bind),
+      bind      = exports.bind      = callbind(_bind),
+      call      = exports.call      = callbind(_call),
+      apply     = exports.apply     = callbind(_apply);
 
-  var isMutable = exports.isMutable = (function(){
-    var isExtensible = isES5 ? Object.isExtensible : function(){ return true };
-    var prop = uid();
 
-    return function isMutable(o){
-      if (!isObject(o) || !isExtensible(o)) return false;
-      if (isDOM(o) && 'namedItem' in o) {
-        o[prop] = true;
-        console.log(o, prop);
-        setTimeout(function(){ console.log(o[prop]); }, 1);
+  function applyNew(Ctor, args){
+    return new (bindapply(Ctor, [null].concat(args)));
+  }
+  exports.applyNew = applyNew;
 
-        if (prop in o) {
-          //delete o[prop];
-          return true;
-        }
-        return false;
-      }
-      return true;
-    };
-  })();
 
   function copy(o){
     return assign(create(getPrototypeOf(o)), o);
   }
-
   exports.copy = copy;
 
   function clone(o, hidden){
-    var queue = new Queue,
-        tag = uid(),
-        tagged = [],
-        list = hidden ? ownProperties : ownKeys;
-
-    var out = enqueue(o);
-
-    while (queue.length) {
-      recurse.apply(this, queue.shift());
-    }
-
-    for (var i=0; i < tagged.length; i++) {
-      delete tagged[tag];
-    }
-
-    return out;
-
     function recurse(from, to, key){
       try {
         var val = from[key];
@@ -314,31 +328,70 @@ var utility = (function(exports){
       o[tag] = out;
       return out;
     }
-  }
 
+    var queue = new Queue,
+        tag = uid(),
+        tagged = [],
+        list = hidden ? ownProperties : ownKeys,
+        out = enqueue(o);
+
+    while (queue.length) {
+      recurse.apply(this, queue.shift());
+    }
+
+    for (var i=0; i < tagged.length; i++) {
+      delete tagged[tag];
+    }
+
+    return out;
+  }
   exports.clone = clone;
 
 
+  function enumerate(o){
+    var out = [], i = 0;
+    for (out[i++] in o);
+    return out;
+  }
+  exports.enumerate = enumerate;
+
+  var StopIteration = exports.StopIteration = global.StopIteration || create(null);
+
   function iterate(o, callback, context){
-    if (!o) return;
+    if (o == null) return;
     var type = typeof o;
     context = context || o;
     if (type === 'number' || type === 'boolean') {
-      return void callback.call(context, o, 0, o);
-    }
-    o = Object(o);
-    if (type !== 'function' && o.length) {
-      for (var i=0; i < o.length; i++) {
-        callback.call(context, o[i], i, o);
-      }
+      callback.call(context, o, 0, o);
     } else {
-      var keys = ownKeys(o);
-      for (var i=0; i < keys.length; i++) {
-        callback.call(context, o[keys[i]], keys[i], o);
+      o = Object(o);
+      var iterator = o.iterator || o.__iterator__;
+
+      if (typeof iterator === 'function') {
+        var iter = iterator.call(o);
+        if (iter && typeof iter.next === 'function') {
+          var i=0;
+          try {
+            while (1) callback.call(context, iter.next(), i++, o);
+          } catch (e) {
+            if (e === StopIteration) return;
+            throw e;
+          }
+        }
+      }
+
+      if (type !== 'function' && o.length) {
+        for (var i=0; i < o.length; i++) {
+          callback.call(context, o[i], i, o);
+        }
+      } else {
+        var keys = ownKeys(o);
+        for (var i=0; i < keys.length; i++) {
+          callback.call(context, o[keys[i]], keys[i], o);
+        }
       }
     }
   }
-
   exports.iterate = iterate;
 
   function each(o, callback){
@@ -446,7 +499,6 @@ var utility = (function(exports){
     hidden.value = undefined;
     return o;
   }
-
   exports.define = define;
 
 
@@ -483,7 +535,6 @@ var utility = (function(exports){
     }
     return o;
   }
-
   exports.assign = assign;
 
   function inherit(Ctor, Super, properties, methods){
@@ -499,7 +550,6 @@ var utility = (function(exports){
     methods && define(Ctor.prototype, methods);
     return Ctor;
   }
-
   exports.inherit = inherit;
 
 
@@ -517,7 +567,6 @@ var utility = (function(exports){
       return f.apply(this, a);
     };
   }
-
   exports.partial = partial;
 
 
@@ -541,7 +590,6 @@ var utility = (function(exports){
       return "'" + s.replace(/'/g, "\\'") + "'";
     }
   }
-
   exports.quotes = quotes;
 
 
@@ -558,9 +606,10 @@ var utility = (function(exports){
 
     return out;
   }
-
   exports.unique = unique;
 
+
+  var MAX_INTEGER = 9007199254740992;
 
   function toInteger(v){
     if (v === Infinity) {
@@ -571,14 +620,12 @@ var utility = (function(exports){
       return v - 0 >> 0;
     }
   }
-
   exports.toInteger = toInteger;
 
 
   function isNaN(number){
     return number !== number;
   }
-
   exports.isNaN = isNaN;
 
 
@@ -588,10 +635,8 @@ var utility = (function(exports){
                && value < Infinity
                && value > -Infinity;
   }
-
   exports.isFinite = isFinite;
 
-  var MAX_INTEGER = 9007199254740992;
 
   function isInteger(value) {
     return typeof value === NUMBER
@@ -600,23 +645,9 @@ var utility = (function(exports){
                && value < MAX_INTEGER
                && value >> 0 === value;
   }
-
   exports.isInteger = isInteger;
 
-
-  function uid(){
-    return Math.random().toString(36).slice(2)
-  }
-
-  exports.uid = uid;
-
-
-  var BREAK    = visit.BREAK    = new Number(1),
-      CONTINUE = visit.CONTINUE = new Number(2),
-      RECURSE  = visit.RECURSE  = new Number(3);
-
-
-  function visit(root, callback){
+  function walk(root, callback){
     var queue = new Queue([[root]]),
         branded = [],
         tag = uid();
@@ -640,19 +671,20 @@ var utility = (function(exports){
           item[tag] = true;
           branded.push(item);
           var result = callback(item, node);
-          if (result === visit.RECURSE) {
+          if (result === walk.RECURSE) {
             queue.push(item);
-          } else if (result === visit.BREAK) {
+          } else if (result === walk.BREAK) {
             return queue.empty();
           }
         }
       }
     }
   }
+  exports.walk = walk;
 
-  exports.visit = visit;
-
-
+  var BREAK    = walk.BREAK    = new Number(1),
+      CONTINUE = walk.CONTINUE = new Number(2),
+      RECURSE  = walk.RECURSE  = new Number(3);
 
   exports.collector = (function(){
     function path(){
@@ -701,7 +733,7 @@ var utility = (function(exports){
       return function(node){
         var items  = [];
 
-        function visitor(node, parent){
+        function walker(node, parent){
           if (!node) return CONTINUE;
 
           if (node instanceof Array) {
@@ -716,7 +748,7 @@ var utility = (function(exports){
             return handler;
           } else if (typeof handler === STRING) {
             if (node[handler]) {
-              visit(node[handler], visitor);
+              walk(node[handler], walker);
             }
           } else if (typeof handler === FUNCTION) {
             var item = handler(node);
@@ -728,7 +760,7 @@ var utility = (function(exports){
           return CONTINUE;
         }
 
-        visit(node, visitor);
+        walk(node, walker);
 
         return items;
       };
@@ -737,138 +769,95 @@ var utility = (function(exports){
     return collector;
   })();
 
-
-
-
-  var _call, _apply, _bind;
-
-  if (typeof Function.prototype.bind === FUNCTION && !('prototype' in Function.prototype.bind)) {
-    _call = Function.prototype.call;
-    _apply = Function.prototype.apply;
-    _bind = Function.prototype.bind;
-  } else {
-    void function(){
-      function bind(receiver){
-        if (typeof this !== 'function') {
-          throw new TypeError("Function.prototype.bind called on non-callable");
-        }
-
-        var args = toArray(arguments),
-            params = '',
-            F = this;
-
-        for (var i=1; i < args.length; i++) {
-          if (i > 1) params += ',';
-          params += '$['+i+']';
-        }
-
-        var bound = function(){
-          if (this instanceof bound) {
-            var p = params;
-            for (var i=0; i < arguments.length; i++) {
-              p += ',_['+i+']';
-            }
-            return new Function('F,$,_', 'return new F('+p+')')(F, args, arguments);
-          } else {
-            var a = toArray(args);
-            for (var i=0; i < arguments.length; i++) {
-              a[a.length] = arguments[i];
-            }
-            return _call.apply(F, a);
-          }
-        };
-
-        return bound;
-      }
-
-      var iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-      iframe.src = 'javascript:';
-      _call = iframe.contentWindow.Function.prototype.call;
-      _apply = _call.apply;
-      _bind = bind;
-      document.body.removeChild(iframe);
-    }();
-  }
-
-  var bindbind  = exports.bindbind  = _bind.bind(_bind),
-      callbind  = exports.callbind  = bindbind(_call),
-      applybind = exports.applybind = bindbind(_apply),
-      bindapply = exports.bindapply = applybind(_bind),
-      bind      = exports.bind      = callbind(_bind),
-      call      = exports.call      = callbind(_call),
-      apply     = exports.apply     = callbind(_apply);
-
-
-  function applyNew(Ctor, args){
-    return new (bindapply(Ctor, [null].concat(args)));
-  }
-  exports.applyNew = applyNew;
+  function Hash(){}
+  Hash.prototype = create(null);
+  exports.Hash = Hash;
 
   exports.Emitter = (function(){
     function Emitter(){
       '_events' in this || define(this, '_events', create(null));
     }
 
-    function on(events, handler){
-      iterate(events.split(/\s+/), function(event){
-        if (!(event in this)) {
-          this[event] = [];
+    define(Emitter.prototype, [
+      function on(events, handler){
+        iterate(events.split(/\s+/), function(event){
+          if (!(event in this)) {
+            this[event] = [];
+          }
+          this[event].push(handler);
+        }, this._events);
+      },
+      function off(events, handler){
+        iterate(events.split(/\s+/), function(event){
+          if (event in this) {
+            var index = '__index' in handler ? handler.__index : this[event].indexOf(handler);
+            if (~index) {
+              this[event].splice(index, 1);
+            }
+          }
+        }, this._events);
+      },
+      function once(events, handler){
+        function one(val){
+          this.off(events, one);
+          handler.call(this, val);
         }
-        this[event].push(handler);
-      }, this._events);
-    }
+        this.on(events, one);
+      },
+      function emit(event, val){
+        var handlers = this._events['*'];
 
-    function off(events, handler){
-      iterate(events.split(/\s+/), function(event){
-        if (event in this) {
-          var index = '__index' in handler ? handler.__index : this[event].indexOf(handler);
-          if (~index) {
-            this[event].splice(index, 1);
+        if (handlers) {;
+          for (var i=0; i < handlers.length; i++) {
+            handlers[i].call(this, event, val);
           }
         }
-      }, this._events);
-    }
 
-    function once(events, handler){
-      function one(val){
-        this.off(events, one);
-        handler.call(this, val);
-      }
-      this.on(events, one);
-    }
-
-    function emit(event, val){
-      var handlers = this._events['*'];
-
-      if (handlers) {;
-        for (var i=0; i < handlers.length; i++) {
-          handlers[i].call(this, event, val);
+        handlers = this._events[event];
+        if (handlers) {
+          for (var i=0; i < handlers.length; i++) {
+            handlers[i].call(this, val);
+          }
         }
       }
+    ]);
 
-      handlers = this._events[event];
-      if (handlers) {
-        for (var i=0; i < handlers.length; i++) {
-          handlers[i].call(this, val);
-        }
-      }
-    }
-     define(Emitter.prototype, [on, off, once, emit]);
     return Emitter;
   })();
 
-
-  function Hash(){}
-  Hash.prototype = create(null);
-  exports.Hash = Hash;
-
-
-  var proto = uid();
-
-
   var PropertyList = exports.PropertyList = (function(){
+    var PropertyListIterator = (function(){
+      var types = {
+        keys: 0,
+        values: 1,
+        attributes: 2
+      };
+
+      function PropertyListIterator(list, type){
+        this.list = list;
+        this.type = type ? types[type] : ITEMS;
+        this.index = 0;
+      }
+
+      define(PropertyListIterator.prototype, [
+        function next(){
+          var props = this.list.props, property;
+          while (!property) {
+            if (this.index >= props.length) {
+              throw StopIteration;
+            }
+            property = props[this.index++];
+          }
+          return this.type === ITEMS ? property : property[this.type];
+        },
+        function __iterator__(){
+          return this;
+        }
+      ]);
+
+      return PropertyListIterator;
+    })();
+
     function PropertyList(){
       this.hash = new Hash;
       this.props = [];
@@ -876,222 +865,203 @@ var utility = (function(exports){
       this.length = 0;
     }
 
-    function get(key){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        return this.props[index][1];
-      }
-    }
+    define(PropertyList.prototype, [
+      function get(key){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          return this.props[index][1];
+        }
+      },
+      function getAttribute(key){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          return this.props[index][2];
+        } else {
+          return null;
+        }
+      },
+      function getProperty(key){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          return this.props[index];
+        } else {
+          return null;
+        }
+      },
+      function set(key, value, attr){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name],
+            prop;
 
-    function getAttribute(key){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        return this.props[index][2];
-      } else {
-        return null;
-      }
-    }
+        if (index === undefined) {
+          index = this.hash[name] = this.props.length;
+          prop = this.props[index] = [key, value, 0];
+          this.length++;
+        } else {
+          prop = this.props[index];
+          prop[1] = value;
+        }
 
-    function getProperty(key){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        return this.props[index];
-      } else {
-        return null;
-      }
-    }
-
-    function set(key, value, attr){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name],
-          prop;
-
-      if (index === undefined) {
-        index = this.hash[name] = this.props.length;
-        prop = this.props[index] = [key, value, 0];
-        this.length++;
-      } else {
-        prop = this.props[index];
-        prop[1] = value;
-      }
-
-      if (attr !== undefined) {
-        prop[2] = attr;
-      }
-      return true;
-    }
-
-    function setAttribute(key, attr){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        this.props[index][2] = attr;
+        if (attr !== undefined) {
+          prop[2] = attr;
+        }
         return true;
-      } else {
-        return false;
-      }
-    }
-
-    function setProperty(prop){
-      var key = prop[0],
-          name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index === undefined) {
-        index = this.hash[name] = this.props.length;
-        this.length++;
-      }
-      this.props[index] = prop;
-    }
-
-    function remove(key){
-      var name = key === '__proto__' ? proto : key,
-          index = this.hash[name];
-      if (index !== undefined) {
-        this.hash[name] = undefined;
-        this.props[index] = undefined;
-        this.holes++;
-        this.length--;
-        return true;
-      } else {
-        return false;
-      }
-    }
-
-    function has(key){
-      var name = key === '__proto__' ? proto : key;
-      return this.hash[name] !== undefined;
-    }
-
-    function hasAttribute(key, mask){
-      var name = key === '__proto__' ? proto : key,
-          attr = this.getAttribute(name);
-      if (attr !== null) {
-        return (attr & mask) > 0;
-      }
-    }
-
-    function compact(){
-      var props = this.props,
-          len = props.length,
-          index = 0,
-          prop;
-
-      this.hash = new Hash;
-      this.props = [];
-      this.holes = 0;
-
-      for (var i=0; i < len; i++) {
-        if (prop = props[i]) {
-          var name = prop[0] === '__proto__' ? proto : prop[0];
-          this.props[index] = prop;
-          this.hash[name] = index++;
+      },
+      function setAttribute(key, attr){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          this.props[index][2] = attr;
+          return true;
+        } else {
+          return false;
         }
-      }
-    }
-
-    function forEach(callback, context){
-      var len = this.props.length,
-          index = 0,
-          prop;
-
-      context = context || this;
-
-      for (var i=0; i < len; i++) {
-        if (prop = this.props[i]) {
-          callback.call(context, prop, index++, this);
+      },
+      function setProperty(prop){
+        var key = prop[0],
+            name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index === undefined) {
+          index = this.hash[name] = this.props.length;
+          this.length++;
         }
-      }
-    }
-
-    function map(callback, context){
-      var out = [],
-          len = this.props.length,
-          index = 0,
-          prop;
-
-      context = context || this;
-
-      for (var i=0; i < len; i++) {
-        if (prop = this.props[i]) {
-          out[index] = callback.call(context, prop, index++, this);
+        this.props[index] = prop;
+      },
+      function remove(key){
+        var name = key === '__proto__' ? proto : key,
+            index = this.hash[name];
+        if (index !== undefined) {
+          this.hash[name] = undefined;
+          this.props[index] = undefined;
+          this.holes++;
+          this.length--;
+          return true;
+        } else {
+          return false;
         }
-      }
+      },
+      function has(key){
+        var name = key === '__proto__' ? proto : key;
+        return this.hash[name] !== undefined;
+      },
+      function hasAttribute(key, mask){
+        var name = key === '__proto__' ? proto : key,
+            attr = this.getAttribute(name);
+        if (attr !== null) {
+          return (attr & mask) > 0;
+        }
+      },
+      function compact(){
+        var props = this.props,
+            len = props.length,
+            index = 0,
+            prop;
 
-      return out;
-    }
+        this.hash = new Hash;
+        this.props = [];
+        this.holes = 0;
 
-    function translate(callback, context){
-      var out = new PropertyList;
+        for (var i=0; i < len; i++) {
+          if (prop = props[i]) {
+            var name = prop[0] === '__proto__' ? proto : prop[0];
+            this.props[index] = prop;
+            this.hash[name] = index++;
+          }
+        }
+      },
+      function forEach(callback, context){
+        var len = this.props.length,
+            index = 0,
+            prop;
 
-      out.length = this.length;
-      context = context || this;
+        context = context || this;
 
-      this.forEach(function(prop, index){
-        prop = callback.call(context, prop, index, this);
-        var name = prop[0] === '__proto__' ? proto : prop[0];
-        out.props[index] = prop;
-        out.hash[name] = index;
-      });
+        for (var i=0; i < len; i++) {
+          if (prop = this.props[i]) {
+            callback.call(context, prop, index++, this);
+          }
+        }
+      },
+      function map(callback, context){
+        var out = [],
+            len = this.props.length,
+            index = 0,
+            prop;
 
-      return out;
-    }
+        context = context || this;
 
-    function filter(callback, context){
-      var out = new PropertyList,
-          index = 0;
+        for (var i=0; i < len; i++) {
+          if (prop = this.props[i]) {
+            out[index] = callback.call(context, prop, index++, this);
+          }
+        }
 
-      context = context || this;
+        return out;
+      },
+      function translate(callback, context){
+        var out = new PropertyList;
 
-      this.forEach(function(prop, i){
-        if (callback.call(context, prop, i, this)) {
+        out.length = this.length;
+        context = context || this;
+
+        this.forEach(function(prop, index){
+          prop = callback.call(context, prop, index, this);
           var name = prop[0] === '__proto__' ? proto : prop[0];
           out.props[index] = prop;
-          out.hash[name] = index++;
-        }
-      });
+          out.hash[name] = index;
+        });
 
-      return out;
-    }
+        return out;
+      },
+      function filter(callback, context){
+        var out = new PropertyList,
+            index = 0;
 
-    function clone(deep){
-      return this.translate(function(prop, i){
-        return deep ? prop.slice() : prop;
-      });
-    }
+        context = context || this;
 
-    function keys(){
-      return this.map(function(prop){
-        return prop[0];
-      });
-    }
+        this.forEach(function(prop, i){
+          if (callback.call(context, prop, i, this)) {
+            var name = prop[0] === '__proto__' ? proto : prop[0];
+            out.props[index] = prop;
+            out.hash[name] = index++;
+          }
+        });
 
-    function values(){
-      return this.map(function(prop){
-        return prop[1];
-      });
-    }
-
-    function items(){
-      return this.map(function(prop){
-        return prop.slice();
-      });
-    }
-
-    function merge(list){
-      list.forEach(this.setProperty, this);
-    }
-
-    define(PropertyList.prototype, [
-      get, getAttribute, getProperty, set, setAttribute, setProperty, remove, has, hasAttribute,
-      compact, forEach, map, translate,  filter, clone, keys, values, items, merge
+        return out;
+      },
+      function clone(deep){
+        return this.translate(function(prop, i){
+          return deep ? prop.slice() : prop;
+        });
+      },
+      function keys(){
+        return this.map(function(prop){
+          return prop[0];
+        });
+      },
+      function values(){
+        return this.map(function(prop){
+          return prop[1];
+        });
+      },
+      function items(){
+        return this.map(function(prop){
+          return prop.slice();
+        });
+      },
+      function merge(list){
+        list.forEach(this.setProperty, this);
+      },
+      function __iterator__(type){
+        return new PropertyListIterator(this, type);
+      }
     ]);
+
     return PropertyList;
   })();
-
-
 
   exports.Stack = (function(){
     function Stack(){
@@ -1100,52 +1070,48 @@ var utility = (function(exports){
         this.push(arguments[k]);
     }
 
-    function push(item){
-      this.items.push(item);
-      this.length++;
-      this.top = item;
-      return this;
-    }
+    define(Stack.prototype, [
+      function push(item){
+        this.items.push(item);
+        this.length++;
+        this.top = item;
+        return this;
+      },
+      function pop(){
+        this.length--;
+        this.top = this.items[this.length - 1];
+        return this.items.pop();
+      },
+      function empty(){
+        this.length = 0;
+        this.items = [];
+        this.top = undefined;
+      },
+      function first(callback, context){
+        var i = this.length;
+        context || (context = this);
+        while (i--)
+          if (callback.call(context, this[i], i, this))
+            return this[i];
+      },
+      function filter(callback, context){
+        var i = this.length,
+            out = new Stack;
 
-    function pop(){
-      this.length--;
-      this.top = this.items[this.length - 1];
-      return this.items.pop();
-    }
+        context || (context = this);
 
-    function empty(){
-      this.length = 0;
-      this.items = [];
-      this.top = undefined;
-    }
-
-    function first(callback, context){
-      var i = this.length;
-      context || (context = this);
-      while (i--)
-        if (callback.call(context, this[i], i, this))
-          return this[i];
-    }
-
-    function filter(callback, context){
-      var i = this.length,
-          out = new Stack;
-
-      context || (context = this);
-
-      for (var i=0; i < this.length; i++) {
-        if (callback.call(context, this[i], i, this)) {
-          out.push(this[i]);
+        for (var i=0; i < this.length; i++) {
+          if (callback.call(context, this[i], i, this)) {
+            out.push(this[i]);
+          }
         }
+
+        return out;
       }
+    ]);
 
-      return out;
-    }
-
-    define(Stack.prototype, [push, pop, empty, first, filter]);
     return Stack;
   })();
-
 
   var Queue = exports.Queue = (function(){
     function Queue(items){
@@ -1168,50 +1134,45 @@ var utility = (function(exports){
       this.index = 0;
     }
 
-    function push(item){
-      this.items.push(item);
-      this.length++;
-      return this;
-    }
-
-    function shift(){
-      if (this.length) {
-        var item = this.items[this.index];
-        this.items[this.index++] = null;
-        this.length--;
-        if (this.index === 500) {
-          this.items = this.items.slice(this.index);
-          this.index = 0;
+    define(Queue.prototype, [
+      function push(item){
+        this.items.push(item);
+        this.length++;
+        return this;
+      },
+      function shift(){
+        if (this.length) {
+          var item = this.items[this.index];
+          this.items[this.index++] = null;
+          this.length--;
+          if (this.index === 500) {
+            this.items = this.items.slice(this.index);
+            this.index = 0;
+          }
+          return item;
         }
-        return item;
+      },
+      function empty(){
+        this.length = 0;
+        this.index = 0;
+        this.items = [];
+        return this;
+      },
+      function front(){
+        return this.items[this.index];
       }
-    }
+    ]);
 
-    function empty(){
-      this.length = 0;
-      this.index = 0;
-      this.items = [];
-      return this;
-    }
-
-    function front(){
-      return this.items[this.index];
-    }
-
-    define(Queue.prototype, [push, empty, front, shift]);
     return Queue;
   })();
-
 
   exports.Feeder = (function(){
     function Feeder(callback, context, pace){
       var self = this;
       this.queue = new Queue;
       this.active = false;
-      this.feeder = feeder;
       this.pace = pace || 5;
-
-      function feeder(){
+      this.feeder = function feeder(){
         var count = Math.min(self.pace, self.queue.length);
 
         while (self.active && count--) {
@@ -1223,33 +1184,31 @@ var utility = (function(exports){
         } else if (self.active) {
           setTimeout(feeder, 15);
         }
+      };
+    }
+
+    define(Feeder.prototype, [
+      function push(item){
+        this.queue.push(item);
+        if (!this.active) {
+          this.active = true;
+          setTimeout(this.feeder, 15);
+        }
+        return this;
+      },
+      function pause(){
+        this.active = false;
       }
-    }
+    ]);
 
-    function push(item){
-      this.queue.push(item);
-      if (!this.active) {
-        this.active = true;
-        setTimeout(this.feeder, 15);
-      }
-      return this;
-    }
-
-    function pause(){
-      this.active = false;
-    }
-
-    define(Feeder.prototype, [push, pause]);
     return Feeder;
   })();
-
 
   function inspect(o){
     o = require('util').inspect(o, null, 4);
     console.log(o);
     return o;
   }
-
   exports.inspect = inspect;
 
   return exports;
