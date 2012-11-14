@@ -260,7 +260,7 @@ var assembler = (function(exports){
 
 
     define(Code.prototype, [
-      function inherit(code){
+      function derive(code){
         if (code) {
           this.strings = code.strings;
           this.hash = code.hash;
@@ -1516,7 +1516,7 @@ var assembler = (function(exports){
           this.code = this.pending.pop();
           this.code.filename = this.filename;
           if (lastCode) {
-            this.code.inherit(lastCode);
+            this.code.derive(lastCode);
           }
           recurse(this.code.body);
           if (this.code.ScopeType === SCOPE.GLOBAL || this.code.ScopeType === SCOPE.EVAL){
