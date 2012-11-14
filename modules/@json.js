@@ -103,57 +103,57 @@ function Str(key, holder){
 }
 
 
-$__defineProps(JSON, {
-  stringify(value, replacer, space){
-    ReplacerFunction = undefined;
-    PropertyList = undefined;
-    stack = new Set;
-    indent = '';
+export function stringify(value, replacer, space){
+  ReplacerFunction = undefined;
+  PropertyList = undefined;
+  stack = new Set;
+  indent = '';
 
-    if ($__Type(replacer) === 'Object') {
-      if (typeof replacer === 'function') {
-        ReplacerFunction = replacer;
-      } else if ($__GetNativeBrand(replacer) === 'Array') {
-        let props = new Set;
+  if ($__Type(replacer) === 'Object') {
+    if (typeof replacer === 'function') {
+      ReplacerFunction = replacer;
+    } else if ($__GetNativeBrand(replacer) === 'Array') {
+      let props = new Set;
 
-        for (let v of replacer) {
-          var item,
-              type = $__Type(v);
+      for (let v of replacer) {
+        var item,
+            type = $__Type(v);
 
-          if (type === 'String') {
-            item = v;
-          } else if (type === 'Number') {
-            item = v + '';
-          } else if (type === 'Object') {
-            let brand = $__GetNativeBrand(v);
-            if (brand === 'String' || brand === 'Number') {
-              item = $__ToString(v);
-            }
-          }
-
-          if (item !== undefined) {
-            props.add(item);
+        if (type === 'String') {
+          item = v;
+        } else if (type === 'Number') {
+          item = v + '';
+        } else if (type === 'Object') {
+          let brand = $__GetNativeBrand(v);
+          if (brand === 'String' || brand === 'Number') {
+            item = $__ToString(v);
           }
         }
 
-        PropertyList = [...props];
+        if (item !== undefined) {
+          props.add(item);
+        }
       }
-    }
 
-    if ($__Type(space) === 'Object') {
-      space = $__GetPrimitiveValue(space);
+      PropertyList = [...props];
     }
-
-    if ($__Type(space) === 'String') {
-      gap = $__StringSlice(space, 0, 10);
-    } else if ($__Type(space) === 'Number') {
-      space |= 0;
-      space = space > 10 ? 10 : space < 1 ? 0 : space
-      gap = ' '.repeat(space);
-    } else {
-      gap = '';
-    }
-
-    return Str('', { '': value });
   }
-});
+
+  if ($__Type(space) === 'Object') {
+    space = $__GetPrimitiveValue(space);
+  }
+
+  if ($__Type(space) === 'String') {
+    gap = $__StringSlice(space, 0, 10);
+  } else if ($__Type(space) === 'Number') {
+    space |= 0;
+    space = space > 10 ? 10 : space < 1 ? 0 : space
+    gap = ' '.repeat(space);
+  } else {
+    gap = '';
+  }
+
+  return Str('', { '': value });
+}
+
+$__defineMethods(JSON, [stringify]);

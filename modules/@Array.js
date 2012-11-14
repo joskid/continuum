@@ -11,26 +11,25 @@ export function Array(...values){
 $__setupConstructor(Array, $__ArrayProto);
 
 
-$__defineProps(Array, {
-  isArray(array){
-    return $__GetNativeBrand(array) === 'Array';
-  },
-  from(iterable){
-    var out = [];
-    iterable = $__ToObject(iterable);
+export function isArray(array){
+  return $__GetNativeBrand(array) === 'Array';
+}
 
-    for (var i = 0, len = iterable.length >>> 0; i < len; i++) {
-      if (i in iterable) {
-        out[i] = iterable[i];
-      }
+export function from(iterable){
+  var out = [];
+  iterable = $__ToObject(iterable);
+
+  for (var i = 0, len = iterable.length >>> 0; i < len; i++) {
+    if (i in iterable) {
+      out[i] = iterable[i];
     }
-
-    return out;
   }
-});
 
-export { isArray: Array.isArray,
-         from: Array.from };
+  return out;
+}
+
+$__defineMethods(Array, [isArray, from]);
+
 
 {
 $__defineProps(Array.prototype, {

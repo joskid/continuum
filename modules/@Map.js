@@ -3,7 +3,7 @@ export function Map(iterable){
   if ($__IsConstructCall()) {
     map = this;
   } else {
-    if (this === undefined || this === $__MapProto) {
+    if (this == null || this === $__MapProto) {
       map = $__ObjectCreate($__MapProto) ;
     } else {
       map = $__ToObject(this);
@@ -71,7 +71,7 @@ $__DefineOwnProperty(Map.prototype, 'size', {
     }
     return $__MapSize(this);
   },
-  set: undefined
+  set: void 0
 });
 
 let MAP = 'Map',

@@ -43,10 +43,10 @@
 
   $__setupFunction = function setupFunction(func, name){
     $__SetInternal(func, 'Native', true);
-    if (name !== undefined) {
+    $__deleteDirect(func, 'prototype');
+    if (name) {
       $__defineDirect(func, 'name', name, ___);
     }
-    $__deleteDirect(func, 'prototype');
   };
 
   $__defineConstants = function defineConstants(obj, props){
@@ -123,8 +123,7 @@ class Storage {
   }
 }
 
-$__DefineOwnProperty(Storage.prototype, 'set', { enumerable: false, configurable: false, writable: false });
-$__DefineOwnProperty(Storage.prototype, 'empty', { enumerable: false, configurable: false, writable: false });
+$__hideEverything(Storage.prototype);
 
 
 let _ = o => {

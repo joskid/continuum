@@ -5,7 +5,7 @@ export function Set(iterable){
   if ($__IsConstructCall()) {
     set = this;
   } else {
-    if (this === undefined || this === $__SetProto) {
+    if (this == null || this === $__SetProto) {
       set = $__ObjectCreate($__SetProto) ;
     } else {
       set = $__ToObject(this);
@@ -65,7 +65,7 @@ $__DefineOwnProperty(Set.prototype, 'size', {
     }
     return $__MapSize(ensureSet(this));
   },
-  set: undefined
+  set: void 0
 });
 
 function ensureSet(o, name){
