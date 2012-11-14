@@ -6351,12 +6351,48 @@ exports.utility = (function(exports){
       },
       function __iterator__(type){
         return new PropertyListIterator(this, type);
+      },
+      function inspect(){
+        var out = create(null);
+        function Token(value){
+          this.value = value;
+        }
+        Token.prototype.inspect = function(){
+          return this.value;
+        };
+        this.forEach(function(property){
+          var attrs = (property[2] & 0x01 ? 'E' : '_') +
+                      (property[2] & 0x02 ? 'C' : '_') +
+                      (property[2] & 0x04 ? 'W' :
+                       property[2] & 0x08 ? 'A' : '_');
+          out[property[0]] = new Token(attrs + ' ' + (isObject(property[1]) ? property[1].NativeBrand : property[1]));
+        });
+        return require('util').inspect(out);
       }
     ]);
 
     return PropertyList;
   })();
+/*
 
+        this.forEach(function(property){
+          if (property[2] & 0x08) {
+            Object.defineProperty(out, property[0], {
+              enumerable: (property[2] & 0x01) > 0,
+              configurable: (property[2] & 0x02) > 0,
+              get: property[1].Get ? function(){} : undefined,
+              set: property[1].Set ? function(){} : undefined
+            });
+          } else {
+            Object.defineProperty(out, property[0], {
+              enumerable: (property[2] & 0x01) > 0,
+              configurable: (property[2] & 0x02) > 0,
+              writable: (property[2] & 0x04) > 0,
+              value: isObject(property[1]) ? property[1].properties : property[1]
+            });
+          }
+        });
+        */
   exports.Stack = (function(){
     function Stack(){
       this.empty();
@@ -11911,7 +11947,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     function GlobalEnvironmentRecord(global){
       ObjectEnvironmentRecord.call(this, global);
       this.thisValue = this.bindings;
-      this.bindings.env = this;
+      global.env = this;
+      hide(global, 'env');
     }
 
     inherit(GlobalEnvironmentRecord, ObjectEnvironmentRecord, {
@@ -13752,6 +13789,38 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   })();
 
 
+  function ScriptFile(source){
+    Script.call(this, ScriptFile.load(source));
+  }
+
+  ScriptFile.load = (function(){
+    if (typeof process !== 'undefined') {
+      return function load(source){
+        if (!~source.indexOf('\n') && require('fs').existsSync(source)) {
+          return {
+            source: require('fs').readFileSync(source, 'utf8'),
+            filename: source
+          };
+        } else {
+          return {
+            source: source,
+            filename: ''
+          };
+        }
+      };
+    }
+    return function load(source){
+      // TODO ajax
+      return {
+        source: source,
+        filename: ''
+      };
+    };
+  })();
+
+  utility.inherit(ScriptFile, Script);
+
+
 
   function activate(target){
     if (realm !== target) {
@@ -14659,6 +14728,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       this.intrinsics.FunctionProto.Realm = this;
       this.intrinsics.ThrowTypeError = CreateThrowTypeError(this);
       hide(this.intrinsics.FunctionProto, 'Scope');
+      hide(this, 'intrinsics');
+      hide(this, 'natives');
+      hide(this, 'active');
+      hide(this, 'templates');
+      hide(this, 'scripts');
+      hide(this, 'globalEnv');
 
       for (var k in natives) {
         this.natives.binding({ name: k, call: natives[k] });
@@ -14674,10 +14749,14 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
       initialize(this, errback, function(){
         deactivate(self);
+        self.scripts = [];
         self.state = 'idle';
         callback && callback(self);
         self.emit('ready');
       });
+      hide(this, 'mutationScope');
+      hide(this, 'initialized');
+      hide(this, 'quiet');
     }
 
     inherit(Realm, Emitter, [
@@ -14747,12 +14826,23 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   exports.Realm = Realm;
   exports.Script = Script;
+  exports.ScriptFile = ScriptFile;
+
+  exports.createRealm = function createRealm(listener){
+    return new Realm(listener);
+  };
+
+  exports.createBytecode = function createBytecode(source){
+    return new ScriptFile(source).bytecode;
+  };
+
   exports.activeRealm = function activeRealm(){
     if (!realm && realms.length) {
       activate(realms[realms.length - 1]);
     }
     return realm;
   };
+
   exports.activeContext = function activeContext(){
     return context;
   };
@@ -15845,13 +15935,13 @@ exports.debug = (function(exports){
     }
   }
 
-  var label = function(mirror){
+  var alwaysLabel = function(mirror){
     return mirror.label();
   };
 
   Renderer.prototype = {
-    Unknown: label,
-    BooleanValue: label,
+    Unknown: alwaysLabel,
+    BooleanValue: alwaysLabel,
     StringValue: function(mirror){
       return utility.quotes(mirror.subject);
     },
@@ -15859,32 +15949,32 @@ exports.debug = (function(exports){
       var label = mirror.label();
       return label === 'number' ? mirror.subject : label;
     },
-    UndefinedValue: label,
-    NullValue: label,
+    UndefinedValue: alwaysLabel,
+    NullValue: alwaysLabel,
     Thrown: function(mirror){
       return mirror.getError();
     },
-    Accessor: label,
-    Arguments: label,
-    Array: label,
-    Boolean: label,
-    Date: label,
+    Accessor: alwaysLabel,
+    Arguments: alwaysLabel,
+    Array: alwaysLabel,
+    Boolean: alwaysLabel,
+    Date: alwaysLabel,
     Error: function(mirror){
       return mirror.getValue('name') + ': ' + mirror.getValue('message');
     },
-    Function: label,
-    Global: label,
-    JSON: label,
-    Map: label,
-    Math: label,
-    Module: label,
-    Object: label,
-    Number: label,
-    RegExp: label,
-    Scope: label,
-    Set: label,
-    String: label,
-    WeakMap: label
+    Function: alwaysLabel,
+    Global: alwaysLabel,
+    JSON: alwaysLabel,
+    Map: alwaysLabel,
+    Math: alwaysLabel,
+    Module: alwaysLabel,
+    Object: alwaysLabel,
+    Number: alwaysLabel,
+    RegExp: alwaysLabel,
+    Scope: alwaysLabel,
+    Set: alwaysLabel,
+    String: alwaysLabel,
+    WeakMap: alwaysLabel
   };
 
   void function(){
@@ -16104,19 +16194,25 @@ exports.modules["@timers"] = "export function clearInterval(id){\n  id = $__ToIn
 
 
 
-return (function(Realm){
-  function continuum(listener){
-    return new Realm(listener);
-  }
+  var continuum = {
+    createBytecode      : exports.runtime.createBytecode,
+    createNativeFunction: exports.runtime.createNativeFunction,
+    createRealm         : exports.runtime.createRealm,
+    createRenderer      : exports.debug.createRenderer,
+    introspect          : exports.debug.introspect
+  };
 
-  continuum.debug = exports.debug;
-  continuum.utility = exports.utility;
-  continuum.constants = exports.constants;
-  continuum.createNativeFunction = exports.runtime.createNativeFunction;
-  continuum.Realm = Realm;
+  exports.utility.define(continuum, {
+    Assembler : exports.assembler.Assembler,
+    Realm     : exports.runtime.Realm,
+    Renderer  : exports.debug.Renderer,
+    Script    : exports.runtime.Script,
+    ScriptFile: exports.runtime.ScriptFile,
+    constants : exports.constants,
+    utility   : exports.utility
+  });
 
   return continuum;
-})(exports.runtime.Realm);
 
 }).apply(this, function(){
   var exports = { builtins: {}, modules: {} };
