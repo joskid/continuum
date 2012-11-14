@@ -1057,12 +1057,48 @@ var utility = (function(exports){
       },
       function __iterator__(type){
         return new PropertyListIterator(this, type);
+      },
+      function inspect(){
+        var out = create(null);
+        function Token(value){
+          this.value = value;
+        }
+        Token.prototype.inspect = function(){
+          return this.value;
+        };
+        this.forEach(function(property){
+          var attrs = (property[2] & 0x01 ? 'E' : '_') +
+                      (property[2] & 0x02 ? 'C' : '_') +
+                      (property[2] & 0x04 ? 'W' :
+                       property[2] & 0x08 ? 'A' : '_');
+          out[property[0]] = new Token(attrs + ' ' + (isObject(property[1]) ? property[1].NativeBrand : property[1]));
+        });
+        return require('util').inspect(out);
       }
     ]);
 
     return PropertyList;
   })();
+/*
 
+        this.forEach(function(property){
+          if (property[2] & 0x08) {
+            Object.defineProperty(out, property[0], {
+              enumerable: (property[2] & 0x01) > 0,
+              configurable: (property[2] & 0x02) > 0,
+              get: property[1].Get ? function(){} : undefined,
+              set: property[1].Set ? function(){} : undefined
+            });
+          } else {
+            Object.defineProperty(out, property[0], {
+              enumerable: (property[2] & 0x01) > 0,
+              configurable: (property[2] & 0x02) > 0,
+              writable: (property[2] & 0x04) > 0,
+              value: isObject(property[1]) ? property[1].properties : property[1]
+            });
+          }
+        });
+        */
   exports.Stack = (function(){
     function Stack(){
       this.empty();
