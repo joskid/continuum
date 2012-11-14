@@ -64,7 +64,9 @@ Builder.prototype.combine = function combine(){
 };
 
 Builder.prototype.writeFile = function writeFile(name){
-  write(name, this.combine());
+  var src = this.combine();
+  write(name+'.js', src);
+  write(name+'.min.js', minify(src));
 }
 
 
@@ -97,4 +99,63 @@ builder.addDirectory('../modules', function(name, source){
 
 builder.addFiles('./footer.js');
 
-builder.writeFile('../continuum-combined.js');
+var esprima, esmangle, escodegen, passes, post;
+
+function minify(src){
+  esprima = esprima || require('esprima');
+  escodegen = escodegen || require('escodegen');
+  esmangle = esmangle || require('esmangle');
+  passes = passes || [
+    esmangle.require('lib/pass/transform-dynamic-to-static-property-access'),
+    esmangle.require('lib/pass/reordering-function-declarations'),
+    esmangle.require('lib/pass/remove-unused-label'),
+    esmangle.require('lib/pass/remove-empty-statement'),
+    esmangle.require('lib/pass/remove-wasted-blocks'),
+    esmangle.require('lib/pass/transform-to-compound-assignment'),
+    esmangle.require('lib/pass/transform-to-sequence-expression'),
+    esmangle.require('lib/pass/transform-branch-to-expression'),
+    esmangle.require('lib/pass/reduce-sequence-expression'),
+    esmangle.require('lib/pass/reduce-branch-jump'),
+    esmangle.require('lib/pass/reduce-multiple-if-statements'),
+    esmangle.require('lib/pass/dead-code-elimination')
+  ];
+  post = post || [
+    esmangle.require('lib/post/transform-static-to-dynamic-property-access'),
+    esmangle.require('lib/post/rewrite-boolean'),
+    esmangle.require('lib/post/rewrite-conditional-expression')
+  ];
+
+  function passer(node, pass){ return pass(node) }
+
+  var a = { loc: true },
+      b = { destructive: true },
+      c = {
+        comment: false,
+        allowUnparenthesizedNew: true,
+        format: {
+          indent: {
+            style: '  ',
+            base: 0,
+            adjustMultilineComment: false
+          },
+          json: false,
+          renumber: true,
+          hexadecimal: true,
+          quotes: 'single',
+          escapeless: false,
+          compact: true,
+          parentheses: true,
+          semicolons: true,
+          safeConcatenation: true
+        }
+      },
+      parse = esprima.parse,
+      mangle = esmangle.mangle,
+      optimize = esmangle.optimize,
+      generate = escodegen.generate;
+
+  return generate(mangle(post.reduce(passer, optimize(parse(src, a), passes, b)), b), c);
+}
+
+
+builder.writeFile('../continuum');
