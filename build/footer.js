@@ -23,7 +23,7 @@
     builtins: {},
     modules: {},
     fs: {
-      readFile: function(path, callback){
+      readFile: function(path, encoding, callback){
         var xhr = new XMLHttpRequest;
         xhr.responseType = 'text';
         xhr.open('GET', path);
