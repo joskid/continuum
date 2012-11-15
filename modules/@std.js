@@ -28,6 +28,7 @@ import Function from '@Function';
 import Map      from '@Map';
 import Number   from '@Number';
 import Object   from '@Object';
+import Proxy    from '@reflect';
 import RegExp   from '@RegExp';
 import Set      from '@Set';
 import String   from '@String';
@@ -54,7 +55,7 @@ import Math from '@math';
 let StopIteration = $__StopIteration
 
 
-export Array, Boolean, Date, Function, Map, Number, Object, RegExp, Set, String, WeakMap,
+export Array, Boolean, Date, Function, Map, Number, Object, Proxy, RegExp, Set, String, WeakMap,
        Error, EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError,
        decodeURI, decodeURIComponent, encodeURI, encodeURIComponent, eval, isFinite, isNaN,
        parseFloat, parseInt, clearInterval, clearTimeout, setInterval, setTimeout,

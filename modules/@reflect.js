@@ -1,3 +1,21 @@
+
+export function Proxy(target, handler){
+  ensureObject(target, 'Proxy');
+  ensureObject(handler, 'Proxy');
+  return $__ProxyCreate(target, handler);
+}
+
+
+function makeDefiner(desc){
+  return (object, key, value) => {
+    desc.value = value;
+    $__DefineOwnProperty(object, key, desc);
+    desc.value = undefined;
+    return object;
+  };
+}
+
+
 let ___ = 0b0000,
     E__ = 0b0001,
     _C_ = 0b0010,
@@ -11,27 +29,11 @@ let ___ = 0b0000,
     _CA = 0b1010,
     ECA = 0b1011;
 
-function makeDefiner(desc){
-  return (object, key, value) => {
-    desc.value = value;
-    $__DefineOwnProperty(object, key, desc);
-    desc.value = undefined;
-    return object;
-  };
-}
-
 let defineNormal = makeDefiner({ writable: true,
                                  enumerable: true,
                                  configurable: true });
 let sealer = { configurable: false },
     freezer = { configurable: false, writable: false };
-
-
-export function Proxy(target, handler){
-  ensureObject(target, 'Proxy');
-  ensureObject(handler, 'Proxy');
-  return $__ProxyCreate(target, handler);
-}
 
 
 export class Handler {
