@@ -14463,9 +14463,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         WeakMapGet: wrapWeakMapFunction('get'),
         WeakMapHas: wrapWeakMapFunction('has'),
         readFile: function(path, callback){
-          require('fs').readFile(path, function(err, file){
+          require('fs').readFile(path, 'utf8', function(err, file){
             callback.Call(undefined, [file]);
-          }, 'utf8');
+          });
         },
         resolve: module ? require('path').resolve
                         : function(base, to){
@@ -16246,7 +16246,7 @@ exports.modules["@timers"] = "export function clearInterval(id){\n  id = $__ToIn
     builtins: {},
     modules: {},
     fs: {
-      readFile: function(path, callback){
+      readFile: function(path, encoding, callback){
         var xhr = new XMLHttpRequest;
         xhr.responseType = 'text';
         xhr.open('GET', path);
