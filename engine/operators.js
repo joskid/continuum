@@ -49,6 +49,9 @@ var operators = (function(exports){
       var base = v.base;
 
       if (HasPrimitiveBase(v)) {
+        if (typeof base === STRING && v.name === 'length' || v.name >= 0 && v.name < base.length) {
+          return base[v.name];
+        }
         base = new exports.$PrimitiveBase(base);
       }
 
