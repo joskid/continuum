@@ -102,13 +102,12 @@ Extras:
 
 Additionally exported is the class objects `Assembler`, `Realm`, `Renderer`, and `Script`.
 
-### Realm ###
+## Realm ##
 A Realm is the main thing you interact with. Each realm has a global object with a unique set of builtin globals. A realm is roughly equivelent to an iframe or a node vm context.
 
 * __realm.evaluate(code)__: Executes code in the virtual machine and returns the completion value, if any. "code" can be a string or an already compiled Script object. Every time code is executed, the script object is added to realm.scripts, so you can reuse a script if desired.
 * __realm.evaluateAsync(code, callback)__: Primarily for when executing code that uses the module system, which must be run asynchronously if importing remote resources.
 
-Realms are also event emitters and emit events as hooks to implement some APIs, such as the console, as well as vm signals like uncaught exceptions, or debugger pauses.
 
 __VM Events__
 These are emitted by the VM to indicate changes to the state of execution and provide access to information about related objects.
@@ -126,6 +125,15 @@ These are emitted by functions from inside the VM to simulate things like input/
 * __realm.on('write', function(text, color){})__: emitted by __stdout.write__, which is used by __console.log__ and friends.
 * __realm.on('clear', function(){})__: emitted by __stdout.clear__ to provide a way to clear whatever it is you're providing as stdout
 * __realm.on('backspace', function(number){})__: emitted by __stdout.backspace__ to provide a way to delete a specific amount of characters from the end.
+
+## Renderer ##
+A renderer is a visitor used to introspect VM objects and values.
+
+## Assembler ##
+An assembler is used to convert AST into bytecode and static script information.
+
+## Script ##
+A script contains all the bits related to a given chunk of source. The given options, sourcecode string, AST, bytecode, and the thunk (lazily created upon first execution). Scripts don't contain realm-specific information, so they are portable between realms/globals and can be executed multiple times as needed.
 
 # TODO
 * Hook up module system to environment
