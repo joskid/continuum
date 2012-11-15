@@ -106,7 +106,8 @@ h1, h2
       { top: 8px; }
 
 .ƒtree
-{ padding: 0 0 0 15px; margin: 0 0 0 10px; list-style: none; position: relative; display: inline-block; }
+{ width: 90%;  padding: 0 0 0 15px; margin: 0 0 0 10px; list-style: none; position: relative; display: inline-block; }
+
   .ƒproperty
   { padding-right: 15px }
     .ƒkey, .ƒbranch, .ƒleaf
@@ -116,7 +117,7 @@ h1, h2
       .ƒkey:after
       { content: ':'; color: #aaa; margin-right: 5px; }
     .ƒbranch
-    {}
+    { max-width: 70%; }
       .ƒbranch.ƒexpanded
       { }
       .ƒtree:before
@@ -130,22 +131,27 @@ h1, h2
       .ƒbranch > .ƒlabel:hover
       { text-decoration: underline; cursor: pointer; }
 
-  .ƒpreview
-  { display: inline-block; margin: 0 0 0 2px; padding: 0; list-style: none; font-size: 12px }
-    .ƒpreview:before
-    { content: '{'; color: #aaa; }
-    .ƒpreview:after
-    { content: '}'; color: #aaa; }
-    .ƒpreview > li
-    { display: inline-block; vertical-align: top; margin-left: 2px }
-      .ƒpreview > li:before
-      { content: ', '; color: #aaa; }
-      .ƒpreview > li:first-child:before
-      { content: ''; margin-right: 2px }
-        .ƒpreview-property > .ƒkey
-        { margin-right: 0; }
-        .ƒpreview-property > .ƒkey:after
-        { margin-right: 1px; }
+  .ƒresult-tree
+  { width: 90%; }
+
+  .ƒpreview-tree
+  { display: inline-block; margin-left: 5px; }
+    .ƒpreview
+    { display: inline-block; margin: 0 0 0 2px; padding: 0; list-style: none; font-size: 12px }
+      .ƒpreview:before
+      { content: '{'; color: #aaa; }
+      .ƒpreview:after
+      { content: '}'; color: #aaa; padding-left: 2px; }
+      .ƒpreview > .ƒproperty
+      { display: inline-block; vertical-align: top; margin-left: 2px; padding-right: 0; }
+        .ƒpreview > .ƒproperty:after
+        { content: ','; color: #aaa; }
+        .ƒpreview > .ƒproperty:last-child:after
+        { content: ''; margin-left: 2px }
+          .ƒpreview > .ƒproperty > .ƒkey
+          { margin-right: 0; }
+          .ƒpreview > .ƒproperty > .ƒkey:after
+          { margin-right: 3px; }
 
   .ƒArrayPreview
   { }
@@ -154,12 +160,12 @@ h1, h2
     .ƒArrayPreview:after
     { content: ']'; }
 
-  .ƒFunctionPreview
+  .ƒpreview.ƒFunction
   { color: #6af }
-    .ƒFunctionPreview:before
-    { content: ''; }
-    .ƒFunctionPreview:after
-    { content: ''; }
+    .ƒpreview.ƒFunction:before
+    { content: ''; margin: 0 !important; }
+    .ƒpreview.ƒFunction:after
+    { color: #6af; content: '()'; padding: 0; }
 
 
 .ƒbutton
@@ -331,7 +337,7 @@ h1, h2
 .ƒWeakMap        { color: #fa0 } /* hsl( 40, 100%, 50%) */
 
 
-.ƒScope          { color: #faf; }
+.ƒScope          { color: #faf }
 .ƒFunctionScope  { color: #8fc }
 .ƒEnv            { color: #960 }
 .ƒOuter          { color: #a4f }
@@ -351,6 +357,20 @@ h1, h2
 .ƒParams:after   { color: #8cf; content: ')'; } /* hsl(206, 100%, 77%) */
 .ƒParam:before    { color: #8cf; content: ', ' } /* hsl(206, 100%, 77%) */
 .ƒParam:first-child:before { content: '' }
+ /* hsl(213, 100%, 70%) */
+.ƒECW > .ƒFunction > .ƒFunctionName  { color: #6af } /* hsl(  0,   0%, 80%) */
+.ƒE_W > .ƒFunction > .ƒFunctionName  { color: #ccf } /* hsl(240, 100%, 90%) */
+.ƒ__W > .ƒFunction > .ƒFunctionName  { color: #88a } /* hsl(240,  17%, 60%) */
+.ƒ_CW > .ƒFunction > .ƒFunctionName  { color: #36a } /* hsl(  0,   0%, 40%) */
+.ƒEC_ > .ƒFunction > .ƒFunctionName  { color: #ff8 } /* hsl( 60, 100%, 77%) */
+.ƒE__ > .ƒFunction > .ƒFunctionName  { color: #0fc } /* hsl(168, 100%, 50%) */
+.ƒ_C_ > .ƒFunction > .ƒFunctionName  { color: #660 } /* hsl( 60, 100%, 20%) */
+.ƒ___ > .ƒFunction > .ƒFunctionName  { color: #088 } /* hsl(180, 100%, 27%) */
+.ƒ__A > .ƒFunction > .ƒFunctionName  { color: #860 } /* hsl( 45, 100%, 27%) */
+.ƒE_A > .ƒFunction > .ƒFunctionName  { color: #fc8 } /* hsl( 34, 100%, 77%) */
+.ƒ_CA > .ƒFunction > .ƒFunctionName  { color: #868 } /* hsl(300,  14%, 47%) */
+.ƒECA > .ƒFunction > .ƒFunctionName  { color: #fc0 } /* hsl( 48, 100%, 50%) */
+
 
 .ƒECW            { color: #ccc } /* hsl(  0,   0%, 80%) */
 .ƒE_W            { color: #ccf } /* hsl(240, 100%, 90%) */

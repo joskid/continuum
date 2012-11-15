@@ -142,6 +142,28 @@ var Component = (function(){
       }
       return subject;
     },
+    function batchAppend(subject){
+      if (!subject) return subject;
+      if (!this.batcher) {
+        var self = this,
+            batcher = this.batcher = document.createDocumentFragment();
+        setTimeout(function(){
+          self.element.appendChild(self.batcher);
+          self.batcher = null;
+          self.onBatchAppend(batcher);
+        }, 1);
+      }
+      if (subject.element) {
+        this.children || (this.children = []);
+        this.children.push(subject);
+        this.batcher.appendChild(subject.element);
+      } else if (subject instanceof Element) {
+        this.batcher.appendChild(subject);
+      }
+      return subject;
+    },
+    function onBatchAppend(){
+    },
     function insert(subject, before){
       if (!this.children) {
         return this.append(subject);
@@ -1484,11 +1506,11 @@ var Instructions = (function(){
     this.instruction = instruction;
     this.addClass('instruction');
     this.addClass(op.name);
-    this.append(new Span(op.name, 'op-name'));
+    this.batchAppend(new Span(op.name, 'op-name'));
     if (op.name === 'GET' || op.name === 'PUT') {
       if (!isObject(item)) {
         var type = typeof item;
-        this.append(new Span(translators[type](item), typeofs[type]));
+        this.batchAppend(new Span(translators[type](item), typeofs[type]));
       } else {
         if (item.Reference) {
           var base = item.base;
@@ -1503,19 +1525,19 @@ var Instructions = (function(){
           }
         }
         if (item && item.NativeBrand) {
-          var result = renderer.render(item);
-          this.append(result);
+          var result = render('normal', item);
+          this.batchAppend(result);
         }
       }
     } else if (op.name === 'BINARY') {
-      this.append(new Span(constants.BINARYOPS.getKey(instruction[0]), 'Operator'));
+      this.batchAppend(new Span(constants.BINARYOPS.getKey(instruction[0]), 'Operator'));
     } else if (op.name === 'UNARY') {
-      this.append(new Span(constants.UNARYOPS.getKey(instruction[0]), 'Operator'));
+      this.batchAppend(new Span(constants.UNARYOPS.getKey(instruction[0]), 'Operator'));
     } else {
       for (var i=0; i < op.params; i++) {
         var param = instruction[i];
         if (!isObject(param)) {
-          this.append(new Span(param, typeofs[typeof param]));
+          this.batchAppend(new Span(param, typeofs[typeof param]));
         }
       }
     }
@@ -1530,13 +1552,15 @@ var Instructions = (function(){
   }
 
   inherit(Instructions, Component, [
+    function onBatchAppend(){
+      this.element.scrollTop = this.element.scrollHeight;
+    },
     function addInstruction(op){
       // if (this.children.length > 100) {
       //   this.element.removeChild(this.children[0].element);
       //   this.children = this.children.slice(1);
       // }
-      this.append(new Instruction(op[0], op[1]))
-      this.element.scrollTop = this.element.scrollHeight;
+      this.batchAppend(new Instruction(op[0], op[1]));
     }
   ]);
 
@@ -1561,37 +1585,56 @@ var attributes = ['___', 'E__', '_C_', 'EC_', '__W', 'E_W', '_CW', 'ECW', '__A',
 
 
 var Property = (function(){
-  function Property(mirror, key){
+  function Property(mirror, name){
     Component.call(this, 'li');
     this.mirror = mirror;
-    this.attrs = attributes[mirror.propAttributes(key)];
+    this.name = name;
+    this.valueMirror = this.createValue();
+    this.value = render(this.valueRenderer, this.valueMirror);
+    if (this.valueMirror.type === 'function' && this.valueMirror.getName() === name) {
+      this.value.addClass(this.getAttributes());
+    } else {
+      this.key = this.createKey();
+    }
     this.addClass('property');
-    this._key = key;
-    this.key = new Key(key);
-    this.key.addClass(this.attrs);
     this.append(this.key);
-    this.prop = mirror.get(key);
-    this.property = renderer.render(this.prop);
-    this.append(this.property);
-    this.append(_('div'));
-    this.append(this.property.createTree());
+    this.append(this.value);
+    this.initTree();
   }
 
-  inherit(Property, Component, [
+  inherit(Property, Component, {
+    valueRenderer: 'normal'
+  }, [
+    function getAttributes(){
+      return this.attrs = attributes[this.mirror.propAttributes(this.name)];
+    },
+    function createKey(){
+      var key = new Key(this.name);
+      key.addClass(this.getAttributes());
+      return key;
+    },
+    function createValue(){
+      return this.mirror.get(this.name);
+    },
+    function initTree(){
+      this.append(_('div'));
+      this.append(this.value.createTree());
+    },
     function refresh(){
-      var attrs = attributes[this.mirror.propAttributes(this._key)];
+      var attrs = attributes[this.mirror.propAttributes(this.name)];
       if (attrs !== this.attrs) {
         this.key.removeClass(this.attrs);
         this.key.addClass(attrs);
         this.attrs = attrs;
       }
-      if (this.prop) {
-        var prop = this.mirror.get(this._key);
-        if (prop.subject !== this.prop.subject) {
-          this.prop = prop;
-          this.replace(this.property, renderer.render(prop));
-        } else if (this.property.tree) {
-          this.property.tree.refresh();
+      if (this.valueMirror) {
+        var valueMirror = this.createValue();
+        if (this.valueMirror !== valueMirror) {
+          var element = this.value;
+          this.valueMirror = valueMirror;
+          this.value = render(this.valueRenderer, valueMirror);
+          this.remove(element);
+          this.append(this.value);
         }
       }
     }
@@ -1600,56 +1643,18 @@ var Property = (function(){
   return Property;
 })();
 
-
-function createSpecialProperty(label, classname, callback){
-  var SpecialProperty = function(mirror){
-    Component.call(this, 'li');
-    this.mirror = mirror;
-    this.addClass('property');
-    this.key = new Key(label);
-    this.key.addClass(classname);
-    this.append(this.key);
-    this.prop = callback(mirror);
-    this.property = renderer.render(this.prop);
-    this.append(this.property);
-    this.append(_('div'));
-    this.append(this.property.createTree());
+var PreviewProperty = (function(){
+  function PreviewProperty(mirror, name){
+    Property.call(this, mirror, name);
   }
 
-  inherit(SpecialProperty, Property, [
-    function refresh(){
-      var prop = callback(this.mirror);
-      if (this.prop !== prop) {
-        this.prop = prop;
-        this.element.removeChild(this.element.lastElementChild);
-        this.append(renderer.render(this.property));
-      }
+  inherit(PreviewProperty, Property, {
+    valueRenderer: 'subpreview'
+  }, [
+    function initTree(){
+      return false;
     }
   ]);
-
-  return SpecialProperty;
-}
-
-var Scope = createSpecialProperty('[[scope]]', 'FunctionScope', function(mirror){ return mirror.getScope() });
-var Proto = createSpecialProperty('[[proto]]', 'Proto', function(mirror){ return mirror.getPrototype() });
-var Env = createSpecialProperty('[[env]]', 'Env', function(mirror){ return mirror.getEnvironment() });
-var Outer = createSpecialProperty('[[outer]]', 'Outer', function(mirror){ return mirror.getPrototype() });
-
-var PreviewProperty = (function(){
-  function PreviewProperty(mirror, key){
-    Component.call(this, 'li');
-    this.mirror = mirror;
-    this.attrs = attributes[mirror.propAttributes(key)];
-    this.addClass('preview-property');
-    this.key = new Key(key);
-    this.key.addClass(this.attrs);
-    this.append(this.key);
-    this.prop = mirror.get(key);
-    this.property = previewRenderer.render(this.prop);
-    this.append(this.property);
-  }
-
-  inherit(PreviewProperty, Property);
 
   return PreviewProperty;
 })();
@@ -1657,24 +1662,22 @@ var PreviewProperty = (function(){
 
 var Index = (function(){
   function Index(mirror, index){
-    Component.call(this, 'li');
-    this.mirror = mirror;
-    this._key = index;
-    this.addClass('index');
-    this.prop = mirror.get(index);
-    this.property = previewRenderer.render(this.prop);
-    this.append(this.property);
+    Property.call(this, mirror, index);
   }
 
   inherit(Index, PreviewProperty, [
+    function createKey(){
+      return null;
+    },
     function refresh(){
-      if (this.prop) {
-        var prop = this.mirror.get(this._key);
-        if (prop.subject !== this.prop.subject) {
-          this.prop = prop;
-          this.replace(this.property, renderer.render(prop));
-        } else if (this.property.tree) {
-          this.property.tree.refresh();
+      if (this.valueMirror) {
+        var valueMirror = this.mirror.get(this.name);
+        if (this.valueMirror !== valueMirror) {
+          var element = this.value;
+          this.valueMirror = valueMirror;
+          this.value = render(this.valueRenderer, valueMirror);
+          this.remove(element);
+          this.append(this.value);
         }
       }
     }
@@ -1682,6 +1685,41 @@ var Index = (function(){
 
   return Index;
 })();
+
+
+
+
+function createSpecialProperty(label, classname, method){
+  var SpecialProperty = function(mirror){
+    Property.call(this, mirror, label);
+  }
+
+  inherit(SpecialProperty, Property, [
+    function getAttributes(){
+      return this.attrs = classname;
+    },
+    function createValue(){
+      return this.mirror[method]();
+    },
+    function refresh(){
+      var valueMirror = this.createValue();
+      if (this.valueMirror !== valueMirror) {
+        var element = this.value;
+        this.valueMirror = valueMirror;
+        this.value = render(this.valueRenderer, valueMirror);
+        this.remove(element);
+        this.append(this.value);
+      }
+    }
+  ]);
+
+  return SpecialProperty;
+}
+
+var Scope = createSpecialProperty('[[scope]]', 'FunctionScope', 'getScope');
+var Proto = createSpecialProperty('[[proto]]', 'Proto', 'getPrototype');
+var Env = createSpecialProperty('[[env]]', 'Env', 'getEnvironment');
+var Outer = createSpecialProperty('[[outer]]', 'Outer', 'getPrototype');
 
 
 var Label = (function(){
@@ -1760,6 +1798,7 @@ var Result = (function(){
     if (tree) {
       this.append(_('div'));
       this.tree = this.append(tree);
+      this.tree.addClass('result-tree');
     }
   }
 
@@ -1857,9 +1896,11 @@ var Branch = (function(){
   function Branch(mirror){
     Component.call(this, 'div');
     this.mirror = mirror;
+    this.label = this.createLabel();
+    this.preview = this.createPreview();
     this.addClass('branch');
-    this.label = this.append(this.createLabel());
-    this.preview = this.append(this.createPreview());
+    this.append(this.label);
+    this.append(this.preview);
   }
 
   creator(Branch);
@@ -1877,7 +1918,10 @@ var Branch = (function(){
       return this.tree = new Tree;
     },
     function createPreview(){
-      return previewRenderer.render(this.mirror);
+      var preview = render('preview', this.mirror);
+      var tree = new Div('.preview-tree');
+      tree.append(preview);
+      return tree;
     },
     function expand(){
       if (!this.tree.expanded) {
@@ -1917,9 +1961,9 @@ var Branch = (function(){
         this.tree.initialized = true;
         this.keys = this.mirror.list(true);
         utility.iterate(this.keys, function(key){
-          this.tree.append(new Property(this.mirror, key));
+          this.tree.batchAppend(new Property(this.mirror, key));
         }, this);
-        this.tree.append(new Proto(this.mirror));
+        this.tree.batchAppend(new Proto(this.mirror));
       }
       return this;
     }
@@ -1963,7 +2007,7 @@ var FunctionBranch = (function(){
     },
     function initTree(){
       Branch.prototype.initTree.call(this);
-      this.tree.append(new Scope(this.mirror));
+      this.tree.batchAppend(new Scope(this.mirror));
     }
   ]);
 
@@ -1982,7 +2026,7 @@ var GlobalBranch = (function(){
     function initTree(){
       Branch.prototype.initTree.call(this);
       if (this.mirror.subject.env.outer) {
-        this.tree.append(new Env(this.mirror));
+        this.tree.batchAppend(new Env(this.mirror));
       }
     }
   ]);
@@ -2003,10 +2047,10 @@ var ScopeBranch = (function(){
         this.tree.initialized = true;
         this.keys = this.mirror.list(true);
         utility.iterate(this.keys, function(key){
-          this.tree.append(new Property(this.mirror, key));
+          this.tree.batchAppend(new Property(this.mirror, key));
         }, this);
         if (this.mirror.subject.outer) {
-          this.tree.append(new Outer(this.mirror));
+          this.tree.batchAppend(new Outer(this.mirror));
         }
       }
       return this;
@@ -2070,7 +2114,7 @@ var Preview = (function(){
   inherit(Preview, Branch, [
     function createPreview(){
       utility.iterate(this.mirror.list(false), function(key){
-        this.append(new PreviewProperty(this.mirror, key));
+        this.batchAppend(new PreviewProperty(this.mirror, key));
       }, this);
     },
     function refresh(){
@@ -2094,7 +2138,7 @@ var IndexedPreview = (function(){
     function createPreview(){
       var len = this.mirror.getValue('length');
       for (var i=0; i < len; i++) {
-        this.append(new Index(this.mirror, i));
+        this.batchAppend(new Index(this.mirror, i));
       }
     }
   ]);
@@ -2106,8 +2150,11 @@ var IndexedPreview = (function(){
 
 var FunctionPreview = (function(){
   function FunctionPreview(mirror){
-    Preview.call(this, mirror);
-    this.addClass('FunctionPreview');
+    Component.call(this, 'div');
+    this.mirror = mirror;
+    this.addClass('preview');
+    this.addClass('Function');
+    this.createPreview();
   }
 
   creator(FunctionPreview);
@@ -2121,65 +2168,98 @@ var FunctionPreview = (function(){
 })();
 
 
-var renderer = continuum.createRenderer({
-  Unknown: Branch.create,
-  BooleanValue: Leaf.create,
-  StringValue: StringLeaf.create,
-  NumberValue: NumberLeaf.create,
-  UndefinedValue: Leaf.create,
-  NullValue: Leaf.create,
-  Accessor: Leaf.create,
-  Global: GlobalBranch.create,
-  Thrown: ThrownBranch.create,
-  Arguments: Branch.create,
-  Array: Branch.create,
-  Boolean: Branch.create,
-  Date: Branch.create,
-  Error: Branch.create,
-  Function: FunctionBranch.create,
-  JSON: Branch.create,
-  Map: Branch.create,
-  Math: Branch.create,
-  Module: Branch.create,
-  Object: Branch.create,
-  Number: Branch.create,
-  RegExp: Branch.create,
-  Scope: ScopeBranch.create,
-  Set: Branch.create,
-  String: Branch.create,
-  WeakMap: Branch.create
-});
+var render = (function(){
+  var renderers = {
+    normal: continuum.createRenderer({
+      Accessor      : Leaf.create,
+      Arguments     : Branch.create,
+      Array         : Branch.create,
+      Boolean       : Branch.create,
+      BooleanValue  : Leaf.create,
+      Date          : Branch.create,
+      Error         : Branch.create,
+      Function      : FunctionBranch.create,
+      Global        : GlobalBranch.create,
+      JSON          : Branch.create,
+      Map           : Branch.create,
+      Math          : Branch.create,
+      Module        : Branch.create,
+      NullValue     : Leaf.create,
+      Number        : Branch.create,
+      NumberValue   : NumberLeaf.create,
+      Object        : Branch.create,
+      RegExp        : Branch.create,
+      Scope         : ScopeBranch.create,
+      Set           : Branch.create,
+      String        : Branch.create,
+      StringValue   : StringLeaf.create,
+      Thrown        : ThrownBranch.create,
+      UndefinedValue: Leaf.create,
+      Unknown       : Branch.create,
+      WeakMap       : Branch.create
+    }),
+    preview: continuum.createRenderer({
+      Accessor      : Leaf.create,
+      Arguments     : Preview.create,
+      Array         : IndexedPreview.create,
+      Boolean       : Preview.create,
+      BooleanValue  : Leaf.create,
+      Date          : Preview.create,
+      Error         : Preview.create,
+      Function      : FunctionPreview.create,
+      Global        : Preview.create,
+      JSON          : Preview.create,
+      Map           : Preview.create,
+      Math          : Preview.create,
+      Module        : Preview.create,
+      NullValue     : Leaf.create,
+      Number        : Preview.create,
+      NumberValue   : NumberLeaf.create,
+      Object        : Preview.create,
+      RegExp        : Preview.create,
+      Scope         : Preview.create,
+      Set           : Preview.create,
+      String        : Preview.create,
+      StringValue   : StringLeaf.create,
+      Thrown        : Preview.create,
+      UndefinedValue: Leaf.create,
+      Unknown       : Preview.create,
+      WeakMap       : Preview.create
+    }),
+    subpreview: continuum.createRenderer({
+      Accessor      : Leaf.create,
+      Arguments     : Leaf.create,
+      Array         : Leaf.create,
+      Boolean       : Leaf.create,
+      BooleanValue  : Leaf.create,
+      Date          : Leaf.create,
+      Error         : Leaf.create,
+      Function      : FunctionPreview.create,
+      Global        : Leaf.create,
+      JSON          : Leaf.create,
+      Map           : Leaf.create,
+      Math          : Leaf.create,
+      Module        : Leaf.create,
+      NullValue     : Leaf.create,
+      Number        : Leaf.create,
+      NumberValue   : NumberLeaf.create,
+      Object        : Leaf.create,
+      RegExp        : Leaf.create,
+      Scope         : Leaf.create,
+      Set           : Leaf.create,
+      String        : Leaf.create,
+      StringValue   : StringLeaf.create,
+      Thrown        : Leaf.create,
+      UndefinedValue: Leaf.create,
+      Unknown       : Leaf.create,
+      WeakMap       : Leaf.create
+    })
+  };
 
-var previewRenderer = continuum.createRenderer({
-  Unknown: Preview.create,
-  BooleanValue: Leaf.create,
-  StringValue: StringLeaf.create,
-  NumberValue: NumberLeaf.create,
-  UndefinedValue: Leaf.create,
-  NullValue: Leaf.create,
-  Accessor: Leaf.create,
-  Global: Preview.create,
-  Thrown: Preview.create,
-  Arguments: Preview.create,
-  Array: IndexedPreview.create,
-  Boolean: Preview.create,
-  Date: Preview.create,
-  Error: Preview.create,
-  Function: FunctionPreview.create,
-  JSON: Preview.create,
-  Map: Preview.create,
-  Math: Preview.create,
-  Module: Preview.create,
-  Object: Preview.create,
-  Number: Preview.create,
-  RegExp: Preview.create,
-  Scope: Preview.create,
-  Set: Preview.create,
-  String: Preview.create,
-  WeakMap: Preview.create
-});
-
-
+  return function render(type, mirror){
+    return renderers[type].render(mirror);
+  }
+})();
 
 
 
@@ -2253,7 +2333,7 @@ void function(){
     }
 
     function inspect(o){
-      var tree = inspector.append(new Result(renderer.render(o)));
+      var tree = inspector.append(new Result(render('normal', o)));
       inspector.element.scrollTop = inspector.element.scrollHeight;
       inspector.refresh();
       return tree;
