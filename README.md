@@ -27,7 +27,7 @@ In the browser, use the combined continuum.js or continuum.min.js. In node
 
 
 # Quickstart Usage Overview
-In the browser, a function named `continuum` is added to the window. In Node.js, the `continuum` function is returned by `require('continuum')`.
+In the browser, an object named `continuum` is added to the window, or in node it's the object returned by `require('contiinuum')`.
 
 Usage of continuum is quite simple and can basically be treated like using `eval` or node's `vm.runInContext`. Supply the code, get the result. In ES6 language, a "realm" is basically the container for a context. A realm has a 'global' property which is its global object, and a number of properties that specific to each realm isntance, such as the list of "intrinsics" or builtins like Array, Function, Object, etc.
 

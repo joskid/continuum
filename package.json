@@ -1,7 +1,7 @@
 {
   "name": "continuum",
   "author": "Brandon Benvie <http://bbenvie.com>",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "A JavaScript (ES6) bytecode virtual machine written in JavaScript",
   "main": "index.js",
   "dependencies": { },
