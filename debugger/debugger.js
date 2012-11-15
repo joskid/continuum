@@ -2245,7 +2245,7 @@ void function(){
   }();
 
 
-  realm = (function(){
+  function makeRealm(){
     var realm = continuum.createRealm();
 
     function run(code){
@@ -2304,7 +2304,12 @@ void function(){
     setTimeout(function(){ item.expand() }, 50);
 
     return realm;
-  })();
+  }
+
+
+  setTimeout(function(){
+    realm = makeRealm();
+  }, 100);
 }();
 
 

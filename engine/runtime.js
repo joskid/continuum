@@ -4155,7 +4155,30 @@ var runtime = (function(GLOBAL, exports, undefined){
         WeakMapSet: wrapWeakMapFunction('set'),
         WeakMapDelete: wrapWeakMapFunction('remove'),
         WeakMapGet: wrapWeakMapFunction('get'),
-        WeakMapHas: wrapWeakMapFunction('has')
+        WeakMapHas: wrapWeakMapFunction('has'),
+        readFile: function(path, callback){
+          require('fs').readFile(path, function(err, file){
+            callback.Call(undefined, [file]);
+          }, 'utf8');
+        },
+        resolve: module ? require('path').resolve
+                        : function(base, to){
+                            to = to.split('/');
+                            base = base.split('/');
+                            base.length--;
+
+                            for (var i=0; i < to.length; i++) {
+                              if (to[i] === '..') {
+                                base.length--;
+                              } else if (to[i] !== '.') {
+                                base[base.length] = to[i];
+                              }
+                            }
+
+                            return base.join('/');
+                          },
+        baseURL: module ? function(){ return module.parent.parent.dirname }
+                        : function(){ return location.origin + location.pathname }
       };
     })();
 
@@ -4443,6 +4466,8 @@ var runtime = (function(GLOBAL, exports, undefined){
         callback && callback(error);
         self.emit('error', error);
       }
+
+      this.on('throw', console.log.bind(console));
 
       initialize(this, errback, function(){
         deactivate(self);

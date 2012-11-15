@@ -193,6 +193,7 @@ class Request {
 
 export class Loader {
   constructor(parent, options){
+    options = options || {};
     this.linkedTo  = options.linkedTo || null;
     _(this).set({
       translate: options.translate || parent.translate,
@@ -200,7 +201,7 @@ export class Loader {
       fetch    : options.fetch || parent.fetch,
       strict   : options.strict === true,
       global   : options.global || $__global,
-      baseURL  : options.baseURL || parent ? parent.baseURL : '',
+      baseURL  : options.baseURL || (parent ? parent.baseURL : ''),
       modules  : $__ObjectCreate(null)
     });
   }
@@ -280,12 +281,15 @@ export let Module = function Module(object){
 
 $__deleteDirect(Module, 'prototype');
 
-$__System = new Loader(null, {
+
+export let System = new Loader(null, {
   global: $__global,
   baseURL: '',
   strict: false,
   fetch(relURL, baseURL, request, resolved) {
-    $__Fetch(resolved, src => {
+    var fetcher = resolved[0] === '@' ? $__Fetch : $__readFile;
+
+    fetcher(resolved, src => {
       if (typeof src === 'string') {
         request.fulfill(src);
       } else {
@@ -294,11 +298,11 @@ $__System = new Loader(null, {
     });
   },
   resolve(relURL, baseURL){
-    return baseURL + relURL;
+    return relURL[0] === '@' ? relURL : $__resolve(baseURL, relURL);
   },
   translate(src, relURL, baseURL, resolved) {
     return src;
   }
 });
 
-
+$__System = System;

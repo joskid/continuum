@@ -19,7 +19,25 @@
   return continuum;
 
 }).apply(this, function(){
-  var exports = { builtins: {}, modules: {} };
+  var exports = {
+    builtins: {},
+    modules: {},
+    fs: {
+      readFile: function(path, callback){
+        var xhr = new XMLHttpRequest;
+        xhr.responseType = 'text';
+        xhr.open('GET', path);
+        xhr.onerror = xhr.onload = function(evt){
+          if (xhr.readyState === 4) {
+            xhr.onload = xhr.onerror = null;
+            callback(null, xhr.responseText);
+          }
+        }
+
+        xhr.send();
+      }
+    }
+  };
 
   function require(request){
     request = request.slice(request.lastIndexOf('/') + 1);
