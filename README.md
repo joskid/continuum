@@ -27,9 +27,9 @@ In the browser, use the combined continuum.js or continuum.min.js. In node
 
 
 # Quickstart Usage Overview
-In the browser, an object named `continuum` is added to the window, or in node it's the object returned by `require('contiinuum')`.
+In the browser, an object named `continuum` is added to the window, or in node it's the object returned by `require('continuum')`.
 
-Usage of continuum is quite simple and can basically be treated like using `eval` or node's `vm.runInContext`. Supply the code, get the result. In ES6 language, a "realm" is basically the container for a context. A realm has a 'global' property which is its global object, and a number of properties that specific to each realm isntance, such as the list of "intrinsics" or builtins like Array, Function, Object, etc.
+Usage of continuum is quite simple and can basically be treated like using `eval` or node's `vm.runInContext`. Supply the code, get the result. In ES6 language, a "realm" is basically the container for a context. A realm has a 'global' property which is its global object, and a number of properties that specific to each realm instance, such as the list of "intrinsics" or builtins like Array, Function, Object, etc.
 
 ```javascript
 var realm = continuum.createRealm();
@@ -103,7 +103,7 @@ Extras:
 Additionally exported is the class objects `Assembler`, `Realm`, `Renderer`, and `Script`.
 
 ## Realm ##
-A Realm is the main thing you interact with. Each realm has a global object with a unique set of builtin globals. A realm is roughly equivelent to an iframe or a node vm context.
+A Realm is the main thing you interact with. Each realm has a global object with a unique set of builtin globals. A realm is roughly equivalent to an iframe or a node vm context.
 
 * __realm.evaluate(code)__: Executes code in the virtual machine and returns the completion value, if any. "code" can be a string or an already compiled Script object. Every time code is executed, the script object is added to realm.scripts, so you can reuse a script if desired.
 * __realm.evaluateAsync(code, callback)__: Primarily for when executing code that uses the module system, which must be run asynchronously if importing remote resources.
