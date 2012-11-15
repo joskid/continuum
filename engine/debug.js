@@ -706,18 +706,17 @@ var debug = (function(exports){
   }, []);
 
 
-
-  function MirrorProxy(subject){
-    this.subject = subject;
-    if ('Call' in subject) {
-      this.type = 'function';
+  var MirrorProxy = (function(){
+    function MirrorProxy(subject){
+      this.subject = subject;
+      if ('Call' in subject) {
+        this.type = 'function';
+      }
+      this.attrs = create(null);
+      this.props = create(null);
+      this.kind = introspect(subject.Target).kind;
     }
-    this.attrs = create(null);
-    this.props = create(null);
-    this.kind = introspect(subject.Target).kind;
-  }
 
-  void function(){
     inherit(MirrorProxy, Mirror, {
       type: 'object'
     }, [
@@ -726,91 +725,68 @@ var debug = (function(exports){
       MirrorObject.prototype.list,
       MirrorObject.prototype.inheritedAttrs,
       MirrorObject.prototype.getterAttrs,
+      function getOwnDescriptor(key){
+        var desc = this.subject.GetOwnProperty(key);
+        var out =  {};
+        for (var k in desc) {
+          out[k.toLowerCase()] = desc[k];
+        }
+        return out;
+      },
       function label(){
         return 'Proxy' + MirrorObject.prototype.label.call(this);
       },
       function get(key){
-        this.refresh(key);
-        return introspect(this.props.get(key));
+        return introspect(this.subject.Get(key));
       },
       function hasOwn(key){
-        return this.refresh(key);
+        return this.subject.HasOwnProperty(key);
       },
       function has(key){
-        return this.refresh(key) ? true : this.getPrototype().has(key);
+        return this.subject.HasProperty(key);
       },
       function isPropEnumerable(key){
-        if (this.refresh(key)) {
-          return (this.attrs[key] & ENUMERABLE) > 0;
-        } else {
-          return false;
-        }
+        var desc = this.subject.GetOwnProperty(key);
+        return !!(desc && desc.Enumerable);
       },
       function isPropConfigurable(key){
-        if (this.refresh(key)) {
-          return (this.attrs[key] & CONFIGURABLE) > 0;
-        } else {
-          return false;
-        }
+        var desc = this.subject.GetOwnProperty(key);
+        return !!(desc && desc.Configurable);
       },
       function isPropAccessor(key){
-        if (this.refresh(key)) {
-          return (this.attrs[key] & ACCESSOR) > 0;
-        } else {
-          return false;
-        }
+        var desc = this.subject.GetOwnProperty(key);
+        return !!(desc && desc.Get || desc.Set);
       },
       function isPropWritable(key){
-        if (this.refresh(key)) {
-          return !!(this.isAccessor() ? this.props[key].Set : this.attrs[key] & WRITABLE);
-        } else {
-          return false;
-        }
+        var desc = this.subject.GetOwnProperty(key);
+        return !!(desc && desc.Writable);
       },
       function propAttributes(key){
-        if (this.refresh(key)) {
-          return this.attrs[key];
-        } else {
-          return this.getPrototype().propAttributes(key);
+        var desc = this.subject.GetOwnProperty(key);
+        if (desc) {
+          if ('Value' in desc) {
+            return desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
+          }
+          return desc.Enumerable | (desc.Configurable << 1) | A;
         }
       },
       function ownAttrs(props){
-        var key, keys = this.subject.GetOwnPropertyNames();
+        var key, keys = this.subject.Enumerate(false, true);
 
         props || (props = create(null));
         this.props = create(null);
         this.attrs = create(null);
 
         for (var i=0; i < keys.length; i++) {
-          key = keys[i];
-          if (this.refresh(key)) {
-            props[key] = this.attrs[key];
-          }
+          props[keys[i]] = this.propAttributes(keys[i]);
         }
 
         return props;
-      },
-      function refresh(key){
-        if (!(key in this.attrs)) {
-          var desc = this.subject.GetOwnProperty(key, false);
-          if (desc) {
-            if ('Value' in desc) {
-              this.attrs[key] = desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
-              this.props[key] = desc.Value;
-            } else {
-              this.attrs[key] = desc.Enumerable | (desc.Configurable << 1) | A;
-              this.props[key] = { Get: desc.Get, Set: desc.Set };
-            }
-            return true;
-          } else {
-            delete this.attrs[key];
-            delete this.props[key];
-          }
-        }
-        return false;
       }
     ]);
-  }();
+
+    return MirrorProxy;
+  })();
 
 
 
@@ -1039,7 +1015,7 @@ var debug = (function(exports){
         } else if (subject.Completion) {
           return new MirrorThrown(subject.value);
         } else if (subject.NativeBrand) {
-          if (subject.isProxy) {
+          if (subject.Proxy) {
             return new MirrorProxy(subject);
           } else if ('Call' in subject) {
             return new MirrorFunction(subject);

@@ -1497,7 +1497,7 @@ var Instructions = (function(){
               base = base.bindings;
             }
 
-            if (base.NativeBrand) {
+            if (!base.Proxy && base.NativeBrand) {
               item = base.properties.get(item.name);
             }
           }
