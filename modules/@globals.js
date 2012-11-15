@@ -18,8 +18,7 @@ function isNaN(number){
 }
 
 
-$__setupFunction(isFinite);
-$__setupFunction(isNaN);
+$__setupFunctions(isFinite, isNaN);
 
 
 export decodeURI, decodeURIComponent, encodeURI, encodeURIComponent,

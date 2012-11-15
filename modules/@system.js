@@ -41,11 +41,11 @@
     return obj;
   };
 
-  $__setupFunction = function setupFunction(func, name){
-    $__SetInternal(func, 'Native', true);
-    $__deleteDirect(func, 'prototype');
-    if (name) {
-      $__defineDirect(func, 'name', name, ___);
+  $__setupFunctions = function setupFunctions(...funcs){
+    var len = funcs.length;
+    for (var i=0; i < len; i++) {
+      $__SetInternal(funcs[i], 'Native', true);
+      $__deleteDirect(funcs[i], 'prototype');
     }
   };
 

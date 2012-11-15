@@ -110,7 +110,7 @@ $__defineProps(Array.prototype, {
     return new ArrayIterator(this, 'key+value');
   },
   iterator(){
-    return new ArrayIterator(this, 'key+value');
+    return new ArrayIterator(this, 'value');
   },
   join(separator){
     return joinArray(this, arguments.length ? separator : ',');

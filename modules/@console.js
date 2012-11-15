@@ -38,10 +38,4 @@ export let stdout = {
 };
 
 
-$__setupFunction(log);
-$__setupFunction(dir);
-$__setupFunction(time);
-$__setupFunction(timeEnd);
-$__setupFunction(write);
-$__setupFunction(clear);
-$__setupFunction(backspace);
+$__setupFunctions(log, dir, time, timeEnd, write, clear, backspace);

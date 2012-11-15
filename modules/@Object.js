@@ -166,9 +166,24 @@ export function preventExtensions(object){
   return object;
 }
 
+export function seal(object){
+  ensureObject(object, 'Object.seal');
+
+  var desc = { configurable: false },
+      props = $__Enumerate(object, false, false);
+
+  for (var i=0; i < props.length; i++) {
+    $__DefineOwnProperty(object, props[i], desc);
+  }
+
+  $__SetExtensible(object, false);
+  return object;
+}
+
+
 $__defineMethods(Object, [assign, create, defineProperty, defineProperties, freeze,
   getOwnPropertyDescriptor, getOwnPropertyNames, getPropertyDescriptor, getPropertyNames,
-  getPrototypeOf, isExtensible, isFrozen, isSealed, keys, preventExtensions]);
+  getPrototypeOf, isExtensible, isFrozen, isSealed, keys, preventExtensions, seal]);
 
 
 export function isPrototypeOf(object, prototype){
@@ -191,9 +206,7 @@ export function propertyIsEnumerable(object, key){
   return ($__GetPropertyAttributes(object, key) & 0x01) !== 0;
 }
 
-$__setupFunction(isPrototypeOf);
-$__setupFunction(hasOwnProperty);
-$__setupFunction(propertyIsEnumerable);
+$__setupFunctions(isPrototypeOf, hasOwnProperty, propertyIsEnumerable);
 
 
 

@@ -20,97 +20,93 @@ function makeDefiner(desc){
   };
 }
 
-let defineNormal = makeDefiner(ECW);
+let defineNormal = makeDefiner({ writable: true,
+                                 enumerable: true,
+                                 configurable: true });
+let sealer = { configurable: false },
+    freezer = { configurable: false, writable: false };
+
+
+export function Proxy(target, handler){
+  ensureObject(target, 'Proxy');
+  ensureObject(handler, 'Proxy');
+  return $__ProxyCreate(target, handler);
+}
+
 
 export class Handler {
+  constructor(){}
+
   getOwnPropertyDescriptor(target, name){
-    ensureObject(target, 'Reflect.getOwnPropertyDescriptor');
-    name = $__ToPropertyName(name);
-    return $__GetOwnProperty(target, name);
+    throw $__Exception('missing_fundamental_trap', ['getOwnPropertyDescriptor']);
   }
+
   getOwnPropertyNames(target){
-    ensureObject(target, 'Reflect.getOwnPropertyNames');
-    return $__Enumerate(target, false, false);
+    throw $__Exception('missing_fundamental_trap', ['getOwnPropertyNames']);
   }
 
   getPrototypeOf(target){
-    ensureObject(target, 'Reflect.getPrototypeOf');
-    return $__GetPrototype(target);
+    throw $__Exception('missing_fundamental_trap', ['getPrototypeOf']);
   }
 
   defineProperty(target, name, desc){
-    ensureObject(target, 'Reflect.defineProperty');
-    ensureDescriptor(desc);
-    name = $__ToPropertyName(name);
-    $__DefineOwnProperty(target, name, desc);
-    return object;
+    throw $__Exception('missing_fundamental_trap', ['defineProperty']);
   }
 
   deleteProperty(target, name){
-    return $__Delete(target, name, false);
+    throw $__Exception('missing_fundamental_trap', ['deleteProperty']);
   }
 
   preventExtensions(target){
-    ensureObject(target, 'Reflect.preventExtensions');
-    $__SetExtensible(target, false);
-    return target;
+    throw $__Exception('missing_fundamental_trap', ['preventExtensions']);
   }
 
   isExtensible(target){
-    ensureObject(target, 'Reflect.isExtensible');
-    return $__GetExtensible(target);
+    throw $__Exception('missing_fundamental_trap', ['isExtensible']);
   }
 
   apply(target, thisArg, args){
-    return $__CallFunction(target, thisArg, args);
+    throw $__Exception('missing_fundamental_trap', ['apply']);
   }
 
   seal(target) {
-    var success = this.preventExtensions(target);
-    success = !!success;
-    if (success) {
-      var props = this.getOwnPropertyNames(target);
-      var l = +props.length;
-      for (var i = 0; i < l; i++) {
-        var name = props[i];
-        success = success &&
-          this.defineProperty(target, name, $__C);
-      }
+    if (!this.preventExtensions(target)) return false;
+
+    var props = this.getOwnPropertyNames(target),
+        len = +props.length;
+
+    for (var i = 0; i < len; i++) {
+      success = success && this.defineProperty(target, props[i], sealer);
     }
     return success;
   }
 
   freeze(target){
-    var success = this.preventExtensions(target);
-    if (success = !!success) {
-      var props = this.getOwnPropertyNames(target),
-          l = +props.length;
+    if (!this.preventExtensions(target)) return false;
 
-      for (var i = 0; i < l; i++) {
-        var name = props[i],
-            desc = this.getOwnPropertyDescriptor(target, name);
+    var props = this.getOwnPropertyNames(target),
+        len = +props.length;
 
-        desc = normalizeAndCompletePropertyDescriptor(desc);
-        if (isDataDescriptor(desc)) {
-          success = success && this.defineProperty(target, name, $_CW);
-        } else if (desc !== undefined) {
-          success = success && this.defineProperty(target, name, $__C);
-        }
+    for (var i = 0; i < len; i++) {
+      var name = props[i],
+          desc = this.getOwnPropertyDescriptor(target, name);
+
+      if (desc) {
+        success = success && this.defineProperty(target, name, 'writable' in desc || 'value' in desc ? freezer : sealer);
       }
     }
+
     return success;
   }
 
   isSealed(target){
     var props = this.getOwnPropertyNames(target),
-        l = +props.length;
+        len = +props.length;
 
-    for (var i = 0; i < l; i++) {
-      var name = props[i],
-          desc = this.getOwnPropertyDescriptor(target, name);
+    for (var i = 0; i < len; i++) {
+      var desc = this.getOwnPropertyDescriptor(target, props[i]);
 
-      desc = normalizeAndCompletePropertyDescriptor(desc);
-      if (desc.configurable) {
+      if (desc && desc.configurable) {
         return false;
       }
     }
@@ -119,19 +115,12 @@ export class Handler {
 
   isFrozen(target){
     var props = this.getOwnPropertyNames(target),
-        l = +props.length;
+        len = +props.length;
 
-    for (var i = 0; i < l; i++) {
-      var name = props[i],
-          desc = this.getOwnPropertyDescriptor(target, name);
+    for (var i = 0; i < len; i++) {
+      var desc = this.getOwnPropertyDescriptor(target, props[i]);
 
-      desc = normalizeAndCompletePropertyDescriptor(desc);
-      if (isDataDescriptor(desc)) {
-        if (desc.writable) {
-          return false;
-        }
-      }
-      if (desc.configurable) {
+      if (desc.configurable || ('writable' in desc || 'value' in desc) && desc.writable) {
         return false;
       }
     }
@@ -140,59 +129,47 @@ export class Handler {
 
   has(target, name){
     var desc = this.getOwnPropertyDescriptor(target, name);
-    desc = normalizeAndCompletePropertyDescriptor(desc);
     if (desc !== undefined) {
       return true;
     }
     var proto = $__GetPrototype(target);
-    if (proto === null) {
-      return false;
-    }
-    return has(proto, name);
+    return proto === null ? false : has(proto, name);
   }
 
-  hasOwn(target,name){
-    var desc = this.getOwnPropertyDescriptor(target, name);
-    return undefined !== normalizeAndCompletePropertyDescriptor(desc);
+  hasOwn(target, name){
+    return this.getOwnPropertyDescriptor(target, name) !== undefined;
   }
 
   get(target, name, receiver){
     receiver = receiver || target;
 
     var desc = this.getOwnPropertyDescriptor(target, name);
-    desc = normalizeAndCompletePropertyDescriptor(desc);
     if (desc === undefined) {
       var proto = $__GetPrototype(target);
-      if (proto === null) {
-        return undefined;
-      }
-      return get(proto, name, receiver);
+      return proto === null ? undefined : this.get(proto, name, receiver);
     }
-    if (isDataDescriptor(desc)) {
+    if ('writable' in desc || 'value' in desc) {
       return desc.value;
     }
     var getter = desc.get;
-    if (getter === undefined) {
-      return undefined;
-    }
-    return $__CallFunction(desc.get, receiver, []);
+    return getter === undefined ? undefined : $__CallFunction(getter, receiver, []);
   }
 
   set(target, name, value, receiver){
     var ownDesc = this.getOwnPropertyDescriptor(target, name);
-    ownDesc = normalizeAndCompletePropertyDescriptor(ownDesc);
 
     if (ownDesc !== undefined) {
-      if (isAccessorDescriptor(ownDesc)) {
+      if ('get' in ownDesc || 'set' in ownDesc) {
         var setter = ownDesc.set;
         if (setter === undefined) return false;
         $__CallFunction(setter, receiver, [value]);
         return true;
       }
-      if (ownDesc.writable === false) return false;
-      if (receiver === target) {
-        var updateDesc = { value: value };
-        $__DefineOwnProperty(receiver, name, updateDesc);
+
+      if (ownDesc.writable === false) {
+        return false;
+      } else if (receiver === target) {
+        $__DefineOwnProperty(receiver, name, { value: value });
         return true;
       } else {
         $__DefineOwnProperty(receiver, name, newDesc);
@@ -209,54 +186,50 @@ export class Handler {
       return extensible;
     }
 
-    return set(proto, name, value, receiver);
+    return this.set(proto, name, value, receiver);
   }
 
   enumerate(target){
-    var trapResult = this.getOwnPropertyNames(target);
-    var l = +trapResult.length;
-    var result = [];
-    for (var i = 0; i < l; i++) {
-      var name = $__ToString(trapResult[i]);
-      var desc = this.getOwnPropertyDescriptor(name);
-      desc = normalizeAndCompletePropertyDescriptor(desc);
-      if (desc !== undefined && desc.enumerable) {
-        result.push(name);
+    var result = this.getOwnPropertyNames(target),
+        len = +result.length,
+        out = [];
+
+    for (var i = 0; i < len; i++) {
+      var name = $__ToString(result[i]),
+          desc = this.getOwnPropertyDescriptor(name);
+
+      if (desc != null && !desc.enumerable) {
+        out.push(name);
       }
     }
+
     var proto = $__GetPrototype(target);
-    if (proto === null) {
-      return result;
-    }
-    var inherited = enumerate(proto);
-    // FIXME: filter duplicates
-    return result.concat(inherited);
+    return proto === null ? out : out.concat(enumerate(proto));
   }
 
   iterate(target){
-    var trapResult = this.enumerate(target);
-    var l = +trapResult.length;
-    var idx = 0;
+    var result = this.enumerate(target),
+        len = +result.length,
+        i = 0;
+
     return {
-      next: function() {
-        if (idx === l) {
-          throw StopIteration;
-        } else {
-          return trapResult[idx++];
-        }
+      next(){
+        if (i === len) throw StopIteration;
+        return result[i++];
       }
     };
   }
 
   keys(target){
-    var trapResult = this.getOwnPropertyNames(target);
-    var l = +trapResult.length;
-    var result = [];
-    for (var i = 0; i < l; i++) {
-      var name = $__ToString(trapResult[i]);
-      var desc = this.getOwnPropertyDescriptor(name);
-      desc = normalizeAndCompletePropertyDescriptor(desc);
-      if (desc !== undefined && desc.enumerable) {
+    var result = this.getOwnPropertyNames(target),
+        len = +result.length,
+        result = [];
+
+    for (var i = 0; i < len; i++) {
+      var name = $__ToString(result[i]),
+          desc = this.getOwnPropertyDescriptor(name);
+
+      if (desc != null && desc.enumerable) {
         result.push(name);
       }
     }
@@ -264,72 +237,99 @@ export class Handler {
   }
 
   construct(target, args) {
-    var proto = this.get(target, 'prototype', target);
-    var instance;
-    if (Object(proto) === proto) {
-      instance = $__ObjectCreate(proto);
-    } else {
-      instance = {};
-    }
-    var res = this.apply(target, instance, args);
-    if (Object(res) === res) {
-      return res;
-    }
-    return instance;
+    var proto = this.get(target, 'prototype', target),
+        instance = $__Type(proto) === 'Object' ? $__ObjectCreate(proto) : {},
+        result = this.apply(target, instance, args);
+
+    return $__Type(result) === 'Object' ? result : instance;
   }
 }
 
 
+export function apply(target, thisArg, args){
+  ensureFunction(target, '@Reflect.apply');
+  return $__CallFunction(target, thisArg, ensureArgs(args));
+}
 
-export function Proxy(target, handler){}
+export function construct(target, args){
+  ensureFunction(target, '@Reflect.construct');
+  return $__Construct(target, ensureArgs(args));
+}
 
-export var {
-  getOwnPropertyDescriptor,
-  getOwnPropertyNames,
-  getPrototypeOf,
-  defineProperty,
-  deleteProperty,
-  preventExtensions,
-  isExtensible,
-  apply
-} = Handler.prototype;
+export function defineProperty(target, name, desc){
+  ensureObject(target, '@Reflect.defineProperty');
+  ensureDescriptor(desc);
+  name = $__ToPropertyName(name);
+  $__DefineOwnProperty(target, name, desc);
+  return object;
+}
+
+export function deleteProperty(target, name){
+  ensureObject(target, '@Reflect.deleteProperty');
+  name = $__ToPropertyName(name);
+  return $__Delete(target, name, false);
+}
 
 export function enumerate(target){
-  ensureObject(target, 'Reflect.enumerate');
-  return $__Enumerate(target, false, false);
+  return $__Enumerate($__ToObject(target), false, false);
 }
 
 export function freeze(target){
-  ensureObject(target, 'Reflect.freeze');
-  var props = $__Enumerate(target, false, false);
+  if (Type(target) !== 'Object') return false;
+  var success = $__SetExtensible(target, false);
+  if (!success) return success;
 
-  for (var i=0; i < props.length; i++) {
-    var desc = $__GetOwnProperty(target, props[i]);
-    if (desc.configurable) {
-      desc.configurable = false;
-      if ('writable' in desc) {
-        desc.writable = false;
-      }
-      $__DefineOwnProperty(target, props[i], desc);
+  var props = $__Enumerate(target, false, false);
+      len = props.length;
+
+  for (var i = 0; i < len; i++) {
+    var desc = $__GetOwnProperty(target, props[i]),
+        attrs = 'writable' in desc || 'value' in desc ? freezer : desc !== undefined ? sealer : null;
+
+    if (attrs !== null) {
+      success = success && $__DefineOwnProperty(target, props[i], attrs);
     }
   }
-
-  $__SetExtensible(target, false);
-  return target;
+  return success;
 }
 
-export function seal(target){
-
+export function get(target, name, receiver){
+  target = $__ToObject(target);
+  name = $__ToPropertyName(name);
+  receiver = receiver === undefined ? undefined : $__ToObject(receiver);
+  return $__GetP(target, name, receiver);
 }
 
-export function preventExtensions(target){
-  ensureObject(target, 'Reflect.preventExtensions');
-  $__SetExtensible(target, false);
-  return target;
+export function getOwnPropertyDescriptor(target, name){
+  ensureObject(target, '@Reflect.getOwnPropertyDescriptor');
+  name = $__ToPropertyName(name);
+  return $__GetOwnProperty(target, name);
+}
+
+export function getOwnPropertyNames(target){
+  ensureObject(target, '@Reflect.getOwnPropertyNames');
+  return $__Enumerate(target, false, false);
+}
+
+export function getPrototypeOf(target){
+  ensureObject(target, '@Reflect.getPrototypeOf');
+  return $__GetPrototype(target);
+}
+
+export function has(target, name){
+  target = $__ToObject(target);
+  name = $__ToPropertyName(name);
+  return name in target;
+}
+
+export function hasOwn(target, name){
+  target = $__ToObject(target);
+  name = $__ToPropertyName(name);
+  return $__HasOwnProperty(target, name);
 }
 
 export function isFrozen(target){
-  ensureObject(target, 'Reflect.isFrozen');
+  ensureObject(target, '@Reflect.isFrozen');
   if ($__GetExtensible(target)) {
     return false;
   }
@@ -349,7 +349,7 @@ export function isFrozen(target){
 }
 
 export function isSealed(target){
-  ensureObject(target, 'Reflect.isSealed');
+  ensureObject(target, '@Reflect.isSealed');
   if ($__GetExtensible(target)) {
     return false;
   }
@@ -367,43 +367,74 @@ export function isSealed(target){
 }
 
 export function isExtensible(target){
-  ensureObject(target, 'Reflect.isExtensible');
+  ensureObject(target, '@Reflect.isExtensible');
   return $__GetExtensible(target);
 }
 
-export function has(target, name){
-  ensureObject(target, 'Reflect.has');
-  name = $__ToPropertyName(name);
-  return $__HasProperty(target, name);
-}
-
-export function hasOwn(target, name){
-  ensureObject(target, 'Reflect.hasOwn');
-  name = $__ToPropertyName(name);
-  return $__HasOwnProperty(target, name);
-}
-
 export function keys(target){
-  ensureObject(target, 'Reflect.keys');
+  ensureObject(target, '@Reflect.keys');
   return $__Enumerate(target, false, true);
 }
 
-export function get(target, name, receiver){
-  ensureObject(target, 'Reflect.get');
-  name = $__ToPropertyName(name);
-  return $__GetP(target, name, receiver);
+export function preventExtensions(target){
+  if (Type(target) !== 'Object') return false;
+  return $__SetExtensible(target, false);
+}
+
+export function seal(target){
+  if (Type(target) !== 'Object') return false;
+  var success = $__SetExtensible(target, false);
+  if (!success) return success;
+
+  var props = $__Enumerate(target, false, false);
+      len = props.length;
+
+  for (var i = 0; i < len; i++) {
+    success = success && $__DefineOwnProperty(target, props[i], sealer);
+  }
+  return success;
 }
 
 export function set(target, name, value, receiver){
-  ensureObject(target, 'Reflect.set');
+  target = $__ToObject(target);
   name = $__ToPropertyName(name);
+  receiver = receiver === undefined ? undefined : $__ToObject(receiver);
   return $__SetP(target, name, value, receiver);
 }
 
-export function apply(target, thisArg, args){
-  return $__CallFunction(target, thisArg, args);
+
+
+$__setupFunctions(getOwnPropertyDescriptor, getOwnPropertyNames, getPrototypeOf,
+  defineProperty, deleteProperty, preventExtensions, isExtensible, apply, enumerate,
+  freeze, seal, isFrozen, isSealed, has, hasOwn, keys, get, set, construct);
+
+
+
+function ensureObject(o, name){
+  var type = typeof o;
+  if (type === 'object' ? o === null : type !== 'function') {
+    throw $__Exception('called_on_non_object', [name]);
+  }
 }
 
-export function construct(target, args){
-  return $__Construct(target, args);
+function ensureDescriptor(o){
+  if (o === null || typeof o !== 'object') {
+    throw $__Exception('property_desc_object', [typeof o])
+  }
+}
+
+
+function ensureArgs(o, name){
+  if (o == null || typeof o !== 'object' || typeof $__getDirect(o, 'length') !== 'number') {
+    throw $__Exception('apply_wrong_args', []);
+  }
+
+  var brand = $__GetNativeBrand(o);
+  return brand === 'Array' || brand === 'Arguments' ? o : [...o];
+}
+
+function ensureFunction(o, name){
+  if (typeof o !== 'function') {
+    throw $__Exception('called_on_non_function', [name]);
+  }
 }
