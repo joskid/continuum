@@ -6204,6 +6204,13 @@ exports.utility = (function(exports){
         }
         return true;
       },
+      function initialize(props){
+        var len = props.length;
+        for (var i=0; i < len; i += 3) {
+          var index = this.hash[props[i]] = this.props.length;
+          this.props[index] = [props[i], props[i + 1], props[i + 2]];
+        }
+      },
       function setAttribute(key, attr){
         var name = key === '__proto__' ? proto : key,
             index = this.hash[name];
@@ -6610,9 +6617,9 @@ exports.constants = (function(exports){
     NativeMath        : new NativeBrand('Math'),
     NativeModule      : new NativeBrand('Module'),
     NativeObject      : new NativeBrand('Object'),
-    NativePrivateName : new NativeBrand('PrivateName'),
     NativeRegExp      : new NativeBrand('RegExp'),
     NativeSet         : new NativeBrand('Set'),
+    NativeSymbol      : new NativeBrand('Symbol'),
     NativeWeakMap     : new NativeBrand('WeakMap'),
     NumberWrapper     : new NativeBrand('Number'),
     StopIteration     : new NativeBrand('StopIteration'),
@@ -7203,7 +7210,6 @@ exports.assembler = (function(exports){
 
   function ClassDefinition(node){
     this.name = node.id ? node.id.name : null;
-    this.pattern = node.id;
     this.methods = [];
 
     for (var i=0, method; method = node.body.body[i]; i++) {
@@ -7311,6 +7317,12 @@ exports.assembler = (function(exports){
     return node.type === 'FunctionDeclaration'
         || node.type === 'ClassDeclaration'
         || node.type === 'VariableDeclaration';
+  }
+
+  function isAnonymousFunction(node){
+    return !!node && !(node.id && node.id.name)
+        && node.type === 'FunctionExpression'
+        || node.type === 'ArrowFunctionExpression';
   }
 
   function isStrict(node){
@@ -7725,10 +7737,12 @@ exports.assembler = (function(exports){
 
   function ArrayPattern(node){}
 
-  function ArrowFunctionExpression(node){
+  function ArrowFunctionExpression(node, name){
     var code = new Code(node, null, FUNCTYPE.ARROW, SCOPE.FUNCTION);
+    code.name = name;
     context.queue(code);
     FUNCTION(null, code);
+    return code;
   }
 
   function BinaryExpression(node){
@@ -7746,7 +7760,7 @@ exports.assembler = (function(exports){
   function BlockStatement(node){
     block(function(){
       lexical(function(){
-        BLOCK({ LexicalDeclarations: LexicalDeclarations(node.body) });
+        BLOCK(LexicalDeclarations(node.body));
         each(node.body, recurse);
         UPSCOPE();
       });
@@ -7782,7 +7796,7 @@ exports.assembler = (function(exports){
           init: undefined
         }]
       });
-      BLOCK({ LexicalDeclarations: decls });
+      BLOCK(decls);
       recurse(node.param);
       PUT();
       each(node.body.body, recurse);
@@ -7862,10 +7876,10 @@ exports.assembler = (function(exports){
         if (init){
           var isLexical = isLexicalDeclaration(init);
           if (isLexical) {
-            var scope = BLOCK({ LexicalDeclarations: [] });
+            var scope = BLOCK([]);
             recurse(init);
             var decl = init.declarations[init.declarations.length - 1].id;
-            scope[0].LexicalDeclarations = BoundNames(decl);
+            scope[0] = BoundNames(decl);
             var lexicalDecl = {
               type: 'VariableDeclaration',
               kind: init.kind,
@@ -7900,7 +7914,7 @@ exports.assembler = (function(exports){
               var lexicals = LexicalDeclarations(node.body.body);
               lexicals.push(lexicalDecl);
               GET();
-              BLOCK({ LexicalDeclarations: lexicals });
+              BLOCK(lexicals);
               recurse(decl);
               ROTATE(1);
               PUT();
@@ -7955,7 +7969,7 @@ exports.assembler = (function(exports){
         if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
           block(function(){
             lexical(function(){
-              BLOCK({ LexicalDeclarations: LexicalDeclarations(node.left) });
+              BLOCK(LexicalDeclarations(node.left));
               recurse(node.left);
               recurse(node.body);
               UPSCOPE();
@@ -7984,6 +7998,7 @@ exports.assembler = (function(exports){
     }
     context.queue(code);
     FUNCTION(intern(node.id ? node.id.name : ''), code);
+    return code;
   }
 
   function Glob(node){}
@@ -8109,19 +8124,25 @@ exports.assembler = (function(exports){
   }
 
   function Property(node){
+    var value = node.value;
     if (node.kind === 'init'){
       var key = node.key.type === 'Identifier' ? node.key.name : node.key.value;
       if (node.method) {
-        FunctionExpression(node.value, intern(key));
+        FunctionExpression(value, intern(key));
+      } else if (isAnonymousFunction(value)) {
+        var Expr = node.type === 'FunctionExpression' ? FunctionExpression : ArrowFunctionExpression;
+        var code = Expr(value, key);
+        code.writableName = true;
       } else {
-        recurse(node.value);
+        recurse(value);
       }
       GET();
       PROPERTY(key);
     } else {
-      var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.Strict);
+      var code = new Code(value, null, FUNCTYPE.NORMAL, SCOPE.FUNCTION);
       context.queue(code);
-      METHOD(node.kind, code, intern(node.key.name));
+      var key = node.kind ? node.kind+' '+node.key.name : node.key.name;
+      METHOD(node.kind, code, intern(key));
     }
   }
 
@@ -8152,7 +8173,7 @@ exports.assembler = (function(exports){
       GET();
 
       lexical(function(){
-        BLOCK({ LexicalDeclarations: LexicalDeclarations(node.cases) });
+        BLOCK(LexicalDeclarations(node.cases));
 
         if (node.cases){
           var cases = [];
@@ -8282,8 +8303,15 @@ exports.assembler = (function(exports){
     }[node.kind];
 
     each(node.declarations, function(item){
-      if (item.init) {
-        recurse(item.init);
+      var init = item.init;
+      if (init) {
+        if (item.id && item.id.type === 'Identifier' && isAnonymousFunction(init)) {
+          var Expr = node.type === 'FunctionExpression' ? FunctionExpression : ArrowFunctionExpression;
+          var code = Expr(init, item.id.name);
+          code.writableName = true;
+        } else {
+          recurse(init);
+        }
         GET();
       }
 
@@ -8508,7 +8536,7 @@ exports.operators = (function(exports){
       Reference     = SYMBOLS.Reference,
       Completion    = SYMBOLS.Completion,
       Uninitialized = SYMBOLS.Uninitialized,
-      NativePrivateName = require('./constants').BRANDS.NativePrivateName;
+      NativeSymbol  = require('./constants').BRANDS.NativeSymbol;
 
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',
@@ -8769,7 +8797,7 @@ exports.operators = (function(exports){
         argument = argument.value;
       }
     }
-    if (argument && typeof argument === OBJECT && argument.NativeBrand === NativePrivateName) {
+    if (argument && typeof argument === OBJECT && argument.NativeBrand === NativeSymbol) {
       return argument;
     } else {
       return ToString(argument);
@@ -9588,7 +9616,7 @@ exports.thunk = (function(exports){
         }
       }
 
-      var result = context.initializeBindings(def.pattern, ctor, true);
+      var result = context.initializeBinding(def.name, ctor);
       if (result && result.Abrupt) {
         error = result;
         return unwind;
@@ -10441,13 +10469,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     var hide = function(){};
   }
 
-  function defineDirect(o, key, value, attrs){
-    o.properties.set(key, value, attrs);
-  }
-
-  function deleteDirect(o, key){
-    o.properties.remove(key);
-  }
 
   function hasDirect(o, key){
     if (o) {
@@ -10457,20 +10478,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
-  function hasOwnDirect(o, key){
-    return o.properties.has(key);
-  }
-
   function setDirect(o, key, value){
     if (o.properties.has(key)) {
       o.properties.set(key, value);
     } else {
       o.properties.set(key, value, ECW);
     }
-  }
-
-  function getDirect(o, key){
-    return o.properties.get(key);
   }
 
 
@@ -10528,11 +10541,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   function ToPropertyDescriptor(obj) {
     if (obj && obj.Completion) {
-      if (obj.Abrupt) {
-        return obj;
-      } else {
-        obj = obj.value;
-      }
+      if (obj.Abrupt) return obj; else obj = obj.value;
     }
 
     if (typeof obj !== OBJECT) {
@@ -10545,11 +10554,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       if (obj.HasProperty(descFields[i])) {
         v = obj.Get(descFields[i]);
         if (v && v.Completion) {
-          if (v.Abrupt) {
-            return v;
-          } else {
-            v = v.value;
-          }
+          if (v.Abrupt) return v; else v = v.value;
         }
         desc[descProps[i]] = v;
       }
@@ -10578,7 +10583,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     for (var i=0; i < props.length; i++) {
       var field = props[i];
       if (!(field in standardFields)) {
-        defineDirect(to, field, from.Get(field), ECW);
+        to.properties.set(field, from.Get(field), ECW);
       }
     }
   }
@@ -10647,18 +10652,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   function IsEquivalentDescriptor(a, b) {
     if (a && a.Completion) {
-      if (a.Abrupt) {
-        return a;
-      } else {
-        a = a.value;
-      }
+      if (a.Abrupt) return a; else a = a.value;
     }
     if (b && b.Completion) {
-      if (b.Abrupt) {
-        return b;
-      } else {
-        b = b.value;
-      }
+      if (b.Abrupt) return b; else b = b.value;
     }
     return IS(a.Get, b.Get) &&
            IS(a.Set, b.Set) &&
@@ -10712,9 +10709,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       writable = true;
     }
     if (install) {
-      defineDirect(prototype, 'constructor', func, writable ? _CW : ___);
+      prototype.properties.set('constructor', func, writable ? _CW : ___);
     }
-    defineDirect(func, 'prototype', prototype, writable ? __W : ___);
+    func.properties.set('prototype', prototype, writable ? __W : ___);
   }
 
   // ## IsArrayIndex
@@ -10732,20 +10729,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   function Invoke(key, receiver, args){
     var obj = ToObject(receiver);
     if (obj && obj.Completion) {
-      if (obj.Abrupt) {
-        return obj;
-      } else {
-        obj = obj.value;
-      }
+      if (obj.Abrupt) return obj; else obj = obj.value;
     }
 
     var func = obj.Get(key);
     if (func && func.Completion) {
-      if (func.Abrupt) {
-        return func;
-      } else {
-        func = func.value;
-      }
+      if (func.Abrupt) return func; else func = func.value;
     }
 
     if (!IsCallable(func))
@@ -10851,7 +10840,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       Configurable: true
     });
 
-    return function PropertyDefinitionEvaluation(kind, obj, key, code) {
+    return function PropertyDefinitionEvaluation(kind, obj, key, code){
       if (kind === 'get') {
         return DefineGetter(obj, key, code);
       } else if (kind === 'set') {
@@ -10864,12 +10853,27 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
 
 
+  var mutable = {
+    Value: undefined,
+    Writable: true,
+    Enumerable: true,
+    Configurable: true
+  };
+
+  var immutable = {
+    Value: undefined,
+    Writable: true,
+    Enumerable: true,
+    Configurable: false
+  };
 
 
-  function TopLevelDeclarationInstantiation(code) {
+  function TopLevelDeclarationInstantiation(code){
     var env = context.VariableEnvironment,
         configurable = code.ScopeType === SCOPE.EVAL,
         decls = code.LexicalDeclarations;
+
+    var desc = configurable ? mutable : immutable;
 
     for (var i=0, decl; decl = decls[i]; i++) {
       if (decl.type === 'FunctionDeclaration') {
@@ -10879,12 +10883,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         } else if (env === realm.globalEnv) {
           var existing = global.GetOwnProperty(name);
           if (!existing) {
-            global.DefineOwnProperty(name, {
-              Value: undefined,
-              Writable: true,
-              Enumerable: true,
-              Configurable: configurable
-            }, true);
+            global.DefineOwnProperty(name, desc, true);
           } else if (IsAccessorDescriptor(existing) || !existing.Writable && !existing.Enumerable) {
             return ThrowException('global invalid define');
           }
@@ -10903,12 +10902,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       } else if (env === realm.globalEnv) {
         var existing = global.GetOwnProperty(name);
         if (!existing) {
-          global.DefineOwnProperty(name, {
-            Value: undefined,
-            Writable: true,
-            Enumerable: true,
-            Configurable: configurable
-          }, true);
+          global.DefineOwnProperty(name, desc, true);
         }
       }
     }
@@ -10917,7 +10911,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   // ## FunctionDeclarationInstantiation
 
-  function FunctionDeclarationInstantiation(func, args, env) {
+  function FunctionDeclarationInstantiation(func, args, env){
     var formals = func.FormalParameters,
         params = formals.BoundNames;
 
@@ -11033,30 +11027,30 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     }
 
     var proto = new $Object(superproto),
-        lex = context.LexicalEnvironment;
+        lex = context.LexicalEnvironment,
+        brand = name || '';
 
     if (name) {
       var scope = context.LexicalEnvironment = new DeclarativeEnvironmentRecord(lex);
-      scope.CreateImmutableBinding(name.name ? name.name : name);
+      scope.CreateImmutableBinding(name);
     }
 
     constructor || (constructor = intrinsics.EmptyClass.Code);
 
     var ctor = PropertyDefinitionEvaluation('method', proto, 'constructor', constructor);
     if (ctor && ctor.Completion) {
-      if (ctor.Abrupt) {
-        return ctor;
-      } else {
-        ctor = ctor.value;
-      }
+      if (ctor.Abrupt) return ctor; else ctor = ctor.value;
+    }
+
+    if (name) {
+      scope.InitializeBinding(name, ctor);
     }
 
     ctor.SetPrototype(superctor);
-    var brand = name ? name.name || name : '';
     setDirect(ctor, 'name', brand);
     MakeConstructor(ctor, false, proto);
-    defineDirect(proto, 'constructor', ctor, _CW);
-    defineDirect(ctor, 'prototype', proto, ___);
+    proto.properties.set('constructor', ctor, _CW);
+    ctor.properties.set('prototype', proto, ___);
 
     for (var i=0, method; method = methods[i]; i++) {
       PropertyDefinitionEvaluation(method.kind, proto, method.name, method.code);
@@ -11082,8 +11076,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   // ## BlockDeclarationInstantiation
 
-  function BlockDeclarationInstantiation(code, env){
-    var decls = code.LexicalDeclarations;
+  function BlockDeclarationInstantiation(decls, env){
     for (var i=0, decl; decl = decls[i]; i++) {
       for (var j=0, name; name = decl.BoundNames[j]; j++) {
         if (decl.IsConstantDeclaration) {
@@ -11140,12 +11133,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       BindingInitialization(arg, value, env);
     }
     if (params.Rest) {
-      var len = getDirect(args, 'length') - params.length,
+      var len = args.properties.get('length') - params.length,
           array = new $Array(0);
 
       if (len > 0) {
         for (var i=0; i < len; i++) {
-          setDirect(array, i, getDirect(args, params.length + i));
+          setDirect(array, i, args.properties.get(params.length + i));
         }
         setDirect(array, 'length', len);
       }
@@ -11540,10 +11533,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       if (value && value.Completion) {
         if (value.Abrupt) return value; else value = value.value;
       }
-      defineDirect(array, offset++, value, ECW);
+      array.properties.set(offset++, value, ECW);
     }
 
-    defineDirect(array, 'length', offset, _CW);
+    array.properties.set('length', offset, _CW);
     return offset;
   }
 
@@ -11561,12 +11554,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         raw = context.createArray(count);
 
     for (var i=0; i < count; i++) {
-      defineDirect(site, i+'', template[i].cooked, E__);
-      defineDirect(raw, i+'', template[i].raw, E__);
+      site.properties.set(i+'', template[i].cooked, E__);
+      raw.properties.set(i+'', template[i].raw, E__);
     }
-    defineDirect(site, 'length', count, ___);
-    defineDirect(raw, 'length', count, ___);
-    defineDirect(site, 'raw', raw, ___);
+    site.properties.set('length', count, ___);
+    raw.properties.set('length', count, ___);
+    site.properties.set('raw', raw, ___);
     site.SetExtensible(false);
     raw.SetExtensible(false);
     realm.templates[template.id] = site;
@@ -11593,10 +11586,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       if (value && value.Completion) {
         if (value.Abrupt) return value; else value = value.value;
       }
-      defineDirect(array, i, value, ECW);
+      array.properties.set(i, value, ECW);
     }
 
-    defineDirect(array, 'length', i, _CW);
+    array.properties.set('length', i, _CW);
     return array;
   }
 
@@ -11934,8 +11927,16 @@ exports.runtime = (function(GLOBAL, exports, undefined){
 
   var $Object = (function(){
     var Proto = {
-      Get: { Call: function(receiver){ return receiver.GetPrototype() } },
-      Set: { Call: function(receiver, args){ return receiver.SetPrototype(args[0]) } }
+      Get: {
+        Call: function(receiver){
+          return receiver.GetPrototype();
+        }
+      },
+      Set: {
+        Call: function(receiver, args){
+          return receiver.SetPrototype(args[0]);
+        }
+      }
     };
 
     function $Object(proto){
@@ -12212,13 +12213,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         return iterator;
       },
       function Enumerate(includePrototype, onlyEnumerable){
-        if (onlyEnumerable) {
-          var props = this.properties.filter(function(prop){
-            return prop[2] & E;
-          }, this);
-        } else {
-          var props = this.properties.clone();
-        }
+        var props = this.properties.filter(function(prop){
+          return typeof prop[0] === STRING && (!onlyEnumerable || (prop[2] & E));
+        }, this);
 
         if (includePrototype) {
           var proto = this.GetPrototype();
@@ -12283,23 +12280,24 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         this.MethodName = name;
       }
 
+      var len = params ? params.ExpectedArgumentCount : 0;
+      var nameAttrs = code.name && !code.writableName ? ___ : __W;
+      name = code.name || '';
+
       if (strict) {
-        defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-        defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
+        this.properties.initialize([
+          'arguments', intrinsics.ThrowTypeError, __A,
+          'caller', intrinsics.ThrowTypeError, __A,
+          'length', len, ___,
+          'name', name, nameAttrs
+        ]);
       } else {
-        defineDirect(this, 'arguments', null, ___);
-        defineDirect(this, 'caller', null, ___);
-      }
-
-      defineDirect(this, 'length', params ? params.ExpectedArgumentCount : 0, ___);
-
-      if (kind !== ARROW) {
-        if (!name && code.name) {
-          name = code.name;
-        }
-        if (typeof name === 'string') {
-          defineDirect(this, 'name', name, ___);
-        }
+        this.properties.initialize([
+          'arguments', null, ___,
+          'caller', null, ___,
+          'length', len, ___,
+          'name', name, nameAttrs
+        ]);
       }
 
       hide(this, 'Realm');
@@ -12354,16 +12352,16 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         }
 
         if (!this.Strict) {
-          defineDirect(this, 'arguments', local.arguments, ___);
-          defineDirect(this, 'caller', caller, ___);
+          this.properties.set('arguments', local.arguments, ___);
+          this.properties.set('caller', caller, ___);
           local.arguments = null;
         }
 
         var result = this.thunk.run(context);
 
         if (!this.Strict) {
-          defineDirect(this, 'arguments', null, ___);
-          defineDirect(this, 'caller', null, ___);
+          this.properties.set('arguments', null, ___);
+          this.properties.set('caller', null, ___);
         }
 
         ExecutionContext.pop();
@@ -12426,14 +12424,19 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         options.proto = intrinsics.FunctionProto;
       }
       $Object.call(this, options.proto);
-      defineDirect(this, 'arguments', null, ___);
-      defineDirect(this, 'caller', null, ___);
-      defineDirect(this, 'length', options.length, ___);
-      defineDirect(this, 'name', options.name, ___);
+
+      this.properties.initialize([
+        'arguments', null, ___,
+        'caller', null, ___,
+        'length', options.length, ___,
+        'name', options.name, ___
+      ]);
+
       this.call = options.call;
       if (options.construct) {
         this.construct = options.construct;
       }
+
       this.Realm = realm;
       hide(this, 'Realm');
       hide(this, 'call');
@@ -12448,7 +12451,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       },
       function Construct(args){
         if (this.construct) {
-          var instance = hasDirect(this, 'prototype') ? new $Object(getDirect(this, 'prototype')) : new $Object;
+          var instance = hasDirect(this, 'prototype') ? new $Object(this.properties.get('prototype')) : new $Object;
           instance.ConstructorName = this.properties.get('name');
           var result = this.construct.apply(instance, args);
         } else {
@@ -12467,9 +12470,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       this.TargetFunction = target;
       this.BoundThis = boundThis;
       this.BoundArgs = boundArgs;
-      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, 'length', getDirect(target, 'length'), ___);
+      this.properties.initialize([
+        'arguments', intrinsics.ThrowTypeError, __A,
+        'caller', intrinsics.ThrowTypeError, __A,
+        'length', target.properties.get('length'), ___
+      ]);
     }
 
     inherit($BoundFunction, $Function, {
@@ -12681,7 +12686,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     function $String(value){
       $Object.call(this, intrinsics.StringProto);
       this.PrimitiveValue = value;
-      defineDirect(this, 'length', value.length, ___);
+      this.properties.set('length', value.length, ___);
     }
 
     inherit($String, $Object, {
@@ -12709,7 +12714,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           if (key.Abrupt) return key; else key = key.value;
         }
         if (typeof key === 'string') {
-          if (key < getDirect(this, 'length') && key >= 0) {
+          if (key < this.properties.get('length') && key >= 0) {
             return true;
           }
         }
@@ -12809,6 +12814,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   })();
 
 
+
   // ################
   // ### $WeakMap ###
   // ################
@@ -12825,10 +12831,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     return $WeakMap;
   })();
 
+
+
   // ##############
   // ### $Array ###
   // ##############
-
 
   var $Array = (function(){
     function $Array(items){
@@ -12840,7 +12847,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       } else {
         var len = 0;
       }
-      defineDirect(this, 'length', len, _CW);
+      this.properties.set('length', len, _CW);
     }
 
     inherit($Array, $Object, {
@@ -12970,11 +12977,13 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         $Object.call(this, intrinsics.RegExpProto);
       }
       this.PrimitiveValue = primitive;
-      defineDirect(this, 'global', primitive.global, ___);
-      defineDirect(this, 'ignoreCase', primitive.ignoreCase, ___);
-      defineDirect(this, 'lastIndex', primitive.lastIndex, __W);
-      defineDirect(this, 'multiline', primitive.multiline, ___);
-      defineDirect(this, 'source', primitive.source, ___);
+      this.properties.initialize([
+        'global', primitive.global, ___,
+        'ignoreCase', primitive.ignoreCase, ___,
+        'lastIndex', primitive.lastIndex, __W,
+        'multiline', primitive.multiline, ___,
+        'source', primitive.source, ___
+      ]);
     }
 
     inherit($RegExp, $Object, {
@@ -12991,13 +13000,21 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   // ###############
 
   var $Symbol = (function(){
+    var seed = Math.random() * 4294967296 | 0;
+
     function $Symbol(proto){
       $Object.call(this, intrinsics.SymbolProto);
+      this.Symbol = seed++;
     }
 
     inherit($Symbol, $Object, {
-      NativeBrand: BRANDS.NativeSymbol
-    });
+      NativeBrand: BRANDS.NativeSymbol,
+      Extensible: false
+    }, [
+      function toString(){
+        return this.Symbol;
+      }
+    ]);
 
     return $Symbol;
   })();
@@ -13010,7 +13027,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   var $Arguments = (function(){
     function $Arguments(length){
       $Object.call(this);
-      defineDirect(this, 'length', length, _CW);
+      this.properties.set('length', length, _CW);
     }
 
     inherit($Arguments, $Object, {
@@ -13026,11 +13043,11 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     function $StrictArguments(args){
       $Arguments.call(this, args.length);
       for (var i=0; i < args.length; i++) {
-        defineDirect(this, i+'', args[i], ECW);
+        this.properties.set(i+'', args[i], ECW);
       }
 
-      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
+      this.properties.set('arguments', intrinsics.ThrowTypeError, __A);
+      this.properties.set('caller', intrinsics.ThrowTypeError, __A);
     }
 
     inherit($StrictArguments, $Arguments);
@@ -13049,23 +13066,23 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       this.isMapped = false;
 
       for (var i=0; i < args.length; i++) {
-        defineDirect(this, i+'', args[i], ECW);
+        this.properties.set(i+'', args[i], ECW);
         var name = names[i];
         if (i < names.length && !(name in mapped)) {
           this.isMapped = true;
           mapped[name] = true;
-          defineDirect(this.ParameterMap, name, new ArgAccessor(name, env), _CA);
+          this.ParameterMap.properties.set(name, new ArgAccessor(name, env), _CA);
         }
       }
 
-      defineDirect(this, 'callee', func, _CW);
+      this.properties.set('callee', func, _CW);
     }
 
     inherit($MappedArguments, $Arguments, {
       ParameterMap: null,
     }, [
       function Get(key){
-        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && this.ParameterMap.properties.has(key)) {
           return this.ParameterMap.Get(key);
         } else {
           var val = this.GetP(this, key);
@@ -13080,7 +13097,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         if (desc === undefined) {
           return desc;
         }
-        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && this.ParameterMap.properties.has(key)) {
           desc.Value = this.ParameterMap.Get(key);
         }
         return desc;
@@ -13090,7 +13107,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           return ThrowException('strict_lhs_assignment');
         }
 
-        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && this.ParameterMap.properties.has(key)) {
           if (IsAccessorDescriptor(desc)) {
             this.ParameterMap.Delete(key, false);
           } else {
@@ -13111,7 +13128,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           return result;
         }
 
-        if (result && this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
+        if (result && this.isMapped && this.ParameterMap.properties.has(key)) {
           this.ParameterMap.Delete(key, false);
         }
 
@@ -13147,7 +13164,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       var self = this;
 
       each(names, function(name){
-        defineDirect(self, name, new ModuleGetter(new Reference(object, name)), E_A);
+        self.properties.set(name, new ModuleGetter(new Reference(object, name)), E_A);
       });
     }
 
@@ -13163,9 +13180,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
   var $Error = (function(){
     function $Error(name, type, message){
       $Object.call(this, intrinsics[name+'Proto']);
-      defineDirect(this, 'message', message, ECW);
+      this.properties.set('message', message, ECW);
       if (type !== undefined) {
-        defineDirect(this, 'type', type, _CW);
+        this.properties.set('type', type, _CW);
       }
     }
 
@@ -13614,6 +13631,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
     });
 
     define(ExecutionContext.prototype, [
+      function initializeBinding(name, value){
+        return this.LexicalEnvironment.InitializeBinding(name, value);
+      },
       function initializeBindings(pattern, value){
         return BindingInitialization(pattern, value, this.LexicalEnvironment);
       },
@@ -13622,12 +13642,12 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         this.LexicalEnvironment = this.LexicalEnvironment.outer;
         return block;
       },
-      function pushBlock(code){
+      function pushBlock(decls){
         this.LexicalEnvironment = new DeclarativeEnvironmentRecord(this.LexicalEnvironment);
-        return BlockDeclarationInstantiation(code, this.LexicalEnvironment);
+        return BlockDeclarationInstantiation(decls, this.LexicalEnvironment);
       },
       function pushClass(def, superclass){
-        return ClassDefinitionEvaluation(def.pattern, superclass, def.ctor, def.methods);
+        return ClassDefinitionEvaluation(def.name, superclass, def.ctor, def.methods);
       },
       function pushWith(obj){
         this.LexicalEnvironment = new ObjectEnvironmentRecord(obj, this.LexicalEnvironment);
@@ -13720,6 +13740,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       RegExp  : $RegExp,
       Set     : $Set,
       String  : $String,
+      Symbol  : $Symbol,
       WeakMap : $WeakMap
     };
 
@@ -13734,6 +13755,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       $Object  : $Object,
       $RegExp  : $RegExp,
       $Set     : $Set,
+      $Symbol  : $Symbol,
       $String  : $String,
       $WeakMap : $WeakMap
     };
@@ -13765,15 +13787,19 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       for (var i=0; i < 6; i++) {
         var prototype = bindings[$errors[i] + 'Proto'] = create($Error.prototype);
         $Object.call(prototype, bindings.ErrorProto);
-        defineDirect(prototype, 'name', $errors[i], _CW);
-        defineDirect(prototype, 'type', undefined, _CW);
-        defineDirect(prototype, 'arguments', undefined, _CW);
+        prototype.properties.initialize([
+          'name', $errors[i], _CW,
+          'type', undefined, _CW,
+          'arguments', undefined, _CW
+        ]);
       }
 
       bindings.FunctionProto.FormalParameters = [];
-      defineDirect(bindings.ArrayProto, 'length', 0, __W);
-      defineDirect(bindings.ErrorProto, 'name', 'Error', _CW);
-      defineDirect(bindings.ErrorProto, 'message', '', _CW);
+      bindings.ArrayProto.properties.set('length', 0, __W);
+      bindings.ErrorProto.properties.initialize([
+        'name', 'Error', _CW,
+        'message', '', _CW
+      ]);
     }
 
     inherit(Intrinsics, DeclarativeEnvironmentRecord, [
@@ -13860,18 +13886,18 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         len = array.length;
 
     for (var i=0; i < len; i++) {
-      defineDirect($array, i, array[i], ECW);
+      $array.properties.set(i, array[i], ECW);
     }
-    defineDirect($array, 'length', array.length, __W);
+    $array.properties.set('length', array.length, __W);
     return $array;
   }
 
   function toInternalArray($array){
     var array = [],
-        len = getDirect($array, 'length');
+        len = $array.properties.get('length');
 
     for (var i=0; i < len; i++) {
-      array[i] = getDirect($array, i);
+      array[i] = $array.properties.get(i);
     }
     return array;
   }
@@ -14019,8 +14045,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       var thrower = create($NativeFunction.prototype);
       $Object.call(thrower, realm.intrinsics.FunctionProto);
       thrower.call = function(){ return ThrowException('strict_poison_pill') };
-      defineDirect(thrower, 'length', 0, ___);
-      defineDirect(thrower, 'name', 'ThrowTypeError', ___);
+      thrower.properties.set('length', 0, ___);
+      thrower.properties.set('name', 'ThrowTypeError', ___);
       thrower.Realm = realm;
       thrower.Extensible = false;
       thrower.Strict = true;
@@ -14058,7 +14084,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
                 }
               }
             });
-            defineDirect(target, key, func, 6);
+            target.properties.set(key, func, 6);
           }
         });
       }
@@ -14080,9 +14106,15 @@ exports.runtime = (function(GLOBAL, exports, undefined){
       var nativeCode = ['function ', '() { [native code] }'];
 
       return {
-        defineDirect: defineDirect,
-        deleteDirect: deleteDirect,
-        hasOwnDirect: hasOwnDirect,
+        defineDirect: function(o, key, value, attrs){
+          o.properties.set(key, value, attrs);
+        },
+        deleteDirect: function(o, key){
+          o.properties.remove(key);
+        },
+        hasOwnDirect: function(o, key){
+          return o.properties.has(key);
+        },
         hasDirect: hasDirect,
         setDirect: setDirect,
         updateAttrDirect: function(obj, key, attr){
@@ -14174,7 +14206,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         },
         EnumerateHidden: function(object){
           if (object) {
-            return ownKeys(object.hiddens);
+            return fromInternalArray(ownKeys(object.hiddens));
           }
         },
         Type: function(o){
@@ -14205,9 +14237,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         },
         wrapDateMethods: function(target){
           wrapNatives(Date.prototype, target);
-        },
-        wrapStringMethods: function(target){
-          wrapNatives(String.prototype, target);
         },
         wrapRegExpMethods: function(target){
           wrapNatives(RegExp.prototype, target);
@@ -14290,6 +14319,9 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         },
         ProxyCreate: function(target, handler){
           return new $Proxy(target, handler);
+        },
+        SymbolCreate: function(){
+          return new $Symbol;
         },
         StringCreate: function(string){
           return new $String(string);
@@ -14603,10 +14635,10 @@ exports.runtime = (function(GLOBAL, exports, undefined){
             var math = new $Object;
             math.NativeBrand = BRANDS.NativeMath;
             for (var i=0; i < consts.length; i++) {
-              defineDirect(math, consts[i], Math[consts[i]], ___);
+              math.properties.set(consts[i], Math[consts[i]], ___);
             }
             for (var k in funcs) {
-              defineDirect(math, k, new $NativeFunction({
+              math.properties.set(k, new $NativeFunction({
                 call: funcs[k],
                 name: k,
                 length: funcs[k].length
@@ -14643,22 +14675,23 @@ exports.runtime = (function(GLOBAL, exports, undefined){
             callback.Call(undefined, [file]);
           });
         },
-        resolve: module ? require('path').resolve
-                        : function(base, to){
-                            to = to.split('/');
-                            base = base.split('/');
-                            base.length--;
+        resolve: module
+          ? require('path').resolve
+          : function(base, to){
+              to = to.split('/');
+              base = base.split('/');
+              base.length--;
 
-                            for (var i=0; i < to.length; i++) {
-                              if (to[i] === '..') {
-                                base.length--;
-                              } else if (to[i] !== '.') {
-                                base[base.length] = to[i];
-                              }
-                            }
+              for (var i=0; i < to.length; i++) {
+                if (to[i] === '..') {
+                  base.length--;
+                } else if (to[i] !== '.') {
+                  base[base.length] = to[i];
+                }
+              }
 
-                            return base.join('/');
-                          },
+              return base.join('/');
+            },
         baseURL: module ? function(){ return module.parent.parent.dirname }
                         : function(){ return location.origin + location.pathname }
       };
@@ -14986,7 +15019,8 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         resolveModule(source, global, name, errback, callback);
       },
       function evaluateAsync(subject, callback){
-        var script = new Script(subject);
+        var script = new Script(subject),
+            self = this;
 
         if (script.error) {
           this.emit(script.error.type, script.error);
@@ -15402,8 +15436,10 @@ exports.debug = (function(exports){
       function ownAttrs(props){
         props || (props = create(null));
         this.props.forEach(function(prop){
-          var key = prop[0] === '__proto__' ? proto : prop[0];
-          props[key] = prop[2];
+          if (typeof prop[0] === 'string') {
+            var key = prop[0] === '__proto__' ? proto : prop[0];
+            props[key] = prop;
+          }
         });
         return props;
       },
@@ -15412,7 +15448,7 @@ exports.debug = (function(exports){
             props = this.ownAttrs();
 
         for (var k in props) {
-          if (own || (props[k] & ACCESSOR)) {
+          if (own || (props[k][2] & ACCESSOR)) {
             inherited[k] = props[k];
           }
         }
@@ -15427,8 +15463,8 @@ exports.debug = (function(exports){
                 : this.getterAttrs(true);
 
         for (var k in props) {
-          if (hidden || (props[k] & ENUMERABLE)) {
-            keys.push(k === proto ? '__proto__' : k);
+          if (hidden || (props[k][2] & ENUMERABLE)) {
+            keys.push(props[k][0]);
           }
         }
 
@@ -15470,9 +15506,9 @@ exports.debug = (function(exports){
         indexes.push('length');
 
         for (var k in props) {
-          if (hidden || props[k] & ENUMERABLE) {
-            if (k !== 'length' && !utility.isInteger(+k)) {
-              keys.push(k === proto ? '__proto__' : k);
+          if (hidden || props[k][2] & ENUMERABLE) {
+            if (k !== props[k][0] || k !== 'length' && !(k >= 0 && k < len)) {
+              keys.push(props[k][0]);
             }
           }
         }
@@ -15650,11 +15686,11 @@ exports.debug = (function(exports){
     kind: 'Math'
   }, []);
 
-  function MirrorModule(subject){
-    MirrorObject.call(this, subject);
-  }
+  var MirrorModule = (function(){
+    function MirrorModule(subject){
+      MirrorObject.call(this, subject);
+    }
 
-  void function(){
     inherit(MirrorModule, MirrorObject, {
       kind: 'Module'
     }, [
@@ -15680,13 +15716,15 @@ exports.debug = (function(exports){
         }
       },
     ]);
-  }();
 
-  function MirrorNumber(subject){
-    MirrorObject.call(this, subject);
-  }
+    return MirrorModule;
+  })();
 
-  void function(){
+  var MirrorNumber = (function(){
+    function MirrorNumber(subject){
+      MirrorObject.call(this, subject);
+    }
+
     inherit(MirrorNumber, MirrorObject, {
       kind: 'Number'
     }, [
@@ -15700,7 +15738,7 @@ exports.debug = (function(exports){
         return value;
       }
     ]);
-  }();
+  })();
 
   function MirrorRegExp(subject){
     MirrorObject.call(this, subject);
@@ -15717,15 +15755,17 @@ exports.debug = (function(exports){
   }();
 
 
-  function MirrorSet(subject){
-    MirrorObject.call(this, subject);
-  }
+  var MirrorSet = (function(){
+    function MirrorSet(subject){
+      MirrorObject.call(this, subject);
+    }
 
-  void function(){
     inherit(MirrorSet, MirrorObject, {
       kind: 'Set'
-    }, []);
-  }();
+    });
+
+    return MirrorSet;
+  })();
 
 
   function MirrorString(subject){
@@ -15750,8 +15790,10 @@ exports.debug = (function(exports){
           props[i] = 1;
         }
         this.props.forEach(function(prop){
-          var key = prop[0] === '__proto__' ? proto : prop[0];
-          props[key] = prop[2];
+          if (typeof prop[0] === 'string') {
+            var key = prop[0] === '__proto__' ? proto : prop[0];
+            props[key] = prop[2];
+          }
         });
         return props;
       },
@@ -15767,6 +15809,25 @@ exports.debug = (function(exports){
       }
     ]);
   }();
+
+
+
+
+  var MirrorSymbol = (function(){
+    function MirrorSymbol(subject){
+      MirrorObject.call(this, subject);
+    }
+
+    inherit(MirrorSymbol, MirrorObject, {
+      kind: 'Symbol'
+    }, [
+      function label(){
+        return '@' + (this.subject.Label || 'Symbol');
+      }
+    ]);
+
+    return MirrorSymbol;
+  })();
 
 
   function MirrorWeakMap(subject){
@@ -15787,6 +15848,15 @@ exports.debug = (function(exports){
       this.attrs = create(null);
       this.props = create(null);
       this.kind = introspect(subject.Target).kind;
+    }
+
+    function descToAttrs(desc){
+      if (desc) {
+        if ('Value' in desc) {
+          return desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
+        }
+        return desc.Enumerable | (desc.Configurable << 1) | ACCESSOR;
+      }
     }
 
     inherit(MirrorProxy, Mirror, {
@@ -15810,6 +15880,9 @@ exports.debug = (function(exports){
       },
       function get(key){
         return introspect(this.subject.Get(key));
+      },
+      function getValue(key){
+        return this.subject.Get(key);
       },
       function hasOwn(key){
         return this.subject.HasOwnProperty(key);
@@ -15836,10 +15909,7 @@ exports.debug = (function(exports){
       function propAttributes(key){
         var desc = this.subject.GetOwnProperty(key);
         if (desc) {
-          if ('Value' in desc) {
-            return desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
-          }
-          return desc.Enumerable | (desc.Configurable << 1) | A;
+          return descToAttrs(desc);
         }
       },
       function ownAttrs(props){
@@ -15850,7 +15920,10 @@ exports.debug = (function(exports){
         this.attrs = create(null);
 
         for (var i=0; i < keys.length; i++) {
-          props[keys[i]] = this.propAttributes(keys[i]);
+          var desc = this.subject.GetOwnProperty(key);
+          if (desc) {
+            props[keys[i]] = [keys[i], desc.Value, descToAttrs(desc)];
+          }
         }
 
         return props;
@@ -15913,7 +15986,7 @@ exports.debug = (function(exports){
 
         each(this.subject.EnumerateBindings(), function(key){
           key = key === '__proto__' ? proto : key;
-          props[key] = key
+          props[key] = [key, null, 7]
         });
 
         return props;
@@ -15924,7 +15997,7 @@ exports.debug = (function(exports){
             keys = [];
 
         for (var k in props) {
-          keys.push(k === proto ? '__proto__' : k);
+          keys.push(props[k][0]);
         }
 
         return keys.sort();
@@ -16023,6 +16096,7 @@ exports.debug = (function(exports){
     RegExp   : MirrorRegExp,
     Set      : MirrorSet,
     String   : MirrorString,
+    Symbol   : MirrorSymbol,
     WeakMap  : MirrorWeakMap
   };
 
@@ -16152,6 +16226,7 @@ exports.debug = (function(exports){
     RegExp: alwaysLabel,
     Scope: alwaysLabel,
     Set: alwaysLabel,
+    Symbol: alwaysLabel,
     String: alwaysLabel,
     WeakMap: alwaysLabel
   };
@@ -16365,7 +16440,9 @@ exports.modules["@math"] = "export let Math = $__MathCreate();\n\n\nconst E     
 
 exports.modules["@reflect"] = "\nexport function Proxy(target, handler){\n  ensureObject(target, 'Proxy');\n  ensureObject(handler, 'Proxy');\n  return $__ProxyCreate(target, handler);\n}\n\n\nfunction makeDefiner(desc){\n  return (object, key, value) => {\n    desc.value = value;\n    $__DefineOwnProperty(object, key, desc);\n    desc.value = undefined;\n    return object;\n  };\n}\n\n\nlet ___ = 0b0000,\n    E__ = 0b0001,\n    _C_ = 0b0010,\n    EC_ = 0b0011,\n    __W = 0b0100,\n    E_W = 0b0101,\n    _CW = 0b0110,\n    ECW = 0b0111,\n    __A = 0b1000,\n    E_A = 0b1001,\n    _CA = 0b1010,\n    ECA = 0b1011;\n\nlet defineNormal = makeDefiner({ writable: true,\n                                 enumerable: true,\n                                 configurable: true });\nlet sealer = { configurable: false },\n    freezer = { configurable: false, writable: false };\n\n\nexport class Handler {\n  constructor(){}\n\n  getOwnPropertyDescriptor(target, name){\n    throw $__Exception('missing_fundamental_trap', ['getOwnPropertyDescriptor']);\n  }\n\n  getOwnPropertyNames(target){\n    throw $__Exception('missing_fundamental_trap', ['getOwnPropertyNames']);\n  }\n\n  getPrototypeOf(target){\n    throw $__Exception('missing_fundamental_trap', ['getPrototypeOf']);\n  }\n\n  defineProperty(target, name, desc){\n    throw $__Exception('missing_fundamental_trap', ['defineProperty']);\n  }\n\n  deleteProperty(target, name){\n    throw $__Exception('missing_fundamental_trap', ['deleteProperty']);\n  }\n\n  preventExtensions(target){\n    throw $__Exception('missing_fundamental_trap', ['preventExtensions']);\n  }\n\n  isExtensible(target){\n    throw $__Exception('missing_fundamental_trap', ['isExtensible']);\n  }\n\n  apply(target, thisArg, args){\n    throw $__Exception('missing_fundamental_trap', ['apply']);\n  }\n\n  seal(target) {\n    if (!this.preventExtensions(target)) return false;\n\n    var props = this.getOwnPropertyNames(target),\n        len = +props.length;\n\n    for (var i = 0; i < len; i++) {\n      success = success && this.defineProperty(target, props[i], sealer);\n    }\n    return success;\n  }\n\n  freeze(target){\n    if (!this.preventExtensions(target)) return false;\n\n    var props = this.getOwnPropertyNames(target),\n        len = +props.length;\n\n    for (var i = 0; i < len; i++) {\n      var name = props[i],\n          desc = this.getOwnPropertyDescriptor(target, name);\n\n      if (desc) {\n        success = success && this.defineProperty(target, name, 'writable' in desc || 'value' in desc ? freezer : sealer);\n      }\n    }\n\n    return success;\n  }\n\n  isSealed(target){\n    var props = this.getOwnPropertyNames(target),\n        len = +props.length;\n\n    for (var i = 0; i < len; i++) {\n      var desc = this.getOwnPropertyDescriptor(target, props[i]);\n\n      if (desc && desc.configurable) {\n        return false;\n      }\n    }\n    return !this.isExtensible(target);\n  }\n\n  isFrozen(target){\n    var props = this.getOwnPropertyNames(target),\n        len = +props.length;\n\n    for (var i = 0; i < len; i++) {\n      var desc = this.getOwnPropertyDescriptor(target, props[i]);\n\n      if (desc.configurable || ('writable' in desc || 'value' in desc) && desc.writable) {\n        return false;\n      }\n    }\n    return !this.isExtensible(target);\n  }\n\n  has(target, name){\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    if (desc !== undefined) {\n      return true;\n    }\n    var proto = $__GetPrototype(target);\n    return proto === null ? false : has(proto, name);\n  }\n\n  hasOwn(target, name){\n    return this.getOwnPropertyDescriptor(target, name) !== undefined;\n  }\n\n  get(target, name, receiver){\n    receiver = receiver || target;\n\n    var desc = this.getOwnPropertyDescriptor(target, name);\n    if (desc === undefined) {\n      var proto = $__GetPrototype(target);\n      return proto === null ? undefined : this.get(proto, name, receiver);\n    }\n    if ('writable' in desc || 'value' in desc) {\n      return desc.value;\n    }\n    var getter = desc.get;\n    return getter === undefined ? undefined : $__CallFunction(getter, receiver, []);\n  }\n\n  set(target, name, value, receiver){\n    var ownDesc = this.getOwnPropertyDescriptor(target, name);\n\n    if (ownDesc !== undefined) {\n      if ('get' in ownDesc || 'set' in ownDesc) {\n        var setter = ownDesc.set;\n        if (setter === undefined) return false;\n        $__CallFunction(setter, receiver, [value]);\n        return true;\n      }\n\n      if (ownDesc.writable === false) {\n        return false;\n      } else if (receiver === target) {\n        $__DefineOwnProperty(receiver, name, { value: value });\n        return true;\n      } else {\n        $__DefineOwnProperty(receiver, name, newDesc);\n        var extensible = $__GetExtensible(receiver);\n        extensible && defineNormal(receiver, name, value);\n        return extensible;\n      }\n    }\n\n    var proto = $__GetPrototype(target);\n    if (proto === null) {\n      var extensible = $__GetExtensible(receiver);\n      extensible && defineNormal(receiver, name, value);\n      return extensible;\n    }\n\n    return this.set(proto, name, value, receiver);\n  }\n\n  enumerate(target){\n    var result = this.getOwnPropertyNames(target),\n        len = +result.length,\n        out = [];\n\n    for (var i = 0; i < len; i++) {\n      var name = $__ToString(result[i]),\n          desc = this.getOwnPropertyDescriptor(name);\n\n      if (desc != null && !desc.enumerable) {\n        out.push(name);\n      }\n    }\n\n    var proto = $__GetPrototype(target);\n    return proto === null ? out : out.concat(enumerate(proto));\n  }\n\n  iterate(target){\n    var result = this.enumerate(target),\n        len = +result.length,\n        i = 0;\n\n    return {\n      next(){\n        if (i === len) throw StopIteration;\n        return result[i++];\n      }\n    };\n  }\n\n  keys(target){\n    var result = this.getOwnPropertyNames(target),\n        len = +result.length,\n        result = [];\n\n    for (var i = 0; i < len; i++) {\n      var name = $__ToString(result[i]),\n          desc = this.getOwnPropertyDescriptor(name);\n\n      if (desc != null && desc.enumerable) {\n        result.push(name);\n      }\n    }\n    return result;\n  }\n\n  construct(target, args) {\n    var proto = this.get(target, 'prototype', target),\n        instance = $__Type(proto) === 'Object' ? $__ObjectCreate(proto) : {},\n        result = this.apply(target, instance, args);\n\n    return $__Type(result) === 'Object' ? result : instance;\n  }\n}\n\n\nexport function apply(target, thisArg, args){\n  ensureFunction(target, '@Reflect.apply');\n  return $__CallFunction(target, thisArg, ensureArgs(args));\n}\n\nexport function construct(target, args){\n  ensureFunction(target, '@Reflect.construct');\n  return $__Construct(target, ensureArgs(args));\n}\n\nexport function defineProperty(target, name, desc){\n  ensureObject(target, '@Reflect.defineProperty');\n  ensureDescriptor(desc);\n  name = $__ToPropertyName(name);\n  $__DefineOwnProperty(target, name, desc);\n  return object;\n}\n\nexport function deleteProperty(target, name){\n  ensureObject(target, '@Reflect.deleteProperty');\n  name = $__ToPropertyName(name);\n  return $__Delete(target, name, false);\n}\n\nexport function enumerate(target){\n  return $__Enumerate($__ToObject(target), false, false);\n}\n\nexport function freeze(target){\n  if (Type(target) !== 'Object') return false;\n  var success = $__SetExtensible(target, false);\n  if (!success) return success;\n\n  var props = $__Enumerate(target, false, false);\n      len = props.length;\n\n  for (var i = 0; i < len; i++) {\n    var desc = $__GetOwnProperty(target, props[i]),\n        attrs = 'writable' in desc || 'value' in desc ? freezer : desc !== undefined ? sealer : null;\n\n    if (attrs !== null) {\n      success = success && $__DefineOwnProperty(target, props[i], attrs);\n    }\n  }\n  return success;\n}\n\nexport function get(target, name, receiver){\n  target = $__ToObject(target);\n  name = $__ToPropertyName(name);\n  receiver = receiver === undefined ? undefined : $__ToObject(receiver);\n  return $__GetP(target, name, receiver);\n}\n\nexport function getOwnPropertyDescriptor(target, name){\n  ensureObject(target, '@Reflect.getOwnPropertyDescriptor');\n  name = $__ToPropertyName(name);\n  return $__GetOwnProperty(target, name);\n}\n\nexport function getOwnPropertyNames(target){\n  ensureObject(target, '@Reflect.getOwnPropertyNames');\n  return $__Enumerate(target, false, false);\n}\n\nexport function getPrototypeOf(target){\n  ensureObject(target, '@Reflect.getPrototypeOf');\n  return $__GetPrototype(target);\n}\n\nexport function has(target, name){\n  target = $__ToObject(target);\n  name = $__ToPropertyName(name);\n  return name in target;\n}\n\nexport function hasOwn(target, name){\n  target = $__ToObject(target);\n  name = $__ToPropertyName(name);\n  return $__HasOwnProperty(target, name);\n}\n\nexport function isFrozen(target){\n  ensureObject(target, '@Reflect.isFrozen');\n  if ($__GetExtensible(target)) {\n    return false;\n  }\n\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc) {\n      if (desc.configurable || 'writable' in desc && desc.writable) {\n        return false;\n      }\n    }\n  }\n\n  return true;\n}\n\nexport function isSealed(target){\n  ensureObject(target, '@Reflect.isSealed');\n  if ($__GetExtensible(target)) {\n    return false;\n  }\n\n  var props = $__Enumerate(target, false, false);\n\n  for (var i=0; i < props.length; i++) {\n    var desc = $__GetOwnProperty(target, props[i]);\n    if (desc && desc.configurable) {\n      return false;\n    }\n  }\n\n  return true;\n}\n\nexport function isExtensible(target){\n  ensureObject(target, '@Reflect.isExtensible');\n  return $__GetExtensible(target);\n}\n\nexport function keys(target){\n  ensureObject(target, '@Reflect.keys');\n  return $__Enumerate(target, false, true);\n}\n\nexport function preventExtensions(target){\n  if (Type(target) !== 'Object') return false;\n  return $__SetExtensible(target, false);\n}\n\nexport function seal(target){\n  if (Type(target) !== 'Object') return false;\n  var success = $__SetExtensible(target, false);\n  if (!success) return success;\n\n  var props = $__Enumerate(target, false, false);\n      len = props.length;\n\n  for (var i = 0; i < len; i++) {\n    success = success && $__DefineOwnProperty(target, props[i], sealer);\n  }\n  return success;\n}\n\nexport function set(target, name, value, receiver){\n  target = $__ToObject(target);\n  name = $__ToPropertyName(name);\n  receiver = receiver === undefined ? undefined : $__ToObject(receiver);\n  return $__SetP(target, name, value, receiver);\n}\n\n\n\n$__setupFunctions(getOwnPropertyDescriptor, getOwnPropertyNames, getPrototypeOf,\n  defineProperty, deleteProperty, preventExtensions, isExtensible, apply, enumerate,\n  freeze, seal, isFrozen, isSealed, has, hasOwn, keys, get, set, construct);\n\n\n\nfunction ensureObject(o, name){\n  var type = typeof o;\n  if (type === 'object' ? o === null : type !== 'function') {\n    throw $__Exception('called_on_non_object', [name]);\n  }\n}\n\nfunction ensureDescriptor(o){\n  if (o === null || typeof o !== 'object') {\n    throw $__Exception('property_desc_object', [typeof o])\n  }\n}\n\n\nfunction ensureArgs(o, name){\n  if (o == null || typeof o !== 'object' || typeof $__getDirect(o, 'length') !== 'number') {\n    throw $__Exception('apply_wrong_args', []);\n  }\n\n  var brand = $__GetNativeBrand(o);\n  return brand === 'Array' || brand === 'Arguments' ? o : [...o];\n}\n\nfunction ensureFunction(o, name){\n  if (typeof o !== 'function') {\n    throw $__Exception('called_on_non_function', [name]);\n  }\n}\n";
 
-exports.modules["@std"] = "// standard constants\nconst NaN       = +'NaN';\nconst Infinity  = 1 / 0;\nconst undefined = void 0;\n\n// standard functions\nimport { decodeURI,\n         decodeURIComponent,\n         encodeURI,\n         encodeURIComponent,\n         eval,\n         isFinite,\n         isNaN,\n         parseFloat,\n         parseInt } from '@globals';\n\n\nimport { clearInterval,\n         clearTimeout,\n         setInterval,\n         setTimeout } from '@timers';\n\n// standard types\nimport Array    from '@Array';\nimport Boolean  from '@Boolean';\nimport Date     from '@Date';\nimport Function from '@Function';\nimport Map      from '@Map';\nimport Number   from '@Number';\nimport Object   from '@Object';\nimport Proxy    from '@reflect';\nimport RegExp   from '@RegExp';\nimport Set      from '@Set';\nimport String   from '@String';\nimport WeakMap  from '@WeakMap';\n\n\n\n// standard errors\nimport { Error,\n         EvalError,\n         RangeError,\n         ReferenceError,\n         SyntaxError,\n         TypeError,\n         URIError } from '@Error';\n\n\n// standard pseudo-modules\nimport JSON from '@json';\nimport Math from '@math';\n\n//export var Symbol      = '@symbol.js';\n//export var Iterator    = '@iter.js';\nlet StopIteration = $__StopIteration\n\n\nexport Array, Boolean, Date, Function, Map, Number, Object, Proxy, RegExp, Set, String, WeakMap,\n       Error, EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError,\n       decodeURI, decodeURIComponent, encodeURI, encodeURIComponent, eval, isFinite, isNaN,\n       parseFloat, parseInt, clearInterval, clearTimeout, setInterval, setTimeout,\n       StopIteration, JSON, Math, NaN, Infinity, undefined;\n\n\n";
+exports.modules["@std"] = "// standard constants\nconst NaN       = +'NaN';\nconst Infinity  = 1 / 0;\nconst undefined = void 0;\n\n// standard functions\nimport { decodeURI,\n         decodeURIComponent,\n         encodeURI,\n         encodeURIComponent,\n         eval,\n         isFinite,\n         isNaN,\n         parseFloat,\n         parseInt } from '@globals';\n\n\nimport { clearInterval,\n         clearTimeout,\n         setInterval,\n         setTimeout } from '@timers';\n\n// standard types\nimport Array    from '@Array';\nimport Boolean  from '@Boolean';\nimport Date     from '@Date';\nimport Function from '@Function';\nimport Map      from '@Map';\nimport Number   from '@Number';\nimport Object   from '@Object';\nimport Proxy    from '@reflect';\nimport RegExp   from '@RegExp';\nimport Set      from '@Set';\nimport String   from '@String';\nimport WeakMap  from '@WeakMap';\n\n\n\n// standard errors\nimport { Error,\n         EvalError,\n         RangeError,\n         ReferenceError,\n         SyntaxError,\n         TypeError,\n         URIError } from '@Error';\n\n\n// standard pseudo-modules\nimport JSON from '@json';\nimport Math from '@math';\n\nimport Symbol from '@symbol';\n//import Iterator from '@iter';\n\nlet StopIteration = $__StopIteration\n\n\nexport Array, Boolean, Date, Function, Map, Number, Object, Proxy, RegExp, Set, String, WeakMap,\n       Error, EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError,\n       decodeURI, decodeURIComponent, encodeURI, encodeURIComponent, eval, isFinite, isNaN,\n       parseFloat, parseInt, clearInterval, clearTimeout, setInterval, setTimeout,\n       StopIteration, JSON, Math, NaN, Infinity, undefined;\n\n\n";
+
+exports.modules["@symbol"] = "export function Symbol(str){\n  var symbol = $__SymbolCreate();\n  if (str != null) {\n    $__SetInternal(symbol, 'Label', $__ToString(str));\n  }\n  return symbol;\n}\n\n$__setupConstructor(Symbol, $__SymbolProto);\n\n$__defineProps(Symbol.prototype, {\n  valueOf(){\n    if ($__GetNativeBrand(this) === 'Symbol') {\n      return $__GetInternal(this, 'Label');\n    } else {\n      throw $__Exception('not_generic', ['Symbol.prototype.toString']);\n    }\n  },\n  toString(){\n    if ($__GetNativeBrand(this) === 'Symbol') {\n      return $__GetInternal(this, 'Label');\n    } else {\n      throw $__Exception('not_generic', ['Symbol.prototype.toString']);\n    }\n  }\n});\n\n$__DefineOwnProperty(Symbol.prototype, 'constructor', { configurable: false, writable: false });\n$__SetExtensible(Symbol.prototype, false);\n";
 
 exports.modules["@system"] = "{\n  let ___ = 0x00,\n      E__ = 0x01,\n      _C_ = 0x02,\n      EC_ = 3,\n      __W = 0x04,\n      E_W = 5,\n      _CW = 6,\n      ECW = 7,\n      __A = 0x08,\n      E_A = 9,\n      _CA = 10,\n      ECA = 11;\n\n  let global = $__global;\n\n\n  $__defineMethods = function defineMethods(obj, props){\n    for (var i=0; i < props.length; i++) {\n      $__SetInternal(props[i], 'Native', true);\n      $__defineDirect(obj, props[i].name, props[i], _CW);\n      $__deleteDirect(props[i], 'prototype');\n    }\n    return obj;\n  };\n\n  $__defineProps = function defineProps(obj, props){\n    var keys = $__Enumerate(props, false, false);\n    for (var i=0; i < keys.length; i++) {\n      var name = keys[i],\n          prop = props[name];\n\n      $__defineDirect(obj, name, prop, _CW);\n\n      if (typeof prop === 'function') {\n        $__SetInternal(prop, 'Native', true);\n        $__defineDirect(prop, 'name', name, ___);\n        $__deleteDirect(prop, 'prototype');\n      }\n    }\n    return obj;\n  };\n\n  $__setupFunctions = function setupFunctions(...funcs){\n    var len = funcs.length;\n    for (var i=0; i < len; i++) {\n      $__SetInternal(funcs[i], 'Native', true);\n      $__deleteDirect(funcs[i], 'prototype');\n    }\n  };\n\n  $__defineConstants = function defineConstants(obj, props){\n    var keys = $__Enumerate(props, false, false);\n    for (var i=0; i < keys.length; i++) {\n      $__defineDirect(obj, keys[i], props[keys[i]], 0);\n    }\n  };\n\n  $__setupConstructor = function setupConstructor(ctor, proto){\n    $__defineDirect(ctor, 'prototype', proto, ___);\n    $__defineDirect(ctor, 'length', 1, ___);\n    $__defineDirect(ctor.prototype, 'constructor', ctor, _CW);\n    $__defineDirect(global, ctor.name, ctor, _CW);\n    $__SetInternal(ctor, 'Native', true);\n    $__SetInternal(ctor, 'NativeConstructor', true);\n  };\n\n\n  $__setLength = function setLength(f, length){\n    if (typeof length === 'string') {\n      $__setDirect(f, 'length', length);\n    } else {\n      var keys = $__Enumerate(length, false, false);\n      for (var i=0; i < keys.length; i++) {\n        var key = keys[i];\n        $__setDirect(f[key], 'length', length[key]);\n      }\n    }\n  };\n\n  $__setProperty = function setProperty(key, object, values){\n    var keys = $__Enumerate(values, false, false),\n        i = keys.length;\n\n    while (i--) {\n      $__defineDirect(object[keys[i]], key, values[keys[i]], ___);\n    }\n  };\n\n\n  let hidden = { enumerable: false };\n\n  $__hideEverything = function hideEverything(o){\n    if (!o || typeof o !== 'object') return o;\n\n    var keys = $__Enumerate(o, false, true),\n        i = keys.length;\n\n    while (i--) {\n      $__updateAttrDirect(o, keys[i], ~E__);\n    }\n\n    if (typeof o === 'function') {\n      hideEverything(o.prototype);\n    }\n\n    return o;\n  };\n}\n\n\nclass Storage {\n  constructor(){}\n  set(props){\n    for (var k in props) {\n      this[k] = props[k];\n    }\n  }\n  empty(){\n    for (var k in this) {\n      delete this[k];\n    }\n  }\n}\n\n$__hideEverything(Storage.prototype);\n\n\nlet _ = o => {\n  var v = $__GetHidden(o, 'loader-internals');\n  if (!v) {\n    v = new Storage;\n    $__SetHidden(o, 'loader-internals', v);\n  }\n  return v;\n}\n\n\n\nclass Request {\n  constructor(loader, mrl, resolved, callback, errback){\n    _(this).set({\n      loader: loader,\n      callback: callback,\n      errback: errback,\n      mrl: mrl,\n      resolved: resolved\n    });\n  }\n\n  fulfill(src){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    var translated = (_loader.translate)(src, _this.mrl, _loader.baseURL, _this.resolved);\n    if (_loader.strict) {\n      translated = '\"use strict\";'+translated;\n    }\n\n    $__EvaluateModule(translated, _loader.global, _this.resolved, msg => this.reject(msg), module => {\n      var _module = _(module);\n      _module.loader = _this.loader;\n      $__SetInternal(_module, 'resolved', _this.resolved);\n      $__SetInternal(_module, 'mrl', _this.mrl);\n      _loader.modules[_this.resolved] = module;\n      (_this.callback)(module);\n      _this.empty();\n    });\n  }\n\n  redirect(mrl, baseURL){\n    var _this = _(this),\n        _loader = _(_this.loader);\n\n    _this.resolved = (_loader.resolve)(mrl, baseURL);\n    _this.mrl = mrl;\n\n    var module = _this.loader.get(_this.resolved);\n    if (module) {\n      (_this.callback)(module);\n    } else {\n      (_loader.fetch)(mrl, baseURL, this, _this.resolved);\n    }\n  }\n\n  reject(msg){\n    var _this = _(this);\n    (_this.errback)(msg);\n    _this.empty();\n  }\n}\n\n\nexport class Loader {\n  constructor(parent, options){\n    options = options || {};\n    this.linkedTo  = options.linkedTo || null;\n    _(this).set({\n      translate: options.translate || parent.translate,\n      resolve  : options.resolve || parent.resolve,\n      fetch    : options.fetch || parent.fetch,\n      strict   : options.strict === true,\n      global   : options.global || $__global,\n      baseURL  : options.baseURL || (parent ? parent.baseURL : ''),\n      modules  : $__ObjectCreate(null)\n    });\n  }\n\n  get global(){\n    return _(this).global;\n  }\n\n  get baseURL(){\n    return _(this).baseURL;\n  }\n\n  load(mrl, callback, errback){\n    var _this = _(this),\n        key = (_this.resolve)(mrl, _this.baseURL),\n        module = _this.modules[key];\n\n    if (module) {\n      callback(module);\n    } else {\n      (_this.fetch)(mrl, _this.baseURL, new Request(this, mrl, key, callback, errback), key);\n    }\n  }\n\n  eval(src){\n    var _this = _(this);\n    var module = $__EvaluateModule(src, _this.global, _this.baseURL);\n    return module;\n  }\n\n  evalAsync(src, callback, errback){\n\n  }\n\n  get(mrl){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n    return _this.modules[canonical];\n  }\n\n  set(mrl, mod){\n    var _this = _(this),\n        canonical = (_this.resolve)(mrl, _this.baseURL);\n\n    if (typeof canonical === 'string') {\n      _this.modules[canonical] = mod;\n    } else {\n      for (var k in canonical) {\n        _this.modules[k] = canonical[k];\n      }\n    }\n  }\n\n  defineBuiltins(object){\n    var std  = $__StandardLibrary(),\n        desc = { configurable: true,\n                 enumerable: false,\n                 writable: true,\n                 value: undefined };\n\n    object || (object = _(this).global);\n    for (var k in std) {\n      desc.value = std[k];\n      $__DefineOwnProperty(object, k, desc);\n    }\n\n    return object;\n  }\n}\n\nexport let Module = function Module(object){\n  if ($__GetNativeBrand(object) === 'Module') {\n    return object;\n  }\n  return $__ToModule($__ToObject(object));\n}\n\n$__deleteDirect(Module, 'prototype');\n\n\nexport let System = new Loader(null, {\n  global: $__global,\n  baseURL: '',\n  strict: false,\n  fetch(relURL, baseURL, request, resolved) {\n    var fetcher = resolved[0] === '@' ? $__Fetch : $__readFile;\n\n    fetcher(resolved, src => {\n      if (typeof src === 'string') {\n        request.fulfill(src);\n      } else {\n        request.reject(src.message);\n      }\n    });\n  },\n  resolve(relURL, baseURL){\n    return relURL[0] === '@' ? relURL : $__resolve(baseURL, relURL);\n  },\n  translate(src, relURL, baseURL, resolved) {\n    return src;\n  }\n});\n\n$__System = System;\n";
 
