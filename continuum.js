@@ -5831,6 +5831,19 @@ exports.utility = (function(exports){
   }
   exports.assign = assign;
 
+
+
+  var hide = exports.hide = (function(){
+    if (isES5) {
+      return function hide(o, k){
+        Object.defineProperty(o, k, { enumerable: false });
+      };
+    }
+    return function hide(){};
+  })();
+
+
+
   function inherit(Ctor, Super, properties, methods){
     define(Ctor, { inherits: Super });
 
@@ -6380,31 +6393,252 @@ exports.utility = (function(exports){
 
     return PropertyList;
   })();
-/*
 
-        this.forEach(function(property){
-          if (property[2] & 0x08) {
-            Object.defineProperty(out, property[0], {
-              enumerable: (property[2] & 0x01) > 0,
-              configurable: (property[2] & 0x02) > 0,
-              get: property[1].Get ? function(){} : undefined,
-              set: property[1].Set ? function(){} : undefined
-            });
-          } else {
-            Object.defineProperty(out, property[0], {
-              enumerable: (property[2] & 0x01) > 0,
-              configurable: (property[2] & 0x02) > 0,
-              writable: (property[2] & 0x04) > 0,
-              value: isObject(property[1]) ? property[1].properties : property[1]
-            });
+  var LinkedList = exports.LinkedList = (function(){
+    function Item(data, prev){
+      this.data = data;
+      this.after(prev);
+    }
+
+    define(Item.prototype, [
+      function after(item){
+        this.relink(item);
+        return this;
+      },
+      function before(item){
+        this.prev.relink(item);
+        return this;
+      },
+      function relink(prev){
+        if (this.next) {
+          this.next.prev = this.prev;
+          this.prev.next = this.next;
+        }
+        this.prev = prev;
+        this.next = prev.next;
+        prev.next.prev = this;
+        prev.next = this;
+        return this;
+      },
+      function unlink(){
+        this.next.prev = this.prev;
+        this.prev.next = this.next;
+        this.prev = this.next = null;
+        return this;
+      },
+      function clear(){
+        var data = this.data;
+        this.next = this.prev = this.data = null;
+        return data;
+      }
+    ]);
+
+    function Sentinel(list){
+      this.list = list;
+      this.next = this;
+      this.prev = this;
+      this.data = undefined;
+    }
+
+    inherit(Sentinel, Item, [
+      function unlink(){
+        return this;
+      }
+    ]);
+
+
+    function LinkedListIterator(list){
+      this.item = list.sentinel;
+      this.sentinel = list.sentinel;
+    }
+
+    define(LinkedListIterator.prototype, [
+      function next(){
+        this.item = this.item.next;
+        if (this.item === this.sentinel) {
+          throw StopIteration;
+        }
+        return this.item.data;
+      }
+    ]);
+
+    function find(list, value){
+      if (list.lastFind && list.lastFind.data === value) {
+        return list.lastFind;
+      }
+
+      var item = list.sentinel,
+          i = 0;
+
+      while ((item = item.next) !== list.sentinel) {
+        if (item.data === value) {
+          return list.lastFind = item;
+        }
+      }
+    }
+
+    function LinkedList(){
+      this.sentinel = new Sentinel(this);
+      this.size = 0;
+      this.lastFind = null;
+      hide(this, 'sentinel');
+      hide(this, 'lastFind');
+    }
+
+    define(LinkedList.prototype, [
+      function first() {
+        return this.sentinel.next.data;
+      },
+      function last() {
+        return this.sentinel.prev.data;
+      },
+      function unshift(value){
+        var item = new Item(value, this.sentinel);
+        return this.size++;
+      },
+      function push(value){
+        var item = new Item(value, this.sentinel.prev);
+        return this.size++;
+      },
+      function insert(value, after){
+        var item = find(this, after);
+        if (item) {
+          item = new Item(value, item);
+          return this.size++;
+        }
+        return false;
+      },
+      function replace(value, replacement){
+        var item = find(this, value);
+        if (item) {
+          new Item(replacement, item);
+          item.unlink();
+          return true;
+        }
+        return false;
+      },
+      function insertBefore(value, before){
+        var item = find(this, before);
+        if (item) {
+          item = new Item(value, item.prev);
+          return this.size++;
+        }
+        return false;
+      },
+      function pop(){
+        if (this.size) {
+          this.size--;
+          return this.sentinel.prev.unlink().data;
+        }
+      },
+      function shift() {
+        if (this.size) {
+          this.size--;
+          return this.sentinel.next.unlink().data;
+        }
+      },
+      function remove(value){
+        var item = find(this, value);
+        if (item) {
+          item.unlink();
+          return true;
+        }
+        return false;
+      },
+      function has(value) {
+        return !!find(this, value);
+      },
+      function items(){
+        var item = this.sentinel,
+            array = [];
+
+        while ((item = item.next) !== this.sentinel) {
+          array.push(item.data);
+        }
+
+        return array;
+      },
+      function clear(){
+        var next,
+            item = this.sentinel.next;
+
+        while (item !== this.sentinel) {
+          next = item.next;
+          item.clear();
+          item = next;
+        }
+
+        this.size = 0;
+        return this;
+      },
+      function clone(){
+        var item = this.sentinel,
+            list = new LinkedList;
+
+        while ((item = item.next) !== this.sentinel) {
+          list.push(item.data);
+        }
+        return list;
+      },
+      function forEach(callback, context){
+        var item = this.sentinel,
+            i = 0;
+        context = context || this;
+        while ((item = item.next) !== this.sentinel) {
+          callback.call(context, item.data, i++, this);
+        }
+      },
+      function map(callback, context) {
+        var array = [];
+        context = context || this;
+
+        this.forEach(function(data, i){
+          array.push(callback.call(context, data, i, this));
+        });
+
+        return array;
+      },
+      function filter(callback, context) {
+        var array = [];
+        context = context || this;
+
+        this.forEach(function(data, i){
+          if (callback.call(context, data, i, this)) {
+            array.push(data);
           }
         });
-        */
+
+        return array;
+      },
+      function __iterator__(){
+        return new LinkedListIterator(this);
+      }
+    ]);
+
+    return LinkedList;
+  })();
+
+
   exports.Stack = (function(){
+    function StackIterator(stack){
+      this.stack = stack;
+      this.index = stack.length;
+    }
+
+    define(StackIterator.prototype, [
+      function next(){
+        if (!this.index) {
+          throw StopIteration;
+        }
+        return this.stack[--this.index];
+      }
+    ]);
+
     function Stack(){
       this.empty();
-      for (var k in arguments)
+      for (var k in arguments) {
         this.push(arguments[k]);
+      }
     }
 
     define(Stack.prototype, [
@@ -6444,6 +6678,9 @@ exports.utility = (function(exports){
         }
 
         return out;
+      },
+      function __iterator__(){
+        return new StackIterator(this);
       }
     ]);
 
@@ -6451,6 +6688,20 @@ exports.utility = (function(exports){
   })();
 
   var Queue = exports.Queue = (function(){
+    function QueueIterator(queue){
+      this.queue = queue;
+      this.index = queue.index;
+    }
+
+    define(QueueIterator.prototype, [
+      function next(){
+        if (this.index === this.queue.items.length) {
+          throw StopIteration;
+        }
+        return this.queue.items[this.index++];
+      }
+    ]);
+
     function Queue(items){
       if (isObject(items)) {
         if (items instanceof Queue) {
@@ -6497,6 +6748,12 @@ exports.utility = (function(exports){
       },
       function front(){
         return this.items[this.index];
+      },
+      function item(depth){
+        return this.items[this.index + depth];
+      },
+      function __iterator__(){
+        return new QueueIterator(this);
       }
     ]);
 
@@ -16457,7 +16714,8 @@ exports.modules["@timers"] = "export function clearInterval(id){\n  id = $__ToIn
     createNativeFunction: exports.runtime.createNativeFunction,
     createRealm         : exports.runtime.createRealm,
     createRenderer      : exports.debug.createRenderer,
-    introspect          : exports.debug.introspect
+    introspect          : exports.debug.introspect,
+    iterate             : exports.utility.iterate,
   };
 
   exports.utility.define(continuum, {
