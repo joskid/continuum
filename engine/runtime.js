@@ -4646,8 +4646,6 @@ var runtime = (function(GLOBAL, exports, undefined){
         self.emit('error', error);
       }
 
-      this.on('throw', console.log.bind(console));
-
       initialize(this, errback, function(){
         deactivate(self);
         self.scripts = [];

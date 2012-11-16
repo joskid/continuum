@@ -1786,16 +1786,9 @@ var Tree = (function(){
     },
     function refresh(){
       if (this.children) {
-        this.children.forEach(function(child){
+        each(this.children, function(child){
           child.refresh();
         });
-      }
-      return this;
-    },
-    function forEach(callback, context){
-      context = context || this;
-      if (this.children) {
-        this.children.forEach(callback, context);
       }
       return this;
     }
