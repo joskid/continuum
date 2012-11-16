@@ -15738,6 +15738,8 @@ exports.debug = (function(exports){
         return value;
       }
     ]);
+
+    return MirrorNumber;
   })();
 
   function MirrorRegExp(subject){
