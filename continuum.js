@@ -5376,16 +5376,12 @@ exports.utility = (function(exports){
   var fname = exports.fname = (function(){
     if (Function.name === 'Function') {
       return function fname(f){
-        if (typeof f !== FUNCTION) {
-          throw new TypeError('Tried to get the name of a non-function');
-        }
-
-        return f.name;
+        return f ? f.name || '' : '';
       };
     }
     return function fname(f){
       if (typeof f !== FUNCTION) {
-        throw new TypeError('Tried to get the name of a non-function');
+        return '';
       }
 
       if (!hasOwn.call(f, 'name')) {
@@ -5393,7 +5389,7 @@ exports.utility = (function(exports){
         defineProperty(f, 'name', hidden);
       }
 
-      return f.name;
+      return f.name || '';
     };
   })();
 
@@ -5576,7 +5572,7 @@ exports.utility = (function(exports){
     }();
   }
 
-  var bindbind  = exports.bindbind  = _bind.bind(_bind),
+  var bindbind  = exports.bindbind  = _bind.call(_bind, _bind),
       callbind  = exports.callbind  = bindbind(_call),
       applybind = exports.applybind = bindbind(_apply),
       bindapply = exports.bindapply = applybind(_bind),
@@ -6367,7 +6363,7 @@ exports.utility = (function(exports){
         });
       },
       function merge(list){
-        list.forEach(this.setProperty, this);
+        each(list, this.setProperty, this);
       },
       function __iterator__(type){
         return new PropertyListIterator(this, type);
@@ -15238,8 +15234,6 @@ exports.runtime = (function(GLOBAL, exports, undefined){
         callback && callback(error);
         self.emit('error', error);
       }
-
-      this.on('throw', console.log.bind(console));
 
       initialize(this, errback, function(){
         deactivate(self);
