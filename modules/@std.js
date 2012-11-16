@@ -50,8 +50,9 @@ import { Error,
 import JSON from '@json';
 import Math from '@math';
 
-//export var Symbol      = '@symbol.js';
-//export var Iterator    = '@iter.js';
+import Symbol from '@symbol';
+//import Iterator from '@iter';
+
 let StopIteration = $__StopIteration
 
 

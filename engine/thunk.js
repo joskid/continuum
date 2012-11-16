@@ -252,7 +252,7 @@ var thunk = (function(exports){
         }
       }
 
-      var result = context.initializeBindings(def.pattern, ctor, true);
+      var result = context.initializeBinding(def.name, ctor);
       if (result && result.Abrupt) {
         error = result;
         return unwind;

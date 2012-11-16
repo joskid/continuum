@@ -133,13 +133,6 @@ var runtime = (function(GLOBAL, exports, undefined){
     var hide = function(){};
   }
 
-  function defineDirect(o, key, value, attrs){
-    o.properties.set(key, value, attrs);
-  }
-
-  function deleteDirect(o, key){
-    o.properties.remove(key);
-  }
 
   function hasDirect(o, key){
     if (o) {
@@ -149,20 +142,12 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
-  function hasOwnDirect(o, key){
-    return o.properties.has(key);
-  }
-
   function setDirect(o, key, value){
     if (o.properties.has(key)) {
       o.properties.set(key, value);
     } else {
       o.properties.set(key, value, ECW);
     }
-  }
-
-  function getDirect(o, key){
-    return o.properties.get(key);
   }
 
 
@@ -220,11 +205,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function ToPropertyDescriptor(obj) {
     if (obj && obj.Completion) {
-      if (obj.Abrupt) {
-        return obj;
-      } else {
-        obj = obj.value;
-      }
+      if (obj.Abrupt) return obj; else obj = obj.value;
     }
 
     if (typeof obj !== OBJECT) {
@@ -237,11 +218,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (obj.HasProperty(descFields[i])) {
         v = obj.Get(descFields[i]);
         if (v && v.Completion) {
-          if (v.Abrupt) {
-            return v;
-          } else {
-            v = v.value;
-          }
+          if (v.Abrupt) return v; else v = v.value;
         }
         desc[descProps[i]] = v;
       }
@@ -270,7 +247,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     for (var i=0; i < props.length; i++) {
       var field = props[i];
       if (!(field in standardFields)) {
-        defineDirect(to, field, from.Get(field), ECW);
+        to.properties.set(field, from.Get(field), ECW);
       }
     }
   }
@@ -339,18 +316,10 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   function IsEquivalentDescriptor(a, b) {
     if (a && a.Completion) {
-      if (a.Abrupt) {
-        return a;
-      } else {
-        a = a.value;
-      }
+      if (a.Abrupt) return a; else a = a.value;
     }
     if (b && b.Completion) {
-      if (b.Abrupt) {
-        return b;
-      } else {
-        b = b.value;
-      }
+      if (b.Abrupt) return b; else b = b.value;
     }
     return IS(a.Get, b.Get) &&
            IS(a.Set, b.Set) &&
@@ -404,9 +373,9 @@ var runtime = (function(GLOBAL, exports, undefined){
       writable = true;
     }
     if (install) {
-      defineDirect(prototype, 'constructor', func, writable ? _CW : ___);
+      prototype.properties.set('constructor', func, writable ? _CW : ___);
     }
-    defineDirect(func, 'prototype', prototype, writable ? __W : ___);
+    func.properties.set('prototype', prototype, writable ? __W : ___);
   }
 
   // ## IsArrayIndex
@@ -424,20 +393,12 @@ var runtime = (function(GLOBAL, exports, undefined){
   function Invoke(key, receiver, args){
     var obj = ToObject(receiver);
     if (obj && obj.Completion) {
-      if (obj.Abrupt) {
-        return obj;
-      } else {
-        obj = obj.value;
-      }
+      if (obj.Abrupt) return obj; else obj = obj.value;
     }
 
     var func = obj.Get(key);
     if (func && func.Completion) {
-      if (func.Abrupt) {
-        return func;
-      } else {
-        func = func.value;
-      }
+      if (func.Abrupt) return func; else func = func.value;
     }
 
     if (!IsCallable(func))
@@ -543,7 +504,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       Configurable: true
     });
 
-    return function PropertyDefinitionEvaluation(kind, obj, key, code) {
+    return function PropertyDefinitionEvaluation(kind, obj, key, code){
       if (kind === 'get') {
         return DefineGetter(obj, key, code);
       } else if (kind === 'set') {
@@ -556,12 +517,27 @@ var runtime = (function(GLOBAL, exports, undefined){
 
 
 
+  var mutable = {
+    Value: undefined,
+    Writable: true,
+    Enumerable: true,
+    Configurable: true
+  };
+
+  var immutable = {
+    Value: undefined,
+    Writable: true,
+    Enumerable: true,
+    Configurable: false
+  };
 
 
-  function TopLevelDeclarationInstantiation(code) {
+  function TopLevelDeclarationInstantiation(code){
     var env = context.VariableEnvironment,
         configurable = code.ScopeType === SCOPE.EVAL,
         decls = code.LexicalDeclarations;
+
+    var desc = configurable ? mutable : immutable;
 
     for (var i=0, decl; decl = decls[i]; i++) {
       if (decl.type === 'FunctionDeclaration') {
@@ -571,12 +547,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         } else if (env === realm.globalEnv) {
           var existing = global.GetOwnProperty(name);
           if (!existing) {
-            global.DefineOwnProperty(name, {
-              Value: undefined,
-              Writable: true,
-              Enumerable: true,
-              Configurable: configurable
-            }, true);
+            global.DefineOwnProperty(name, desc, true);
           } else if (IsAccessorDescriptor(existing) || !existing.Writable && !existing.Enumerable) {
             return ThrowException('global invalid define');
           }
@@ -595,12 +566,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       } else if (env === realm.globalEnv) {
         var existing = global.GetOwnProperty(name);
         if (!existing) {
-          global.DefineOwnProperty(name, {
-            Value: undefined,
-            Writable: true,
-            Enumerable: true,
-            Configurable: configurable
-          }, true);
+          global.DefineOwnProperty(name, desc, true);
         }
       }
     }
@@ -609,7 +575,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   // ## FunctionDeclarationInstantiation
 
-  function FunctionDeclarationInstantiation(func, args, env) {
+  function FunctionDeclarationInstantiation(func, args, env){
     var formals = func.FormalParameters,
         params = formals.BoundNames;
 
@@ -725,30 +691,30 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
 
     var proto = new $Object(superproto),
-        lex = context.LexicalEnvironment;
+        lex = context.LexicalEnvironment,
+        brand = name || '';
 
     if (name) {
       var scope = context.LexicalEnvironment = new DeclarativeEnvironmentRecord(lex);
-      scope.CreateImmutableBinding(name.name ? name.name : name);
+      scope.CreateImmutableBinding(name);
     }
 
     constructor || (constructor = intrinsics.EmptyClass.Code);
 
     var ctor = PropertyDefinitionEvaluation('method', proto, 'constructor', constructor);
     if (ctor && ctor.Completion) {
-      if (ctor.Abrupt) {
-        return ctor;
-      } else {
-        ctor = ctor.value;
-      }
+      if (ctor.Abrupt) return ctor; else ctor = ctor.value;
+    }
+
+    if (name) {
+      scope.InitializeBinding(name, ctor);
     }
 
     ctor.SetPrototype(superctor);
-    var brand = name ? name.name || name : '';
     setDirect(ctor, 'name', brand);
     MakeConstructor(ctor, false, proto);
-    defineDirect(proto, 'constructor', ctor, _CW);
-    defineDirect(ctor, 'prototype', proto, ___);
+    proto.properties.set('constructor', ctor, _CW);
+    ctor.properties.set('prototype', proto, ___);
 
     for (var i=0, method; method = methods[i]; i++) {
       PropertyDefinitionEvaluation(method.kind, proto, method.name, method.code);
@@ -774,8 +740,7 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   // ## BlockDeclarationInstantiation
 
-  function BlockDeclarationInstantiation(code, env){
-    var decls = code.LexicalDeclarations;
+  function BlockDeclarationInstantiation(decls, env){
     for (var i=0, decl; decl = decls[i]; i++) {
       for (var j=0, name; name = decl.BoundNames[j]; j++) {
         if (decl.IsConstantDeclaration) {
@@ -832,12 +797,12 @@ var runtime = (function(GLOBAL, exports, undefined){
       BindingInitialization(arg, value, env);
     }
     if (params.Rest) {
-      var len = getDirect(args, 'length') - params.length,
+      var len = args.properties.get('length') - params.length,
           array = new $Array(0);
 
       if (len > 0) {
         for (var i=0; i < len; i++) {
-          setDirect(array, i, getDirect(args, params.length + i));
+          setDirect(array, i, args.properties.get(params.length + i));
         }
         setDirect(array, 'length', len);
       }
@@ -1232,10 +1197,10 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (value && value.Completion) {
         if (value.Abrupt) return value; else value = value.value;
       }
-      defineDirect(array, offset++, value, ECW);
+      array.properties.set(offset++, value, ECW);
     }
 
-    defineDirect(array, 'length', offset, _CW);
+    array.properties.set('length', offset, _CW);
     return offset;
   }
 
@@ -1253,12 +1218,12 @@ var runtime = (function(GLOBAL, exports, undefined){
         raw = context.createArray(count);
 
     for (var i=0; i < count; i++) {
-      defineDirect(site, i+'', template[i].cooked, E__);
-      defineDirect(raw, i+'', template[i].raw, E__);
+      site.properties.set(i+'', template[i].cooked, E__);
+      raw.properties.set(i+'', template[i].raw, E__);
     }
-    defineDirect(site, 'length', count, ___);
-    defineDirect(raw, 'length', count, ___);
-    defineDirect(site, 'raw', raw, ___);
+    site.properties.set('length', count, ___);
+    raw.properties.set('length', count, ___);
+    site.properties.set('raw', raw, ___);
     site.SetExtensible(false);
     raw.SetExtensible(false);
     realm.templates[template.id] = site;
@@ -1285,10 +1250,10 @@ var runtime = (function(GLOBAL, exports, undefined){
       if (value && value.Completion) {
         if (value.Abrupt) return value; else value = value.value;
       }
-      defineDirect(array, i, value, ECW);
+      array.properties.set(i, value, ECW);
     }
 
-    defineDirect(array, 'length', i, _CW);
+    array.properties.set('length', i, _CW);
     return array;
   }
 
@@ -1626,8 +1591,16 @@ var runtime = (function(GLOBAL, exports, undefined){
 
   var $Object = (function(){
     var Proto = {
-      Get: { Call: function(receiver){ return receiver.GetPrototype() } },
-      Set: { Call: function(receiver, args){ return receiver.SetPrototype(args[0]) } }
+      Get: {
+        Call: function(receiver){
+          return receiver.GetPrototype();
+        }
+      },
+      Set: {
+        Call: function(receiver, args){
+          return receiver.SetPrototype(args[0]);
+        }
+      }
     };
 
     function $Object(proto){
@@ -1904,13 +1877,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         return iterator;
       },
       function Enumerate(includePrototype, onlyEnumerable){
-        if (onlyEnumerable) {
-          var props = this.properties.filter(function(prop){
-            return prop[2] & E;
-          }, this);
-        } else {
-          var props = this.properties.clone();
-        }
+        var props = this.properties.filter(function(prop){
+          return typeof prop[0] === STRING && (!onlyEnumerable || (prop[2] & E));
+        }, this);
 
         if (includePrototype) {
           var proto = this.GetPrototype();
@@ -1975,23 +1944,24 @@ var runtime = (function(GLOBAL, exports, undefined){
         this.MethodName = name;
       }
 
+      var len = params ? params.ExpectedArgumentCount : 0;
+      var nameAttrs = code.name && !code.writableName ? ___ : __W;
+      name = code.name || '';
+
       if (strict) {
-        defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-        defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
+        this.properties.initialize([
+          'arguments', intrinsics.ThrowTypeError, __A,
+          'caller', intrinsics.ThrowTypeError, __A,
+          'length', len, ___,
+          'name', name, nameAttrs
+        ]);
       } else {
-        defineDirect(this, 'arguments', null, ___);
-        defineDirect(this, 'caller', null, ___);
-      }
-
-      defineDirect(this, 'length', params ? params.ExpectedArgumentCount : 0, ___);
-
-      if (kind !== ARROW) {
-        if (!name && code.name) {
-          name = code.name;
-        }
-        if (typeof name === 'string') {
-          defineDirect(this, 'name', name, ___);
-        }
+        this.properties.initialize([
+          'arguments', null, ___,
+          'caller', null, ___,
+          'length', len, ___,
+          'name', name, nameAttrs
+        ]);
       }
 
       hide(this, 'Realm');
@@ -2046,16 +2016,16 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
 
         if (!this.Strict) {
-          defineDirect(this, 'arguments', local.arguments, ___);
-          defineDirect(this, 'caller', caller, ___);
+          this.properties.set('arguments', local.arguments, ___);
+          this.properties.set('caller', caller, ___);
           local.arguments = null;
         }
 
         var result = this.thunk.run(context);
 
         if (!this.Strict) {
-          defineDirect(this, 'arguments', null, ___);
-          defineDirect(this, 'caller', null, ___);
+          this.properties.set('arguments', null, ___);
+          this.properties.set('caller', null, ___);
         }
 
         ExecutionContext.pop();
@@ -2118,14 +2088,19 @@ var runtime = (function(GLOBAL, exports, undefined){
         options.proto = intrinsics.FunctionProto;
       }
       $Object.call(this, options.proto);
-      defineDirect(this, 'arguments', null, ___);
-      defineDirect(this, 'caller', null, ___);
-      defineDirect(this, 'length', options.length, ___);
-      defineDirect(this, 'name', options.name, ___);
+
+      this.properties.initialize([
+        'arguments', null, ___,
+        'caller', null, ___,
+        'length', options.length, ___,
+        'name', options.name, ___
+      ]);
+
       this.call = options.call;
       if (options.construct) {
         this.construct = options.construct;
       }
+
       this.Realm = realm;
       hide(this, 'Realm');
       hide(this, 'call');
@@ -2140,7 +2115,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       },
       function Construct(args){
         if (this.construct) {
-          var instance = hasDirect(this, 'prototype') ? new $Object(getDirect(this, 'prototype')) : new $Object;
+          var instance = hasDirect(this, 'prototype') ? new $Object(this.properties.get('prototype')) : new $Object;
           instance.ConstructorName = this.properties.get('name');
           var result = this.construct.apply(instance, args);
         } else {
@@ -2159,9 +2134,11 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.TargetFunction = target;
       this.BoundThis = boundThis;
       this.BoundArgs = boundArgs;
-      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, 'length', getDirect(target, 'length'), ___);
+      this.properties.initialize([
+        'arguments', intrinsics.ThrowTypeError, __A,
+        'caller', intrinsics.ThrowTypeError, __A,
+        'length', target.properties.get('length'), ___
+      ]);
     }
 
     inherit($BoundFunction, $Function, {
@@ -2373,7 +2350,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     function $String(value){
       $Object.call(this, intrinsics.StringProto);
       this.PrimitiveValue = value;
-      defineDirect(this, 'length', value.length, ___);
+      this.properties.set('length', value.length, ___);
     }
 
     inherit($String, $Object, {
@@ -2401,7 +2378,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           if (key.Abrupt) return key; else key = key.value;
         }
         if (typeof key === 'string') {
-          if (key < getDirect(this, 'length') && key >= 0) {
+          if (key < this.properties.get('length') && key >= 0) {
             return true;
           }
         }
@@ -2501,6 +2478,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   })();
 
 
+
   // ################
   // ### $WeakMap ###
   // ################
@@ -2517,10 +2495,11 @@ var runtime = (function(GLOBAL, exports, undefined){
     return $WeakMap;
   })();
 
+
+
   // ##############
   // ### $Array ###
   // ##############
-
 
   var $Array = (function(){
     function $Array(items){
@@ -2532,7 +2511,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       } else {
         var len = 0;
       }
-      defineDirect(this, 'length', len, _CW);
+      this.properties.set('length', len, _CW);
     }
 
     inherit($Array, $Object, {
@@ -2662,11 +2641,13 @@ var runtime = (function(GLOBAL, exports, undefined){
         $Object.call(this, intrinsics.RegExpProto);
       }
       this.PrimitiveValue = primitive;
-      defineDirect(this, 'global', primitive.global, ___);
-      defineDirect(this, 'ignoreCase', primitive.ignoreCase, ___);
-      defineDirect(this, 'lastIndex', primitive.lastIndex, __W);
-      defineDirect(this, 'multiline', primitive.multiline, ___);
-      defineDirect(this, 'source', primitive.source, ___);
+      this.properties.initialize([
+        'global', primitive.global, ___,
+        'ignoreCase', primitive.ignoreCase, ___,
+        'lastIndex', primitive.lastIndex, __W,
+        'multiline', primitive.multiline, ___,
+        'source', primitive.source, ___
+      ]);
     }
 
     inherit($RegExp, $Object, {
@@ -2683,13 +2664,21 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ###############
 
   var $Symbol = (function(){
+    var seed = Math.random() * 4294967296 | 0;
+
     function $Symbol(proto){
       $Object.call(this, intrinsics.SymbolProto);
+      this.Symbol = seed++;
     }
 
     inherit($Symbol, $Object, {
-      NativeBrand: BRANDS.NativeSymbol
-    });
+      NativeBrand: BRANDS.NativeSymbol,
+      Extensible: false
+    }, [
+      function toString(){
+        return this.Symbol;
+      }
+    ]);
 
     return $Symbol;
   })();
@@ -2702,7 +2691,7 @@ var runtime = (function(GLOBAL, exports, undefined){
   var $Arguments = (function(){
     function $Arguments(length){
       $Object.call(this);
-      defineDirect(this, 'length', length, _CW);
+      this.properties.set('length', length, _CW);
     }
 
     inherit($Arguments, $Object, {
@@ -2718,11 +2707,11 @@ var runtime = (function(GLOBAL, exports, undefined){
     function $StrictArguments(args){
       $Arguments.call(this, args.length);
       for (var i=0; i < args.length; i++) {
-        defineDirect(this, i+'', args[i], ECW);
+        this.properties.set(i+'', args[i], ECW);
       }
 
-      defineDirect(this, 'arguments', intrinsics.ThrowTypeError, __A);
-      defineDirect(this, 'caller', intrinsics.ThrowTypeError, __A);
+      this.properties.set('arguments', intrinsics.ThrowTypeError, __A);
+      this.properties.set('caller', intrinsics.ThrowTypeError, __A);
     }
 
     inherit($StrictArguments, $Arguments);
@@ -2741,23 +2730,23 @@ var runtime = (function(GLOBAL, exports, undefined){
       this.isMapped = false;
 
       for (var i=0; i < args.length; i++) {
-        defineDirect(this, i+'', args[i], ECW);
+        this.properties.set(i+'', args[i], ECW);
         var name = names[i];
         if (i < names.length && !(name in mapped)) {
           this.isMapped = true;
           mapped[name] = true;
-          defineDirect(this.ParameterMap, name, new ArgAccessor(name, env), _CA);
+          this.ParameterMap.properties.set(name, new ArgAccessor(name, env), _CA);
         }
       }
 
-      defineDirect(this, 'callee', func, _CW);
+      this.properties.set('callee', func, _CW);
     }
 
     inherit($MappedArguments, $Arguments, {
       ParameterMap: null,
     }, [
       function Get(key){
-        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && this.ParameterMap.properties.has(key)) {
           return this.ParameterMap.Get(key);
         } else {
           var val = this.GetP(this, key);
@@ -2772,7 +2761,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         if (desc === undefined) {
           return desc;
         }
-        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && this.ParameterMap.properties.has(key)) {
           desc.Value = this.ParameterMap.Get(key);
         }
         return desc;
@@ -2782,7 +2771,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           return ThrowException('strict_lhs_assignment');
         }
 
-        if (this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
+        if (this.isMapped && this.ParameterMap.properties.has(key)) {
           if (IsAccessorDescriptor(desc)) {
             this.ParameterMap.Delete(key, false);
           } else {
@@ -2803,7 +2792,7 @@ var runtime = (function(GLOBAL, exports, undefined){
           return result;
         }
 
-        if (result && this.isMapped && hasOwnDirect(this.ParameterMap, key)) {
+        if (result && this.isMapped && this.ParameterMap.properties.has(key)) {
           this.ParameterMap.Delete(key, false);
         }
 
@@ -2839,7 +2828,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       var self = this;
 
       each(names, function(name){
-        defineDirect(self, name, new ModuleGetter(new Reference(object, name)), E_A);
+        self.properties.set(name, new ModuleGetter(new Reference(object, name)), E_A);
       });
     }
 
@@ -2855,9 +2844,9 @@ var runtime = (function(GLOBAL, exports, undefined){
   var $Error = (function(){
     function $Error(name, type, message){
       $Object.call(this, intrinsics[name+'Proto']);
-      defineDirect(this, 'message', message, ECW);
+      this.properties.set('message', message, ECW);
       if (type !== undefined) {
-        defineDirect(this, 'type', type, _CW);
+        this.properties.set('type', type, _CW);
       }
     }
 
@@ -3306,6 +3295,9 @@ var runtime = (function(GLOBAL, exports, undefined){
     });
 
     define(ExecutionContext.prototype, [
+      function initializeBinding(name, value){
+        return this.LexicalEnvironment.InitializeBinding(name, value);
+      },
       function initializeBindings(pattern, value){
         return BindingInitialization(pattern, value, this.LexicalEnvironment);
       },
@@ -3314,12 +3306,12 @@ var runtime = (function(GLOBAL, exports, undefined){
         this.LexicalEnvironment = this.LexicalEnvironment.outer;
         return block;
       },
-      function pushBlock(code){
+      function pushBlock(decls){
         this.LexicalEnvironment = new DeclarativeEnvironmentRecord(this.LexicalEnvironment);
-        return BlockDeclarationInstantiation(code, this.LexicalEnvironment);
+        return BlockDeclarationInstantiation(decls, this.LexicalEnvironment);
       },
       function pushClass(def, superclass){
-        return ClassDefinitionEvaluation(def.pattern, superclass, def.ctor, def.methods);
+        return ClassDefinitionEvaluation(def.name, superclass, def.ctor, def.methods);
       },
       function pushWith(obj){
         this.LexicalEnvironment = new ObjectEnvironmentRecord(obj, this.LexicalEnvironment);
@@ -3412,6 +3404,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       RegExp  : $RegExp,
       Set     : $Set,
       String  : $String,
+      Symbol  : $Symbol,
       WeakMap : $WeakMap
     };
 
@@ -3426,6 +3419,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       $Object  : $Object,
       $RegExp  : $RegExp,
       $Set     : $Set,
+      $Symbol  : $Symbol,
       $String  : $String,
       $WeakMap : $WeakMap
     };
@@ -3457,15 +3451,19 @@ var runtime = (function(GLOBAL, exports, undefined){
       for (var i=0; i < 6; i++) {
         var prototype = bindings[$errors[i] + 'Proto'] = create($Error.prototype);
         $Object.call(prototype, bindings.ErrorProto);
-        defineDirect(prototype, 'name', $errors[i], _CW);
-        defineDirect(prototype, 'type', undefined, _CW);
-        defineDirect(prototype, 'arguments', undefined, _CW);
+        prototype.properties.initialize([
+          'name', $errors[i], _CW,
+          'type', undefined, _CW,
+          'arguments', undefined, _CW
+        ]);
       }
 
       bindings.FunctionProto.FormalParameters = [];
-      defineDirect(bindings.ArrayProto, 'length', 0, __W);
-      defineDirect(bindings.ErrorProto, 'name', 'Error', _CW);
-      defineDirect(bindings.ErrorProto, 'message', '', _CW);
+      bindings.ArrayProto.properties.set('length', 0, __W);
+      bindings.ErrorProto.properties.initialize([
+        'name', 'Error', _CW,
+        'message', '', _CW
+      ]);
     }
 
     inherit(Intrinsics, DeclarativeEnvironmentRecord, [
@@ -3552,18 +3550,18 @@ var runtime = (function(GLOBAL, exports, undefined){
         len = array.length;
 
     for (var i=0; i < len; i++) {
-      defineDirect($array, i, array[i], ECW);
+      $array.properties.set(i, array[i], ECW);
     }
-    defineDirect($array, 'length', array.length, __W);
+    $array.properties.set('length', array.length, __W);
     return $array;
   }
 
   function toInternalArray($array){
     var array = [],
-        len = getDirect($array, 'length');
+        len = $array.properties.get('length');
 
     for (var i=0; i < len; i++) {
-      array[i] = getDirect($array, i);
+      array[i] = $array.properties.get(i);
     }
     return array;
   }
@@ -3711,8 +3709,8 @@ var runtime = (function(GLOBAL, exports, undefined){
       var thrower = create($NativeFunction.prototype);
       $Object.call(thrower, realm.intrinsics.FunctionProto);
       thrower.call = function(){ return ThrowException('strict_poison_pill') };
-      defineDirect(thrower, 'length', 0, ___);
-      defineDirect(thrower, 'name', 'ThrowTypeError', ___);
+      thrower.properties.set('length', 0, ___);
+      thrower.properties.set('name', 'ThrowTypeError', ___);
       thrower.Realm = realm;
       thrower.Extensible = false;
       thrower.Strict = true;
@@ -3750,7 +3748,7 @@ var runtime = (function(GLOBAL, exports, undefined){
                 }
               }
             });
-            defineDirect(target, key, func, 6);
+            target.properties.set(key, func, 6);
           }
         });
       }
@@ -3772,9 +3770,15 @@ var runtime = (function(GLOBAL, exports, undefined){
       var nativeCode = ['function ', '() { [native code] }'];
 
       return {
-        defineDirect: defineDirect,
-        deleteDirect: deleteDirect,
-        hasOwnDirect: hasOwnDirect,
+        defineDirect: function(o, key, value, attrs){
+          o.properties.set(key, value, attrs);
+        },
+        deleteDirect: function(o, key){
+          o.properties.remove(key);
+        },
+        hasOwnDirect: function(o, key){
+          return o.properties.has(key);
+        },
         hasDirect: hasDirect,
         setDirect: setDirect,
         updateAttrDirect: function(obj, key, attr){
@@ -3866,7 +3870,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         },
         EnumerateHidden: function(object){
           if (object) {
-            return ownKeys(object.hiddens);
+            return fromInternalArray(ownKeys(object.hiddens));
           }
         },
         Type: function(o){
@@ -3897,9 +3901,6 @@ var runtime = (function(GLOBAL, exports, undefined){
         },
         wrapDateMethods: function(target){
           wrapNatives(Date.prototype, target);
-        },
-        wrapStringMethods: function(target){
-          wrapNatives(String.prototype, target);
         },
         wrapRegExpMethods: function(target){
           wrapNatives(RegExp.prototype, target);
@@ -3982,6 +3983,9 @@ var runtime = (function(GLOBAL, exports, undefined){
         },
         ProxyCreate: function(target, handler){
           return new $Proxy(target, handler);
+        },
+        SymbolCreate: function(){
+          return new $Symbol;
         },
         StringCreate: function(string){
           return new $String(string);
@@ -4295,10 +4299,10 @@ var runtime = (function(GLOBAL, exports, undefined){
             var math = new $Object;
             math.NativeBrand = BRANDS.NativeMath;
             for (var i=0; i < consts.length; i++) {
-              defineDirect(math, consts[i], Math[consts[i]], ___);
+              math.properties.set(consts[i], Math[consts[i]], ___);
             }
             for (var k in funcs) {
-              defineDirect(math, k, new $NativeFunction({
+              math.properties.set(k, new $NativeFunction({
                 call: funcs[k],
                 name: k,
                 length: funcs[k].length
@@ -4335,22 +4339,23 @@ var runtime = (function(GLOBAL, exports, undefined){
             callback.Call(undefined, [file]);
           });
         },
-        resolve: module ? require('path').resolve
-                        : function(base, to){
-                            to = to.split('/');
-                            base = base.split('/');
-                            base.length--;
+        resolve: module
+          ? require('path').resolve
+          : function(base, to){
+              to = to.split('/');
+              base = base.split('/');
+              base.length--;
 
-                            for (var i=0; i < to.length; i++) {
-                              if (to[i] === '..') {
-                                base.length--;
-                              } else if (to[i] !== '.') {
-                                base[base.length] = to[i];
-                              }
-                            }
+              for (var i=0; i < to.length; i++) {
+                if (to[i] === '..') {
+                  base.length--;
+                } else if (to[i] !== '.') {
+                  base[base.length] = to[i];
+                }
+              }
 
-                            return base.join('/');
-                          },
+              return base.join('/');
+            },
         baseURL: module ? function(){ return module.parent.parent.dirname }
                         : function(){ return location.origin + location.pathname }
       };
@@ -4678,7 +4683,8 @@ var runtime = (function(GLOBAL, exports, undefined){
         resolveModule(source, global, name, errback, callback);
       },
       function evaluateAsync(subject, callback){
-        var script = new Script(subject);
+        var script = new Script(subject),
+            self = this;
 
         if (script.error) {
           this.emit(script.error.type, script.error);

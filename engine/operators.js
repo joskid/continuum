@@ -14,7 +14,7 @@ var operators = (function(exports){
       Reference     = SYMBOLS.Reference,
       Completion    = SYMBOLS.Completion,
       Uninitialized = SYMBOLS.Uninitialized,
-      NativePrivateName = require('./constants').BRANDS.NativePrivateName;
+      NativeSymbol  = require('./constants').BRANDS.NativeSymbol;
 
   var BOOLEAN   = 'boolean',
       FUNCTION  = 'function',
@@ -275,7 +275,7 @@ var operators = (function(exports){
         argument = argument.value;
       }
     }
-    if (argument && typeof argument === OBJECT && argument.NativeBrand === NativePrivateName) {
+    if (argument && typeof argument === OBJECT && argument.NativeBrand === NativeSymbol) {
       return argument;
     } else {
       return ToString(argument);

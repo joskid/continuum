@@ -283,7 +283,6 @@ var assembler = (function(exports){
 
   function ClassDefinition(node){
     this.name = node.id ? node.id.name : null;
-    this.pattern = node.id;
     this.methods = [];
 
     for (var i=0, method; method = node.body.body[i]; i++) {
@@ -391,6 +390,12 @@ var assembler = (function(exports){
     return node.type === 'FunctionDeclaration'
         || node.type === 'ClassDeclaration'
         || node.type === 'VariableDeclaration';
+  }
+
+  function isAnonymousFunction(node){
+    return !!node && !(node.id && node.id.name)
+        && node.type === 'FunctionExpression'
+        || node.type === 'ArrowFunctionExpression';
   }
 
   function isStrict(node){
@@ -805,10 +810,12 @@ var assembler = (function(exports){
 
   function ArrayPattern(node){}
 
-  function ArrowFunctionExpression(node){
+  function ArrowFunctionExpression(node, name){
     var code = new Code(node, null, FUNCTYPE.ARROW, SCOPE.FUNCTION);
+    code.name = name;
     context.queue(code);
     FUNCTION(null, code);
+    return code;
   }
 
   function BinaryExpression(node){
@@ -826,7 +833,7 @@ var assembler = (function(exports){
   function BlockStatement(node){
     block(function(){
       lexical(function(){
-        BLOCK({ LexicalDeclarations: LexicalDeclarations(node.body) });
+        BLOCK(LexicalDeclarations(node.body));
         each(node.body, recurse);
         UPSCOPE();
       });
@@ -862,7 +869,7 @@ var assembler = (function(exports){
           init: undefined
         }]
       });
-      BLOCK({ LexicalDeclarations: decls });
+      BLOCK(decls);
       recurse(node.param);
       PUT();
       each(node.body.body, recurse);
@@ -942,10 +949,10 @@ var assembler = (function(exports){
         if (init){
           var isLexical = isLexicalDeclaration(init);
           if (isLexical) {
-            var scope = BLOCK({ LexicalDeclarations: [] });
+            var scope = BLOCK([]);
             recurse(init);
             var decl = init.declarations[init.declarations.length - 1].id;
-            scope[0].LexicalDeclarations = BoundNames(decl);
+            scope[0] = BoundNames(decl);
             var lexicalDecl = {
               type: 'VariableDeclaration',
               kind: init.kind,
@@ -980,7 +987,7 @@ var assembler = (function(exports){
               var lexicals = LexicalDeclarations(node.body.body);
               lexicals.push(lexicalDecl);
               GET();
-              BLOCK({ LexicalDeclarations: lexicals });
+              BLOCK(lexicals);
               recurse(decl);
               ROTATE(1);
               PUT();
@@ -1035,7 +1042,7 @@ var assembler = (function(exports){
         if (node.left.type === 'VariableDeclaration' && node.left.kind !== 'var') {
           block(function(){
             lexical(function(){
-              BLOCK({ LexicalDeclarations: LexicalDeclarations(node.left) });
+              BLOCK(LexicalDeclarations(node.left));
               recurse(node.left);
               recurse(node.body);
               UPSCOPE();
@@ -1064,6 +1071,7 @@ var assembler = (function(exports){
     }
     context.queue(code);
     FUNCTION(intern(node.id ? node.id.name : ''), code);
+    return code;
   }
 
   function Glob(node){}
@@ -1189,19 +1197,25 @@ var assembler = (function(exports){
   }
 
   function Property(node){
+    var value = node.value;
     if (node.kind === 'init'){
       var key = node.key.type === 'Identifier' ? node.key.name : node.key.value;
       if (node.method) {
-        FunctionExpression(node.value, intern(key));
+        FunctionExpression(value, intern(key));
+      } else if (isAnonymousFunction(value)) {
+        var Expr = node.type === 'FunctionExpression' ? FunctionExpression : ArrowFunctionExpression;
+        var code = Expr(value, key);
+        code.writableName = true;
       } else {
-        recurse(node.value);
+        recurse(value);
       }
       GET();
       PROPERTY(key);
     } else {
-      var code = new Code(node.value, context.source, FUNCTYPE.NORMAL, SCOPE.FUNCTION, context.code.Strict);
+      var code = new Code(value, null, FUNCTYPE.NORMAL, SCOPE.FUNCTION);
       context.queue(code);
-      METHOD(node.kind, code, intern(node.key.name));
+      var key = node.kind ? node.kind+' '+node.key.name : node.key.name;
+      METHOD(node.kind, code, intern(key));
     }
   }
 
@@ -1232,7 +1246,7 @@ var assembler = (function(exports){
       GET();
 
       lexical(function(){
-        BLOCK({ LexicalDeclarations: LexicalDeclarations(node.cases) });
+        BLOCK(LexicalDeclarations(node.cases));
 
         if (node.cases){
           var cases = [];
@@ -1362,8 +1376,15 @@ var assembler = (function(exports){
     }[node.kind];
 
     each(node.declarations, function(item){
-      if (item.init) {
-        recurse(item.init);
+      var init = item.init;
+      if (init) {
+        if (item.id && item.id.type === 'Identifier' && isAnonymousFunction(init)) {
+          var Expr = node.type === 'FunctionExpression' ? FunctionExpression : ArrowFunctionExpression;
+          var code = Expr(init, item.id.name);
+          code.writableName = true;
+        } else {
+          recurse(init);
+        }
         GET();
       }
 

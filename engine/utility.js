@@ -910,6 +910,13 @@ var utility = (function(exports){
         }
         return true;
       },
+      function initialize(props){
+        var len = props.length;
+        for (var i=0; i < len; i += 3) {
+          var index = this.hash[props[i]] = this.props.length;
+          this.props[index] = [props[i], props[i + 1], props[i + 2]];
+        }
+      },
       function setAttribute(key, attr){
         var name = key === '__proto__' ? proto : key,
             index = this.hash[name];
