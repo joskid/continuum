@@ -8,6 +8,7 @@ exports.createBytecode = runtime.createBytecode;
 exports.createRenderer = debug.createRenderer;
 exports.createNativeFunction = runtime.createNativeFunction;
 exports.introspect = debug.introspect;
+exports.iterate = utility.iterate;
 
 utility.define(exports, {
   Assembler : assembler.Assembler,

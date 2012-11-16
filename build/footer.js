@@ -3,7 +3,8 @@
     createNativeFunction: exports.runtime.createNativeFunction,
     createRealm         : exports.runtime.createRealm,
     createRenderer      : exports.debug.createRenderer,
-    introspect          : exports.debug.introspect
+    introspect          : exports.debug.introspect,
+    iterate             : exports.utility.iterate,
   };
 
   exports.utility.define(continuum, {

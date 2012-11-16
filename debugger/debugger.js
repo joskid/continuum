@@ -134,7 +134,7 @@ var Component = (function(){
     function append(subject){
       if (!subject) return subject;
       if (subject.element) {
-        this.children || (this.children = []);
+        this.children || (this.children = new utility.LinkedList);
         this.children.push(subject);
         this.element.appendChild(subject.element);
       } else if (subject instanceof Element) {
@@ -171,19 +171,30 @@ var Component = (function(){
       if (subject instanceof Element) {
         subject = new Component(subject);
       }
-      var index = this.children.indexOf(before);
-      if (~index) {
-        this.children.splice(index, 0, subject);
-        this.element.insertBefore(subject.element, before.element);
-      }
+
+      this.children.insertBefore(subject, before);
+      this.element.insertBefore(subject.element, before.element);
     },
     function remove(subject){
       if (subject === undefined) {
-        this.element.parentNode.removeChild(this.element);
+        var parent = this.parent();
+        if (parent) {
+          parent.remove(this);
+        } else {
+          this.element.parentNode.removeChild(this.element);
+        }
       } else {
+        if (!subject.element && subject.component) {
+          subject = subject.component;
+        }
+
         if (subject.element) {
+          if (this.children) {
+            this.children.remove(subject);
+          }
           subject = subject.element;
         }
+
         if (subject && subject.parentNode) {
           if (subject.parentNode === this.element) {
             this.element.removeChild(subject);
@@ -196,18 +207,23 @@ var Component = (function(){
       }
     },
     function replace(child, replacement){
+      if (!replacement.element) {
+        if (replacement.component) {
+          replacement = replacement.component;
+        } else if (replacement instanceof Element || replacement instanceof Document) {
+          replacement = new Component(replacement);
+        }
+      }
+
       if (this.children) {
-        return false;
+        this.children.replace(child, replacement);
+      } else {
+        this.children = new utility.LinkedList;
+        this.children.push(replacement);
       }
-      if (replacement instanceof Element) {
-        replacement = new Component(replacement);
-      }
-      var index = this.children.indexOf(child);
-      if (~index) {
-        this.children.splice(index, 1, replacement);
-        this.element.insertBefore(replacement.element, child.element);
-        this.element.removeChild(child.element);
-      }
+
+      this.element.insertBefore(replacement.element, child.element);
+      this.element.removeChild(child.element);
     },
     function width(value){
       if (value === undefined) {
@@ -1556,10 +1572,9 @@ var Instructions = (function(){
       this.element.scrollTop = this.element.scrollHeight;
     },
     function addInstruction(op){
-      // if (this.children.length > 100) {
-      //   this.element.removeChild(this.children[0].element);
-      //   this.children = this.children.slice(1);
-      // }
+      if (this.children.size > 100) {
+        this.element.removeChild(this.children.shift().element);
+      }
       this.batchAppend(new Instruction(op[0], op[1]));
     }
   ]);
@@ -1770,17 +1785,17 @@ var Tree = (function(){
       }
     },
     function refresh(){
-      var children = this.children || [];
-      for (var i=0; i < children.length; i++) {
-        children[i].refresh && children[i].refresh();
+      if (this.children) {
+        this.children.forEach(function(child){
+          child.refresh();
+        });
       }
       return this;
     },
     function forEach(callback, context){
       context = context || this;
-      var children = this.children || [];
-      for (var i=0; i < children.length; i++) {
-        callback.call(context, children[i], i, this);
+      if (this.children) {
+        this.children.forEach(callback, context);
       }
       return this;
     }
@@ -2118,7 +2133,6 @@ var Preview = (function(){
       }, this);
     },
     function refresh(){
-      var children = this.children || [];
       return this;
     },
   ]);
@@ -2312,6 +2326,8 @@ void function(){
       content: input
     }
   });
+
+  instructions.children.shift();
 
 
   void function(){
