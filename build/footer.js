@@ -5,6 +5,7 @@
     createRenderer      : exports.debug.createRenderer,
     introspect          : exports.debug.introspect,
     iterate             : exports.utility.iterate,
+    exports : exports
   };
 
   exports.utility.define(continuum, {
@@ -26,8 +27,6 @@
     fs: {
       readFile: function(path, encoding, callback){
         var xhr = new XMLHttpRequest;
-        xhr.responseType = 'text';
-        xhr.open('GET', path);
         xhr.onerror = xhr.onload = function(evt){
           if (xhr.readyState === 4) {
             xhr.onload = xhr.onerror = null;
@@ -35,6 +34,7 @@
           }
         }
 
+        xhr.open('GET', path);
         xhr.send();
       }
     }
