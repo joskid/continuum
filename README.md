@@ -53,8 +53,7 @@ realm.evaluateAsync('module F = "@Function"', function(result){
 
 # ES6 Implementation Status
 
-### Already Implemented
-
+### Implemented
 * destructuring assignment and arguments
 * spread in arguments and array initializers
 * rest parameters
@@ -72,17 +71,13 @@ realm.evaluateAsync('module F = "@Function"', function(result){
 * Module system with imports and exports
 * builtin '@std' modules `module std = '@std'` or `import call from '@Function'`
 * Generators (kind of broken at the moment though)
-
-### Partially Implemented
 * Proxy and Reflect
-
-### Soon
-* Array Comprehensions
 * Private Names
+
+### Soon to be Implemented
+* Array Comprehensions
 * Default parameters
 * Tail call optimization
-
-### Further out
 * Binary data api
 
 
