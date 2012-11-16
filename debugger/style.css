@@ -334,11 +334,12 @@ h1, h2
 .ƒRegExp         { color: #6c0 } /* hsl( 90, 100%, 40%) */
 .ƒSet            { color: #fa6 } /* hsl( 27, 100%, 70%) */
 .ƒString         { color: #0fa } /* hsl(160, 100%, 50%) */
+.ƒSymbol         { color: #8fc }
 .ƒWeakMap        { color: #fa0 } /* hsl( 40, 100%, 50%) */
 
 
 .ƒScope          { color: #faf }
-.ƒFunctionScope  { color: #8fc }
+.ƒFunctionScope  { color: #3b7 }
 .ƒEnv            { color: #960 }
 .ƒOuter          { color: #a4f }
 .ƒProto          { color: #a08 } /* hsl(312, 100%, 33%) */
@@ -357,6 +358,8 @@ h1, h2
 .ƒParams:after   { color: #8cf; content: ')'; } /* hsl(206, 100%, 77%) */
 .ƒParam:before    { color: #8cf; content: ', ' } /* hsl(206, 100%, 77%) */
 .ƒParam:first-child:before { content: '' }
+
+
  /* hsl(213, 100%, 70%) */
 .ƒECW > .ƒFunction > .ƒFunctionName  { color: #6af } /* hsl(  0,   0%, 80%) */
 .ƒE_W > .ƒFunction > .ƒFunctionName  { color: #ccf } /* hsl(240, 100%, 90%) */

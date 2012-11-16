@@ -330,8 +330,10 @@ var debug = (function(exports){
       function ownAttrs(props){
         props || (props = create(null));
         this.props.forEach(function(prop){
-          var key = prop[0] === '__proto__' ? proto : prop[0];
-          props[key] = prop[2];
+          if (typeof prop[0] === 'string') {
+            var key = prop[0] === '__proto__' ? proto : prop[0];
+            props[key] = prop;
+          }
         });
         return props;
       },
@@ -340,7 +342,7 @@ var debug = (function(exports){
             props = this.ownAttrs();
 
         for (var k in props) {
-          if (own || (props[k] & ACCESSOR)) {
+          if (own || (props[k][2] & ACCESSOR)) {
             inherited[k] = props[k];
           }
         }
@@ -355,8 +357,8 @@ var debug = (function(exports){
                 : this.getterAttrs(true);
 
         for (var k in props) {
-          if (hidden || (props[k] & ENUMERABLE)) {
-            keys.push(k === proto ? '__proto__' : k);
+          if (hidden || (props[k][2] & ENUMERABLE)) {
+            keys.push(props[k][0]);
           }
         }
 
@@ -398,9 +400,9 @@ var debug = (function(exports){
         indexes.push('length');
 
         for (var k in props) {
-          if (hidden || props[k] & ENUMERABLE) {
-            if (k !== 'length' && !utility.isInteger(+k)) {
-              keys.push(k === proto ? '__proto__' : k);
+          if (hidden || props[k][2] & ENUMERABLE) {
+            if (k !== props[k][0] || k !== 'length' && !(k >= 0 && k < len)) {
+              keys.push(props[k][0]);
             }
           }
         }
@@ -578,11 +580,11 @@ var debug = (function(exports){
     kind: 'Math'
   }, []);
 
-  function MirrorModule(subject){
-    MirrorObject.call(this, subject);
-  }
+  var MirrorModule = (function(){
+    function MirrorModule(subject){
+      MirrorObject.call(this, subject);
+    }
 
-  void function(){
     inherit(MirrorModule, MirrorObject, {
       kind: 'Module'
     }, [
@@ -608,13 +610,15 @@ var debug = (function(exports){
         }
       },
     ]);
-  }();
 
-  function MirrorNumber(subject){
-    MirrorObject.call(this, subject);
-  }
+    return MirrorModule;
+  })();
 
-  void function(){
+  var MirrorNumber = (function(){
+    function MirrorNumber(subject){
+      MirrorObject.call(this, subject);
+    }
+
     inherit(MirrorNumber, MirrorObject, {
       kind: 'Number'
     }, [
@@ -628,7 +632,7 @@ var debug = (function(exports){
         return value;
       }
     ]);
-  }();
+  })();
 
   function MirrorRegExp(subject){
     MirrorObject.call(this, subject);
@@ -645,15 +649,17 @@ var debug = (function(exports){
   }();
 
 
-  function MirrorSet(subject){
-    MirrorObject.call(this, subject);
-  }
+  var MirrorSet = (function(){
+    function MirrorSet(subject){
+      MirrorObject.call(this, subject);
+    }
 
-  void function(){
     inherit(MirrorSet, MirrorObject, {
       kind: 'Set'
-    }, []);
-  }();
+    });
+
+    return MirrorSet;
+  })();
 
 
   function MirrorString(subject){
@@ -678,8 +684,10 @@ var debug = (function(exports){
           props[i] = 1;
         }
         this.props.forEach(function(prop){
-          var key = prop[0] === '__proto__' ? proto : prop[0];
-          props[key] = prop[2];
+          if (typeof prop[0] === 'string') {
+            var key = prop[0] === '__proto__' ? proto : prop[0];
+            props[key] = prop[2];
+          }
         });
         return props;
       },
@@ -695,6 +703,25 @@ var debug = (function(exports){
       }
     ]);
   }();
+
+
+
+
+  var MirrorSymbol = (function(){
+    function MirrorSymbol(subject){
+      MirrorObject.call(this, subject);
+    }
+
+    inherit(MirrorSymbol, MirrorObject, {
+      kind: 'Symbol'
+    }, [
+      function label(){
+        return '@' + (this.subject.Label || 'Symbol');
+      }
+    ]);
+
+    return MirrorSymbol;
+  })();
 
 
   function MirrorWeakMap(subject){
@@ -715,6 +742,15 @@ var debug = (function(exports){
       this.attrs = create(null);
       this.props = create(null);
       this.kind = introspect(subject.Target).kind;
+    }
+
+    function descToAttrs(desc){
+      if (desc) {
+        if ('Value' in desc) {
+          return desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
+        }
+        return desc.Enumerable | (desc.Configurable << 1) | ACCESSOR;
+      }
     }
 
     inherit(MirrorProxy, Mirror, {
@@ -738,6 +774,9 @@ var debug = (function(exports){
       },
       function get(key){
         return introspect(this.subject.Get(key));
+      },
+      function getValue(key){
+        return this.subject.Get(key);
       },
       function hasOwn(key){
         return this.subject.HasOwnProperty(key);
@@ -764,10 +803,7 @@ var debug = (function(exports){
       function propAttributes(key){
         var desc = this.subject.GetOwnProperty(key);
         if (desc) {
-          if ('Value' in desc) {
-            return desc.Enumerable | (desc.Configurable << 1) | (desc.Writable << 2);
-          }
-          return desc.Enumerable | (desc.Configurable << 1) | A;
+          return descToAttrs(desc);
         }
       },
       function ownAttrs(props){
@@ -778,7 +814,10 @@ var debug = (function(exports){
         this.attrs = create(null);
 
         for (var i=0; i < keys.length; i++) {
-          props[keys[i]] = this.propAttributes(keys[i]);
+          var desc = this.subject.GetOwnProperty(key);
+          if (desc) {
+            props[keys[i]] = [keys[i], desc.Value, descToAttrs(desc)];
+          }
         }
 
         return props;
@@ -841,7 +880,7 @@ var debug = (function(exports){
 
         each(this.subject.EnumerateBindings(), function(key){
           key = key === '__proto__' ? proto : key;
-          props[key] = key
+          props[key] = [key, null, 7]
         });
 
         return props;
@@ -852,7 +891,7 @@ var debug = (function(exports){
             keys = [];
 
         for (var k in props) {
-          keys.push(k === proto ? '__proto__' : k);
+          keys.push(props[k][0]);
         }
 
         return keys.sort();
@@ -951,6 +990,7 @@ var debug = (function(exports){
     RegExp   : MirrorRegExp,
     Set      : MirrorSet,
     String   : MirrorString,
+    Symbol   : MirrorSymbol,
     WeakMap  : MirrorWeakMap
   };
 
@@ -1080,6 +1120,7 @@ var debug = (function(exports){
     RegExp: alwaysLabel,
     Scope: alwaysLabel,
     Set: alwaysLabel,
+    Symbol: alwaysLabel,
     String: alwaysLabel,
     WeakMap: alwaysLabel
   };
