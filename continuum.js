@@ -14906,7 +14906,7 @@ exports.runtime = (function(GLOBAL, exports, undefined){
           return MapData.sigil;
         },
         MapSize: function(map){
-          return map.MapData.size;
+          return map.MapData ? map.MapData.size : 0;
         },
         MapClear: wrapMapFunction('clear'),
         MapSet: wrapMapFunction('set'),
