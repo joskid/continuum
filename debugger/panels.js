@@ -1,5 +1,6 @@
 (function(continuum){
 var Component = continuum.Component,
+    constants = continuum.constants,
     utility   = continuum.utility,
     inherit   = utility.inherit,
     isObject  = utility.isObject,
