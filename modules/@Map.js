@@ -1,3 +1,7 @@
+import iterator from '@iter';
+symbol @iterator = iterator;
+
+
 export function Map(iterable){
   var map;
   if ($__IsConstructCall()) {
@@ -54,8 +58,8 @@ $__defineProps(Map.prototype, {
     ensureMap(this, 'values');
     return new MapIterator(this, 'value');
   },
-  iterator(){
-    ensureMap(this, 'iterator');
+  @iterator(){
+    ensureMap(this, '@iterator');
     return new MapIterator(this, 'key+value');
   }
 });
@@ -121,7 +125,7 @@ $__defineProps(MapIterator.prototype, {
     }
     return item[0];
   },
-  iterator(){
+  @iterator(){
     return this;
   }
 });

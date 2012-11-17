@@ -1,3 +1,6 @@
+import iterator from '@iter';
+symbol @iterator = iterator;
+
 export function Array(...values){
   if (values.length === 1 && typeof values[0] === 'number') {
     var out = [];
@@ -108,9 +111,6 @@ $__defineProps(Array.prototype, {
   },
   items(){
     return new ArrayIterator(this, 'key+value');
-  },
-  iterator(){
-    return new ArrayIterator(this, 'value');
   },
   join(separator){
     return joinArray(this, arguments.length ? separator : ',');
@@ -270,6 +270,9 @@ $__defineProps(Array.prototype, {
   },
   values(){
     return new ArrayIterator(this, 'value');
+  },
+  @iterator(){
+    return new ArrayIterator(this, 'value');
   }
 });
 
@@ -375,7 +378,7 @@ class ArrayIterator {
     return key;
   }
 
-  iterator(){
+  @iterator(){
     return this;
   }
 }

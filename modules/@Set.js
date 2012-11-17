@@ -1,4 +1,7 @@
 import Map from '@map';
+import iterator from '@iter';
+symbol @iterator = iterator;
+
 
 export function Set(iterable){
   var set;
@@ -49,7 +52,7 @@ $__defineProps(Set.prototype, {
   values(){
     return new SetIterator(this, 'value');
   },
-  iterator(){
+  @iterator(){
     return new SetIterator(this, 'value');
   }
 });
@@ -119,7 +122,7 @@ $__defineProps(SetIterator.prototype, {
     $__SetInternal(this, KEY, item[0]);
     return kind === KV ? [item[1], item[1]] : item[1];
   },
-  iterator(){
+  @iterator(){
     return this;
   }
 });

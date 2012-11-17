@@ -427,7 +427,7 @@ var FunctionBranch = (function(){
       if (params.rest) {
         params.push('...'+params.pop());
       }
-
+      var name = typeof  name === 'string' ? name : introspect(name).label();
       label.append(inline(name, 'FunctionName'));
       var container = inline('', 'Params');
       for (var i=0; i < params.length; i++) {

@@ -1890,7 +1890,7 @@ var runtime = (function(GLOBAL, exports, undefined){
         }
       },
       function Iterate(){
-        return Invoke('iterator', this, []);
+        return Invoke(intrinsics.iterator, this, []);
       },
       function enumerator(){
         var keys = this.Enumerate(true, true),
