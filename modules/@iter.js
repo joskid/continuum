@@ -1,20 +1,13 @@
-import Symbol from '@symbol';
 import hasOwn from '@reflect';
 
-export let _iterator = new Symbol('iterator');
+symbol @iterator;
+export let iterator = @iterator;
 
 export function Iterator(){}
 
-$__setupConstructor(Iterator, $__IteratorProto);
-
-$__DefineOwnProperty(Iterator.prototype, {
-  configurable: false,
-  enumerable: false,
-  writable: false,
-  value: function iterator(){
-    return this;
-  }
-});
+$__defineDirect(Iterator, 'prototype', Iterator.prototype, 0);
+$__defineDirect(Iterator.prototype, @iterator, function iterator(){ return this }, 0);
+$__SetNativeBrand(Iterator.prototype, 'NativeIterator');
 
 
 export function keys(obj){
