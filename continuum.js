@@ -8663,7 +8663,7 @@ exports.assembler = (function(exports){
         GET();
       }
 
-      console.log(SYMBOL(item.id.name, pub, !!init));
+      SYMBOL(item.id.name, pub, !!init);
       symbols.push(item.id.name);
     });
   }

@@ -427,8 +427,11 @@ var FunctionBranch = (function(){
       if (params.rest) {
         params.push('...'+params.pop());
       }
-      var name = typeof  name === 'string' ? name : introspect(name).label();
-      label.append(inline(name, 'FunctionName'));
+      if (typeof name === 'string') {
+        label.append(inline(name, 'FunctionName'));
+      } else {
+        label.append(inline(introspect(name).label(), 'FunctionName')).addClass('Symbol');
+      }
       var container = inline('', 'Params');
       for (var i=0; i < params.length; i++) {
         container.append(inline(params[i], 'Param'))

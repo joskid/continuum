@@ -360,32 +360,6 @@ h1, h2
 .ƒParam:first-child:before { content: '' }
 
 
- /* hsl(213, 100%, 70%) */
-.ƒECW > .ƒFunction > .ƒFunctionName  { color: #6af } /* hsl(  0,   0%, 80%) */
-.ƒE_W > .ƒFunction > .ƒFunctionName  { color: #ccf } /* hsl(240, 100%, 90%) */
-.ƒ__W > .ƒFunction > .ƒFunctionName  { color: #88a } /* hsl(240,  17%, 60%) */
-.ƒ_CW > .ƒFunction > .ƒFunctionName  { color: #36a } /* hsl(  0,   0%, 40%) */
-.ƒEC_ > .ƒFunction > .ƒFunctionName  { color: #ff8 } /* hsl( 60, 100%, 77%) */
-.ƒE__ > .ƒFunction > .ƒFunctionName  { color: #0fc } /* hsl(168, 100%, 50%) */
-.ƒ_C_ > .ƒFunction > .ƒFunctionName  { color: #660 } /* hsl( 60, 100%, 20%) */
-.ƒ___ > .ƒFunction > .ƒFunctionName  { color: #088 } /* hsl(180, 100%, 27%) */
-.ƒ__A > .ƒFunction > .ƒFunctionName  { color: #860 } /* hsl( 45, 100%, 27%) */
-.ƒE_A > .ƒFunction > .ƒFunctionName  { color: #fc8 } /* hsl( 34, 100%, 77%) */
-.ƒ_CA > .ƒFunction > .ƒFunctionName  { color: #868 } /* hsl(300,  14%, 47%) */
-.ƒECA > .ƒFunction > .ƒFunctionName  { color: #fc0 } /* hsl( 48, 100%, 50%) */
-
-.ƒSymbol.ƒECW    { color: #8fc } /* hsl(  0,   0%, 80%) */
-.ƒSymbol.ƒE_W    { color: #9ef } /* hsl(240, 100%, 90%) */
-.ƒSymbol.ƒ__W    { color: #8dc } /* hsl(240,  17%, 60%) */
-.ƒSymbol.ƒ_CW    { color: #7b8 } /* hsl(  0,   0%, 40%) */
-.ƒSymbol.ƒEC_    { color: #afa } /* hsl( 60, 100%, 77%) */
-.ƒSymbol.ƒE__    { color: #1fa } /* hsl(168, 100%, 50%) */
-.ƒSymbol.ƒ_C_    { color: #493 } /* hsl( 60, 100%, 20%) */
-.ƒSymbol.ƒ___    { color: #0a6 } /* hsl(180, 100%, 27%) */
-.ƒSymbol.ƒ__A    { color: #6a0 } /* hsl( 45, 100%, 27%) */
-.ƒSymbol.ƒE_A    { color: #8da } /* hsl( 34, 100%, 77%) */
-.ƒSymbol.ƒ_CA    { color: #683 } /* hsl(300,  14%, 47%) */
-.ƒSymbol.ƒECA    { color: #af0 } /* hsl( 48, 100%, 50%) */
 
 .ƒECW            { color: #ccc } /* hsl(  0,   0%, 80%) */
 .ƒE_W            { color: #ccf } /* hsl(240, 100%, 90%) */
@@ -399,6 +373,46 @@ h1, h2
 .ƒE_A            { color: #fc8 } /* hsl( 34, 100%, 77%) */
 .ƒ_CA            { color: #868 } /* hsl(300,  14%, 47%) */
 .ƒECA            { color: #fc0 } /* hsl( 48, 100%, 50%) */
+
+ /* hsl(213, 100%, 70%) */
+.ƒECW > .ƒFunction > .ƒFunctionName  { color: #6af }
+.ƒE_W > .ƒFunction > .ƒFunctionName  { color: #ccf }
+.ƒ__W > .ƒFunction > .ƒFunctionName  { color: #88a }
+.ƒ_CW > .ƒFunction > .ƒFunctionName  { color: #36a }
+.ƒEC_ > .ƒFunction > .ƒFunctionName  { color: #ff8 }
+.ƒE__ > .ƒFunction > .ƒFunctionName  { color: #0fc }
+.ƒ_C_ > .ƒFunction > .ƒFunctionName  { color: #660 }
+.ƒ___ > .ƒFunction > .ƒFunctionName  { color: #088 }
+.ƒ__A > .ƒFunction > .ƒFunctionName  { color: #860 }
+.ƒE_A > .ƒFunction > .ƒFunctionName  { color: #fc8 }
+.ƒ_CA > .ƒFunction > .ƒFunctionName  { color: #868 }
+.ƒECA > .ƒFunction > .ƒFunctionName  { color: #fc0 }
+
+.ƒECW.ƒSymbol { color: #8fc }
+.ƒE_W.ƒSymbol { color: #9ef }
+.ƒ__W.ƒSymbol { color: #8dc }
+.ƒ_CW.ƒSymbol { color: #7b8 }
+.ƒEC_.ƒSymbol { color: #afa }
+.ƒE__.ƒSymbol { color: #1fa }
+.ƒ_C_.ƒSymbol { color: #493 }
+.ƒ___.ƒSymbol { color: #0a6 }
+.ƒ__A.ƒSymbol { color: #6a0 }
+.ƒE_A.ƒSymbol { color: #8da }
+.ƒ_CA.ƒSymbol { color: #683 }
+.ƒECA.ƒSymbol { color: #af0 }
+
+.ƒECW > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #8fc }
+.ƒE_W > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #9ef }
+.ƒ__W > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #8dc }
+.ƒ_CW > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #7b8 }
+.ƒEC_ > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #afa }
+.ƒE__ > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #1fa }
+.ƒ_C_ > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #493 }
+.ƒ___ > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #0a6 }
+.ƒ__A > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #6a0 }
+.ƒE_A > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #8da }
+.ƒ_CA > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #683 }
+.ƒECA > .ƒFunction > .ƒSymbol.ƒFunctionName { color: #af0 }
 
 .ƒParams    { font-style: italic }
 .ƒException { font-weight: bold }
