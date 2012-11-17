@@ -1,5 +1,5 @@
-import MAX_INTEGER from '@Number';
-import RegExp from '@RegExp';
+import MAX_INTEGER from '@number';
+import RegExp from '@regexp';
 
 
 export function String(string){

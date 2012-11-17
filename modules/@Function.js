@@ -7,17 +7,17 @@ $__defineDirect(Function.prototype, 'name', '', 0);
 
 
 export function apply(func, receiver, args){
-  ensureFunction(func, '@Function.apply');
+  ensureFunction(func, '@function.apply');
   return $__CallFunction(func, receiver, ensureArgs(args));
 }
 
 export function bind(func, receiver, ...args){
-  ensureFunction(func, '@Function.bind');
+  ensureFunction(func, '@function.bind');
   return $__BoundFunctionCreate(func, receiver, args);
 }
 
 export function call(func, receiver, ...args){
-  ensureFunction(func, '@Function.call');
+  ensureFunction(func, '@function.call');
   return $__CallFunction(func, receiver, args);
 }
 

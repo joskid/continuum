@@ -1,4 +1,4 @@
-import Map from '@Map';
+import Map from '@map';
 
 export function Set(iterable){
   var set;

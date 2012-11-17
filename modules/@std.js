@@ -21,18 +21,18 @@ import { clearInterval,
          setTimeout } from '@timers';
 
 // standard types
-import Array    from '@Array';
-import Boolean  from '@Boolean';
-import Date     from '@Date';
-import Function from '@Function';
-import Map      from '@Map';
-import Number   from '@Number';
-import Object   from '@Object';
+import Array    from '@array';
+import Boolean  from '@boolean';
+import Date     from '@date';
+import Function from '@function';
+import Map      from '@map';
+import Number   from '@number';
+import Object   from '@object';
 import Proxy    from '@reflect';
-import RegExp   from '@RegExp';
-import Set      from '@Set';
-import String   from '@String';
-import WeakMap  from '@WeakMap';
+import RegExp   from '@regexp';
+import Set      from '@set';
+import String   from '@string';
+import WeakMap  from '@weakmap';
 
 
 
@@ -43,7 +43,7 @@ import { Error,
          ReferenceError,
          SyntaxError,
          TypeError,
-         URIError } from '@Error';
+         URIError } from '@error';
 
 
 // standard pseudo-modules

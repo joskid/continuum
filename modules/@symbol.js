@@ -1,9 +1,8 @@
-export function Symbol(str){
-  var symbol = $__SymbolCreate();
-  if (str != null) {
-    $__SetInternal(symbol, 'Label', $__ToString(str));
+export function Symbol(name, isPublic){
+  if (name == null) {
+    throw $__Exception('unnamed_symbol', []);
   }
-  return symbol;
+  return $__SymbolCreate(name, !!isPublic);
 }
 
 $__setupConstructor(Symbol, $__SymbolProto);
