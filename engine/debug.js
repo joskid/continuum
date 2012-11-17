@@ -330,7 +330,7 @@ var debug = (function(exports){
       function ownAttrs(props){
         props || (props = create(null));
         this.props.forEach(function(prop){
-          if (typeof prop[0] === 'string') {
+          if (!prop[0].Private) {
             var key = prop[0] === '__proto__' ? proto : prop[0];
             props[key] = prop;
           }
@@ -686,7 +686,7 @@ var debug = (function(exports){
           props[i] = 1;
         }
         this.props.forEach(function(prop){
-          if (typeof prop[0] === 'string') {
+          if (!prop[0].Private) {
             var key = prop[0] === '__proto__' ? proto : prop[0];
             props[key] = prop[2];
           }
@@ -718,7 +718,7 @@ var debug = (function(exports){
       kind: 'Symbol'
     }, [
       function label(){
-        return '@' + (this.subject.Label || 'Symbol');
+        return '@' + (this.subject.Name || 'Symbol');
       }
     ]);
 

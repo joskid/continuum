@@ -374,6 +374,18 @@ h1, h2
 .ƒ_CA > .ƒFunction > .ƒFunctionName  { color: #868 } /* hsl(300,  14%, 47%) */
 .ƒECA > .ƒFunction > .ƒFunctionName  { color: #fc0 } /* hsl( 48, 100%, 50%) */
 
+.ƒSymbol.ƒECW    { color: #8fc } /* hsl(  0,   0%, 80%) */
+.ƒSymbol.ƒE_W    { color: #9ef } /* hsl(240, 100%, 90%) */
+.ƒSymbol.ƒ__W    { color: #8dc } /* hsl(240,  17%, 60%) */
+.ƒSymbol.ƒ_CW    { color: #7b8 } /* hsl(  0,   0%, 40%) */
+.ƒSymbol.ƒEC_    { color: #afa } /* hsl( 60, 100%, 77%) */
+.ƒSymbol.ƒE__    { color: #1fa } /* hsl(168, 100%, 50%) */
+.ƒSymbol.ƒ_C_    { color: #493 } /* hsl( 60, 100%, 20%) */
+.ƒSymbol.ƒ___    { color: #0a6 } /* hsl(180, 100%, 27%) */
+.ƒSymbol.ƒ__A    { color: #6a0 } /* hsl( 45, 100%, 27%) */
+.ƒSymbol.ƒE_A    { color: #8da } /* hsl( 34, 100%, 77%) */
+.ƒSymbol.ƒ_CA    { color: #683 } /* hsl(300,  14%, 47%) */
+.ƒSymbol.ƒECA    { color: #af0 } /* hsl( 48, 100%, 50%) */
 
 .ƒECW            { color: #ccc } /* hsl(  0,   0%, 80%) */
 .ƒE_W            { color: #ccf } /* hsl(240, 100%, 90%) */

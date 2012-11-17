@@ -71,7 +71,7 @@ function inspect(o){
 }
 
 
-var realm = continuum.createRealm();
+ realm = continuum.createRealm();
 
 var ops = new Feeder(function(op){
   instructions.addInstruction(op);

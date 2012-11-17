@@ -1,13 +1,14 @@
 (function(continuum){
 
-var Component = continuum.Component,
-    utility   = continuum.utility,
-    inherit   = utility.inherit,
-    each      = utility.each,
-    iterate   = utility.iterate,
-    inline    = continuum.inline,
-    block     = continuum.block,
-    _         = continuum._;
+var Component  = continuum.Component,
+    utility    = continuum.utility,
+    inherit    = utility.inherit,
+    each       = utility.each,
+    iterate    = utility.iterate,
+    inline     = continuum.inline,
+    block      = continuum.block,
+    introspect = continuum.introspect,
+    _          = continuum._;
 
 var Key = function(){
   function Key(key){
@@ -49,7 +50,12 @@ var Property = (function(){
       return this.attrs = attributes[this.mirror.propAttributes(this.name)];
     },
     function createKey(){
-      var key = new Key(this.name);
+      if (typeof this.name === 'string') {
+        var key = new Key(this.name);
+      } else {
+        var key = new Key(introspect(this.name).label());
+        key.addClass('Symbol');
+      }
       key.addClass(this.getAttributes());
       return key;
     },
