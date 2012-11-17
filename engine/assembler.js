@@ -284,6 +284,7 @@ var assembler = (function(exports){
 
 
   function ClassDefinition(node){
+    var self = this;
     this.name = node.id ? node.id.name : null;
     this.methods = [];
     this.symbols = [];
@@ -295,7 +296,7 @@ var assembler = (function(exports){
           Names: [],
           Private: node.kind === 'private'
         };
-        this.symbols.push(symbols);
+        self.symbols.push(symbols);
 
         each(node.declarations, function(item){
           symbols.init[item.id.name] = item.init;
@@ -304,8 +305,8 @@ var assembler = (function(exports){
       } else {
         var method = node;
         var code = new Code(method.value, context.source, FUNCTYPE.METHOD, SCOPE.CLASS, context.code.Strict);
-        if (this.name) {
-          code.name = this.name + '#' + method.key.name;
+        if (self.name) {
+          code.name = self.name + '#' + method.key.name;
         } else {
           code.name = method.key.name;
         }
@@ -316,16 +317,16 @@ var assembler = (function(exports){
         }
 
         if (method.key.name === 'constructor') {
-          this.ctor = code;
+          self.ctor = code;
         } else {
-          this.methods.push({
+          self.methods.push({
             kind: method.kind,
             code: code,
             name: method.key.name
           });
         }
       }
-    }, this);
+    });
 
     if (node.superClass) {
       recurse(node.superClass);
