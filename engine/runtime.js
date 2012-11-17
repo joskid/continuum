@@ -419,6 +419,16 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
+  function GetSymbol(context, name){
+    var env = context.LexicalEnvironment;
+    while (env) {
+      if (env.HasSymbolBinding(name)) {
+        return env.GetSymbol(name);
+      }
+      env = env.outer;
+    }
+  }
+
   // ## IsPropertyReference
 
   function IsPropertyReference(v){
@@ -1136,6 +1146,7 @@ var runtime = (function(GLOBAL, exports, undefined){
     }
   }
 
+
   function ThisResolution(context){
     return GetThisEnvironment(context).GetThisBinding();
   }
@@ -1269,17 +1280,19 @@ var runtime = (function(GLOBAL, exports, undefined){
   // ### Reference ###
   // #################
 
-  function Reference(base, name, strict){
-    this.base = base;
-    this.name = name;
-    this.strict = strict;
-  }
 
-  void function(){
+  var Reference = (function(){
+    function Reference(base, name, strict){
+      this.base = base;
+      this.name = name;
+      this.strict = strict;
+    }
     define(Reference.prototype, {
       Reference: SYMBOLS.Reference
     });
-  }();
+
+    return Reference;
+  })();
 
 
 
@@ -1402,6 +1415,28 @@ var runtime = (function(GLOBAL, exports, undefined){
       },
       function GetThisBinding(){},
       function GetSuperBase(){},
+      function HasSymbolBinding(name){
+        if (this.symbols) {
+          return name in this.symbols;
+        }
+        return false;
+      },
+      function InitializeSymbolBinding(name, symbol){
+        if (!this.symbols) {
+          this.symbols = create(null);
+        }
+        if (name in this.symbols) {
+          return ThrowException('symbol_redefine', name);
+        }
+        this.symbols[name] = symbol;
+      },
+      function GetSymbol(name){
+        if (this.symbols && name in this.symbols) {
+          return this.symbols[name];
+        } else{
+          return ThrowException('symbol_not_defined', name);
+        }
+      },
       function reference(name, strict){
         return new Reference(this, name, strict);
       }
@@ -1878,7 +1913,7 @@ var runtime = (function(GLOBAL, exports, undefined){
       },
       function Enumerate(includePrototype, onlyEnumerable){
         var props = this.properties.filter(function(prop){
-          return typeof prop[0] === STRING && (!onlyEnumerable || (prop[2] & E));
+          return !prop[0].Private && (!onlyEnumerable || (prop[2] & E));
         }, this);
 
         if (includePrototype) {
@@ -2666,9 +2701,11 @@ var runtime = (function(GLOBAL, exports, undefined){
   var $Symbol = (function(){
     var seed = Math.random() * 4294967296 | 0;
 
-    function $Symbol(proto){
+    function $Symbol(name, isPublic){
       $Object.call(this, intrinsics.SymbolProto);
       this.Symbol = seed++;
+      this.Name = name;
+      this.Private = !isPublic;
     }
 
     inherit($Symbol, $Object, {
@@ -3295,6 +3332,12 @@ var runtime = (function(GLOBAL, exports, undefined){
     });
 
     define(ExecutionContext.prototype, [
+      function pop(){
+        if (this === context) {
+          context = this.caller;
+          return this;
+        }
+      },
       function initializeBinding(name, value){
         return this.LexicalEnvironment.InitializeBinding(name, value);
       },
@@ -3380,12 +3423,28 @@ var runtime = (function(GLOBAL, exports, undefined){
       },
       function getTemplateCallSite(template){
         return GetTemplateCallSite(this, template);
+      },
+      function getSymbol(name){
+        return GetSymbol(this, name) || ThrowException('undefined_symbol', name);
+      },
+      function getSymbolReference(name){
+        var symbol = GetSymbol(this, name);
+        if (symbol) {
+          return symbol//IdentifierResolution(this, symbol);
+        } else {
+          return ThrowException('undefined_symbol', name);
+        }
+      },
+      function createSymbol(name, isPublic){
+        return new $Symbol(name, isPublic);
+      },
+      function initializeSymbolBinding(name, symbol){
+        return this.LexicalEnvironment.InitializeSymbolBinding(name, symbol);
       }
     ]);
 
     return ExecutionContext;
   })();
-
 
 
   var Intrinsics = (function(){
@@ -3984,8 +4043,8 @@ var runtime = (function(GLOBAL, exports, undefined){
         ProxyCreate: function(target, handler){
           return new $Proxy(target, handler);
         },
-        SymbolCreate: function(){
-          return new $Symbol;
+        SymbolCreate: function(name, isPublic){
+          return new $Symbol(name, isPublic);
         },
         StringCreate: function(string){
           return new $String(string);

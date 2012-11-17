@@ -76,6 +76,7 @@ var thunk = (function(exports){
   var log = false;
 
 
+
   function instructions(ops, opcodes){
     var out = [];
     for (var i=0; i < ops.length; i++) {
@@ -93,14 +94,29 @@ var thunk = (function(exports){
       CLASS_DECL, CLASS_EXPR, COMPLETE, CONST, CONSTRUCT, DEBUGGER, DEFAULT, DEFINE,
       DUP, ELEMENT, ENUM, EXTENSIBLE, FLIP, FUNCTION, GET, IFEQ, IFNE, INC, INDEX, ITERATE, JUMP, LET,
       LITERAL, LOG, MEMBER, METHOD, NATIVE_CALL, NATIVE_REF, OBJECT, POP,
-      POPN, PROPERTY, PUT, REF, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
-      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, TEMPLATE,
+      POPN, PROPERTY, PUT, REF, REFSYMBOL, REGEXP, RETURN, ROTATE, RUN, SAVE, SPREAD,
+      SPREAD_ARG, STRING, SUPER_CALL, SUPER_ELEMENT, SUPER_MEMBER, SYMBOL, TEMPLATE,
       THIS, THROW, UNARY, UNDEFINED, UPDATE, UPSCOPE, VAR, WITH, YIELD];
 
     var thunk = this,
         ops = code.ops,
         cmds = instructions(ops, opcodes);
 
+    function getKey(v){
+      if (typeof v === 'string') {
+        return v;
+      }
+      if (v[0] !== '@') {
+        return v[1];
+      }
+
+      v = context.getSymbol(v[1]);
+      if (v && v.Abrupt) {
+        error = v;
+        return unwind;
+      }
+      return v;
+    }
 
     function unwind(){
       for (var i = 0, entry; entry = code.transfers[i]; i++) {
@@ -499,10 +515,15 @@ var thunk = (function(exports){
     }
 
     function MEMBER(){
-      var obj    = stack[--sp],
-          key    = code.lookup(ops[ip][0]),
-          result = context.getPropertyReference(key, obj);
+      var obj = stack[--sp],
+          key = getKey(ops[ip][0]);
 
+      if (key && key.Abrupt) {
+        error = key;
+        return unwind;
+      }
+
+      var result = context.getPropertyReference(key, obj);
       if (result && result.Completion) {
         if (result.Abrupt) {
           error = result;
@@ -519,9 +540,15 @@ var thunk = (function(exports){
     function METHOD(){
       var kind   = ops[ip][0],
           obj    = stack[sp - 1],
-          key    = code.lookup(ops[ip][2]),
           code   = ops[ip][1],
-          status = context.defineMethod(kind, obj, key, code);
+          key    = getKey(ops[ip][2]);
+
+      if (key && key.Abrupt) {
+        error = key;
+        return unwind;
+      }
+
+      var status = context.defineMethod(kind, obj, key, code);
 
       if (status && status.Abrupt) {
         error = status;
@@ -546,13 +573,19 @@ var thunk = (function(exports){
     function PROPERTY(){
       var val    = stack[--sp],
           obj    = stack[sp - 1],
-          key    = code.lookup(ops[ip][0]),
-          status = DefineProperty(obj, key, val);
+          key    = getKey(ops[ip][0]);
 
+      if (key && key.Abrupt) {
+        error = key;
+        return unwind;
+      }
+
+      var status = DefineProperty(obj, key, val);
       if (status && status.Abrupt) {
         error = status;
         return unwind;
       }
+
       return cmds[++ip];
     }
 
@@ -593,6 +626,12 @@ var thunk = (function(exports){
     function REF(){
       var ident = code.lookup(ops[ip][0]);
       stack[sp++] = context.getReference(ident);
+      return cmds[++ip];
+    }
+
+    function REFSYMBOL(){
+      var symbol = code.lookup(ops[ip][0]);
+      stack[sp++] = context.getSymbolReference(symbol);
       return cmds[++ip];
     }
 
@@ -667,6 +706,7 @@ var thunk = (function(exports){
       return cmds[++ip];
     }
 
+
     function STRING(){
       stack[sp++] = code.lookup(ops[ip][0]);
       return cmds[++ip];
@@ -705,7 +745,13 @@ var thunk = (function(exports){
     }
 
     function SUPER_MEMBER(){
-      var result = context.getSuperReference(code.lookup(ops[ip][0]));
+      var key = getKey(ops[ip][0]);
+
+      if (key && key.Abrupt) {
+        error = key;
+        return unwind;
+      }
+      var result = context.getSuperReference(key);
 
       if (result && result.Completion) {
         if (result.Abrupt) {
@@ -714,6 +760,31 @@ var thunk = (function(exports){
         } else {
           result = result.value;
         }
+      }
+
+      stack[sp++] = result;
+      return cmds[++ip];
+    }
+
+    function SYMBOL(){
+      var name = ops[ip][0],
+          isPublic = ops[ip][1],
+          hasInit = ops[ip][2];
+
+      if (hasInit) {
+        var init = stack[--sp];
+        if (init && init.Completion) {
+          if (init.Abrupt) { error = init; return unwind; } else init = init.value;
+        }
+      } else {
+        var init = context.createSymbol(name, isPublic);
+      }
+
+      var result = context.initializeSymbolBinding(name, init);
+
+      if (result && result.Abrupt) {
+        error = result;
+        return unwind;
       }
 
       stack[sp++] = result;

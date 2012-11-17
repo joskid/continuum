@@ -73,9 +73,9 @@ var assembler = (function(exports){
   inherit(InternedOpCode, StandardOpCode, [
     function creator(){
       var opcode = this;
-      return function(arg){
+      return function(a, b, c){
         //return context.code.createDirective(opcode, [context.intern(arg)]);
-        return context.code.createDirective(opcode, [arg]);
+        return context.code.createDirective(opcode, [a, b, c]);
       };
     }
   ]);
@@ -124,6 +124,7 @@ var assembler = (function(exports){
       PROPERTY         = new InternedOpCode(1, 'PROPERTY'),
       PUT              = new StandardOpCode(0, 'PUT'),
       REF              = new InternedOpCode(1, 'REF'),
+      REFSYMBOL        = new InternedOpCode(1, 'REFSYMBOL'),
       REGEXP           = new StandardOpCode(1, 'REGEXP'),
       RETURN           = new StandardOpCode(0, 'RETURN'),
       ROTATE           = new StandardOpCode(1, 'ROTATE'),
@@ -135,6 +136,7 @@ var assembler = (function(exports){
       SUPER_CALL       = new StandardOpCode(0, 'SUPER_CALL'),
       SUPER_ELEMENT    = new StandardOpCode(0, 'SUPER_ELEMENT'),
       SUPER_MEMBER     = new StandardOpCode(1, 'SUPER_MEMBER'),
+      SYMBOL           = new InternedOpCode(3, 'SYMBOL'),
       TEMPLATE         = new StandardOpCode(1, 'TEMPLATE'),
       THIS             = new StandardOpCode(0, 'THIS'),
       THROW            = new StandardOpCode(0, 'THROW'),
@@ -284,30 +286,46 @@ var assembler = (function(exports){
   function ClassDefinition(node){
     this.name = node.id ? node.id.name : null;
     this.methods = [];
+    this.symbols = [];
 
-    for (var i=0, method; method = node.body.body[i]; i++) {
-      var code = new Code(method.value, context.source, FUNCTYPE.METHOD, SCOPE.CLASS, context.code.Strict);
-      if (this.name) {
-        code.name = this.name + '#' + method.key.name;
-      } else {
-        code.name = method.key.name;
-      }
-      context.pending.push(code);
+    each(node.body.body, function(node){
+      if (node.type === 'SymbolDefinition') {
+        var symbols = {
+          Init: create(null),
+          Names: [],
+          Private: node.kind === 'private'
+        };
+        this.symbols.push(symbols);
 
-      if (method.kind === '') {
-        method.kind = 'method';
-      }
-
-      if (method.key.name === 'constructor') {
-        this.ctor = code;
-      } else {
-        this.methods.push({
-          kind: method.kind,
-          code: code,
-          name: method.key.name
+        each(node.declarations, function(item){
+          symbols.init[item.id.name] = item.init;
+          symbols.Names.push(item.id.name);
         });
+      } else {
+        var method = node;
+        var code = new Code(method.value, context.source, FUNCTYPE.METHOD, SCOPE.CLASS, context.code.Strict);
+        if (this.name) {
+          code.name = this.name + '#' + method.key.name;
+        } else {
+          code.name = method.key.name;
+        }
+        context.pending.push(code);
+
+        if (method.kind === '') {
+          method.kind = 'method';
+        }
+
+        if (method.key.name === 'constructor') {
+          this.ctor = code;
+        } else {
+          this.methods.push({
+            kind: method.kind,
+            code: code,
+            name: method.key.name
+          });
+        }
       }
-    }
+    }, this);
 
     if (node.superClass) {
       recurse(node.superClass);
@@ -646,6 +664,14 @@ var assembler = (function(exports){
     }
   }
 
+  function symbol(node){
+    if (node.type === 'AtSymbol') {
+      return ['@', node.name];
+    } else {
+      return ['', node.name];
+    }
+  }
+
   function macro(){
     var opcodes = arguments;
     MACRO.params = opcodes.length;
@@ -736,7 +762,7 @@ var assembler = (function(exports){
             LITERAL(i);
             ELEMENT(i);
           } else {
-            MEMBER(binding.name)
+            MEMBER(symbol(binding))
           }
         }
         PUT();
@@ -816,6 +842,10 @@ var assembler = (function(exports){
     context.queue(code);
     FUNCTION(null, code);
     return code;
+  }
+
+  function AtSymbol(node){
+    REFSYMBOL(node.name);
   }
 
   function BinaryExpression(node){
@@ -1156,7 +1186,7 @@ var assembler = (function(exports){
       GET();
       isSuper ? SUPER_ELEMENT() : ELEMENT();
     } else {
-      isSuper ? SUPER_MEMBER() : MEMBER(node.property.name);
+      isSuper ? SUPER_MEMBER() : MEMBER(symbol(node.property));
     }
   }
 
@@ -1199,7 +1229,7 @@ var assembler = (function(exports){
   function Property(node){
     var value = node.value;
     if (node.kind === 'init'){
-      var key = node.key.type === 'Identifier' ? node.key.name : node.key.value;
+      var key = node.key.type === 'Identifier' ? node.key : node.key.value;
       if (node.method) {
         FunctionExpression(value, intern(key));
       } else if (isAnonymousFunction(value)) {
@@ -1210,12 +1240,11 @@ var assembler = (function(exports){
         recurse(value);
       }
       GET();
-      PROPERTY(key);
+      PROPERTY(symbol(node.key));
     } else {
       var code = new Code(value, null, FUNCTYPE.NORMAL, SCOPE.FUNCTION);
       context.queue(code);
-      var key = node.kind ? node.kind+' '+node.key.name : node.key.name;
-      METHOD(node.kind, code, intern(key));
+      METHOD(node.kind, code, symbol(node.key));
     }
   }
 
@@ -1285,6 +1314,24 @@ var assembler = (function(exports){
     });
   }
 
+
+  function SymbolDeclaration(node){
+    var symbols = node.AtSymbols = [],
+        pub = node.kind === 'symbol';
+
+    each(node.declarations, function(item){
+      var init = item.init;
+      if (init) {
+        recurse(init);
+        GET();
+      }
+
+      console.log(SYMBOL(item.id.name, pub, !!init));
+      symbols.push(item.id.name);
+    });
+  }
+
+  function SymbolDeclarator(node){}
 
   function TemplateElement(node){}
 
@@ -1433,7 +1480,7 @@ var assembler = (function(exports){
 
   var handlers = {};
 
-  utility.iterate([ ArrayExpression, ArrayPattern, ArrowFunctionExpression, AssignmentExpression,
+  utility.iterate([ ArrayExpression, ArrayPattern, ArrowFunctionExpression, AssignmentExpression, AtSymbol,
     BinaryExpression, BlockStatement, BreakStatement, CallExpression,
     CatchClause, ClassBody, ClassDeclaration, ClassExpression, ClassHeritage,
     ConditionalExpression, DebuggerStatement, DoWhileStatement, EmptyStatement,
@@ -1443,8 +1490,8 @@ var assembler = (function(exports){
     ImportSpecifier, LabeledStatement, Literal, LogicalExpression, MemberExpression,
     MethodDefinition, ModuleDeclaration, NativeIdentifier, NewExpression, ObjectExpression,
     ObjectPattern, Path, Program, Property, ReturnStatement, SequenceExpression, SwitchStatement,
-    TaggedTemplateExpression, TemplateElement, TemplateLiteral, ThisExpression,
-    ThrowStatement, TryStatement, UnaryExpression, UpdateExpression, VariableDeclaration,
+    SymbolDeclaration, SymbolDeclarator, TaggedTemplateExpression, TemplateElement, TemplateLiteral,
+    ThisExpression, ThrowStatement, TryStatement, UnaryExpression, UpdateExpression, VariableDeclaration,
     VariableDeclarator, WhileStatement, WithStatement, YieldExpression], function(handler){
       handlers[utility.fname(handler)] = handler;
     });

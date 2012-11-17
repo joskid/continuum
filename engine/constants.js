@@ -51,25 +51,27 @@ var constants = (function(exports){
 
 
   exports.BRANDS = {
-    BooleanWrapper    : new NativeBrand('Boolean'),
-    GlobalObject      : new NativeBrand('global'),
-    NativeArguments   : new NativeBrand('Arguments'),
-    NativeArray       : new NativeBrand('Array'),
-    NativeDate        : new NativeBrand('Date'),
-    NativeError       : new NativeBrand('Error'),
-    NativeFunction    : new NativeBrand('Function'),
-    NativeJSON        : new NativeBrand('JSON'),
-    NativeMap         : new NativeBrand('Map'),
-    NativeMath        : new NativeBrand('Math'),
-    NativeModule      : new NativeBrand('Module'),
-    NativeObject      : new NativeBrand('Object'),
-    NativeRegExp      : new NativeBrand('RegExp'),
-    NativeSet         : new NativeBrand('Set'),
-    NativeSymbol      : new NativeBrand('Symbol'),
-    NativeWeakMap     : new NativeBrand('WeakMap'),
-    NumberWrapper     : new NativeBrand('Number'),
-    StopIteration     : new NativeBrand('StopIteration'),
-    StringWrapper     : new NativeBrand('String')
+    BooleanWrapper     : new NativeBrand('Boolean'),
+    GlobalObject       : new NativeBrand('global'),
+    NativeArguments    : new NativeBrand('Arguments'),
+    NativeArrayIterator: new NativeBrand('ArrayIterator'),
+    NativeArray        : new NativeBrand('Array'),
+    NativeDate         : new NativeBrand('Date'),
+    NativeError        : new NativeBrand('Error'),
+    NativeFunction     : new NativeBrand('Function'),
+    NativeIterator     : new NativeBrand('Iterator'),
+    NativeJSON         : new NativeBrand('JSON'),
+    NativeMap          : new NativeBrand('Map'),
+    NativeMath         : new NativeBrand('Math'),
+    NativeModule       : new NativeBrand('Module'),
+    NativeObject       : new NativeBrand('Object'),
+    NativeRegExp       : new NativeBrand('RegExp'),
+    NativeSet          : new NativeBrand('Set'),
+    NativeSymbol       : new NativeBrand('Symbol'),
+    NativeWeakMap      : new NativeBrand('WeakMap'),
+    NumberWrapper      : new NativeBrand('Number'),
+    StopIteration      : new NativeBrand('StopIteration'),
+    StringWrapper      : new NativeBrand('String')
   };
 
 
